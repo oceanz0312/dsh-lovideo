@@ -266,6 +266,8 @@ export function run(cmd, args, { cwd, input, timeoutMs = 600_000, signal, env } 
       if (signal?.aborted) return reject(Object.assign(new Error('已取消'), { name: 'AbortError' }))
       resolve({ code, stdout: out, stderr: err })
     })
+    // 子进程提前退出时往它写会触发管道错误；结果看退出码，这里只防止没人监听的 error 事件拖垮后端
+    child.stdin.on('error', () => {})
     if (input !== undefined) child.stdin.end(input)
     else child.stdin.end()
   })

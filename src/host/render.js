@@ -144,7 +144,7 @@ export async function closeBrowser() {
 /* ---------- 编码 ---------- */
 
 /** 起一个 ffmpeg，从 stdin 收 JPEG 帧，编成 H.264 */
-function startEncoder(out, fps, signal) {
+export function startEncoder(out, fps, signal) {
   const bin = findFfmpeg()
   if (!bin) throw new Error('还没有 ffmpeg，请先在 lovideo 里准备渲染环境')
   const child = spawn(bin, [
@@ -153,13 +153,19 @@ function startEncoder(out, fps, signal) {
   ], { windowsHide: true })
   let err = ''
   child.stderr.on('data', d => (err += d))
+  // ffmpeg 退出后再写会触发管道错误（EPIPE）；没人监听的 error 事件同样会让后端退出，失败原因由 done 报
+  child.stdin.on('error', () => {})
   const done = new Promise((ok, fail) => {
     child.on('error', fail)
     child.on('close', code => (code === 0 ? ok() : fail(new Error(`编码失败：${err.trim().slice(-300)}`))))
   })
+  // 编码器可能在画帧途中就退出（被取消、磁盘满、参数不对）：立刻接住记下原因，
+  // 不然在 end() 之前这个拒绝没人接，DeepSeek Harness 会把它当成致命错误让整个后端退出
+  let failed = null
+  done.catch(e => (failed = e))
   const kill = () => child.kill('SIGKILL')
   signal?.addEventListener('abort', kill, { once: true })
-  const write = buf => new Promise((ok, fail) => (child.stdin.write(buf, e => (e ? fail(e) : ok()))))
+  const write = buf => (failed ? Promise.reject(failed) : new Promise((ok, fail) => (child.stdin.write(buf, e => (e ? fail(failed || e) : ok())))))
   const end = () => {
     child.stdin.end()
     return done.finally(() => signal?.removeEventListener('abort', kill))
