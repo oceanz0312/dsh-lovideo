@@ -162,7 +162,7 @@ function Platform() {
           <div className="lv-grid">
             {list.map(s => (
               <button key={s.slug} type="button" className={`lv-tile ${sel === s.slug ? 'on' : ''}`} onClick={() => setSel(sel === s.slug ? null : s.slug)}>
-                <Media src={coverOf(s)} chip={s.installed ? '已在本机' : null} chipRight={s.gpu ? '需要独立显卡' : null} />
+                <Media src={coverOf(s)} chip={s.installed ? '已在本机' : null} chipRight={s.gpu ? '3D 绘制' : null} />
                 <div className="lv-tile-title lv-truncate">{s.name}</div>
                 <div className="lv-subtle lv-truncate">{[s.use, (s.aspects || []).join(' · ')].filter(Boolean).join(' · ')}</div>
               </button>
@@ -210,7 +210,7 @@ function StylePanel({ s, onClose }) {
           <div className="lv-row" style={{ flexWrap: 'wrap', gap: 6 }}>
             {(s.aspects || []).map(a => <Badge key={a}>{a}</Badge>)}
             {s.fps ? <Badge>{s.fps} fps</Badge> : null}
-            {s.gpu ? <Badge tone="warn">需要独立显卡</Badge> : <Badge>CPU 即可</Badge>}
+            {s.gpu ? <Badge>3D 绘制</Badge> : null}
             {s.source === 'mine' ? <Badge tone="info">我的风格</Badge> : s.installed ? <Badge tone="ok">已在本机</Badge> : null}
           </div>
           <Button kind="pri" size="lg" onClick={() => startDirector(`用「${s.name}」风格（${s.slug}）做一个视频：`)}>用这个风格开拍</Button>

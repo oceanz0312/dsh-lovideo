@@ -1,6 +1,6 @@
 // 打包浏览器半边：src/client → dist/client.js（DSH 的 __ModuleLoader__ 格式，React 用宿主的）。
 import { build, context } from 'esbuild'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -24,6 +24,19 @@ const options = {
   banner: { js: `window.__ModuleLoader__.load({id:${JSON.stringify(pkg.name)},factory:(require)=>{const module={exports:{}};const exports=module.exports;` },
   footer: { js: 'return module.exports}})' },
   logLevel: 'info',
+  // 自己写文件：先写临时文件再改名，DeepSeek Harness 轮询到的永远是完整的 bundle（热重载时不会读到半个文件）
+  write: false,
+  plugins: [{
+    name: 'atomic-write',
+    setup(b) {
+      b.onEnd(result => {
+        for (const f of result.outputFiles || []) {
+          writeFileSync(`${f.path}.tmp`, f.contents)
+          renameSync(`${f.path}.tmp`, f.path)
+        }
+      })
+    },
+  }],
 }
 
 if (process.argv.includes('--watch')) {

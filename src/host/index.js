@@ -10,7 +10,7 @@ import { bindLlm } from './llm.js'
 import { TOOLS, notifyDone } from './tools.js'
 import { BASE, route } from './routes.js'
 import { events, listWorks } from './works.js'
-import { markInterrupted } from './produce.js'
+import { markInterrupted, pauseAllProductions } from './produce.js'
 import { closeBrowser } from './render.js'
 import { readFrontmatter } from './styles.js'
 
@@ -68,6 +68,8 @@ export function apply(ctx) {
   events.on('change', onChange)
   ctx.effect(() => () => {
     events.off('change', onChange)
+    // 热重载时旧代码不能在后台接着做：先暂停，新代码起来后可以「继续」
+    pauseAllProductions()
     closeBrowser()
   })
 

@@ -104,7 +104,7 @@ const styles = tool({
     const list = (hit.length ? hit : all).slice(0, 60)
     const unknown = (args.recommend || []).filter(r => !all.some(s => s.slug === r))
     if (unknown.length) throw new Error(`没有这些风格：${unknown.join('、')}`)
-    const lines = list.map(s => `- ${s.slug} | ${s.name} | ${s.source === 'mine' ? '我的风格' : s.use || ''} | ${(s.aspects || ['16:9']).join(' ')}${s.gpu ? ' | 需要独立显卡' : ''}${s.description ? ` | ${String(s.description).slice(0, 80)}` : ''}`)
+    const lines = list.map(s => `- ${s.slug} | ${s.name} | ${s.source === 'mine' ? '我的风格' : s.use || ''} | ${(s.aspects || ['16:9']).join(' ')}${s.gpu ? ' | 3D 绘制' : ''}${s.description ? ` | ${String(s.description).slice(0, 80)}` : ''}`)
     const note = offline ? '（现在连不上 lovideo.ai，平台风格列表用的是缓存或为空）\n' : ''
     const login = readSettings().account ? '' : '（用户还没登录 lovideo：平台风格要登录后才能用，可以先用 lovideo_setup 让用户登录）\n'
     return { text: `${note}${login}共 ${all.length} 个风格${q ? `，匹配「${q}」的 ${hit.length} 个` : ''}：\n${lines.join('\n')}`, recommend: args.recommend || [] }

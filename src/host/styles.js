@@ -94,7 +94,10 @@ export function installPlatformStyle(entry) {
     }
   })()
   installing.set(key, job)
-  job.finally(() => installing.delete(key))
+  // 用 then 的两个分支清理：job.finally(...) 会派生出一个没人接的 promise，下载失败时它被拒绝，
+  // DSH 把没人接的拒绝当成致命错误，会让整个后端退出
+  const done = () => installing.delete(key)
+  job.then(done, done)
   return job
 }
 

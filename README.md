@@ -28,18 +28,39 @@ lovideo 的 DeepSeek Harness 插件：在 DSH 的对话里用一句话做出任�
 
 ```bash
 npm install
-npm run build          # 打包客户端到 dist/client.js（加 -- --dev 不压缩，加 -- --watch 监听）
 npm test               # 集成测试，约 30 秒，需要本机有 Chrome 和 ffmpeg
 ```
 
-装进本机的 DSH：在 DSH 配置目录的 `package.json` 里加一行
-`"dsh-lovideo": "link:/path/to/dsh-lovideo"`，然后重启 DSH。配置目录在 `~/.dsh/profiles/desktop` 或 `~/.dsh/profiles/<名字>`。
+### 在 DeepSeek Harness 桌面版里热更开发
+
+```bash
+npm run dev:desktop    # 一次性：桌面版配置链接到本仓库，并打开后端热重载
+npm run dev            # 开着：客户端改了自动重新打包
+```
+
+- **前端**（`src/client`）：存盘后约 1 秒，已打开的页面自动换上新插件，不用刷新（插件里的 React 状态会重置）。
+- **后端**（`src/host`）：存盘后几秒内 DeepSeek Harness 在同一个进程里换上新代码。正在做的片子会先暂停，重载后点「继续」。
+- 第一次打开开发模式时，如果桌面版已经开着，重启它一次；之后改代码都不用重启。
+- `npm run dev:desktop:status` 查看当前状态；`--profile <名字>` 换别的配置（默认 desktop）。
+- 原理：桌面版的插件依赖改成 `link:` 到本仓库；profile 的 `cordis.patch.yml` 里加一段带标记的 `hmr` 配置，监听 `src/host`。客户端靠 DeepSeek Harness 轮询 `dist/client.js`；打包脚本先写临时文件再改名，保证它读到的永远是完整文件。
+
+### 发版
+
+在开发模式下把改动在桌面版里走通之后再发：
+
+1. `npm test`
+2. 把 `package.json` 的版本号加一，打包：`npm pack`
+3. 按用户的装法再验一遍：`npm run dev:desktop:off -- --tgz dsh-lovideo-<版本>.tgz`，重启桌面版，把改到的地方点一遍
+4. 发布：`npm_config_registry=https://registry.npmjs.org/ npm publish dsh-lovideo-<版本>.tgz --access public`
+   （需要登录 npmjs.com 的账号；新包第一次发布时，会先出现一个 `0.0.0-stage` 占位版本，约一分钟后才是正式版本）
+5. 提交并推送到 GitHub，然后 `npm run dev:desktop` 回到开发模式
 
 需要 DSH `>=0.2.2-rc.3 <0.3.0`。支持 macOS、Windows、Linux：电脑上没有 Chrome 或 ffmpeg 时，插件会下载 chrome-headless-shell 和静态版 ffmpeg。
 
 ## 需要注意的 DSH 约定
 
 - 给导演发通知（`agent.followup`）时，消息必须带 `id` 和 `role: 'user'`。缺了这两个字段，会话历史会坏，DSH 会把这个会话从工作区里去掉。
+- 后端不能留下没人接的 promise（比如单独写 `p.finally(...)` 而不处理它的拒绝）：DeepSeek Harness 把没人接的拒绝当成致命错误，整个后端会退出、桌面版要重启。后台任务一律用 `p.then(done, done)` 或自己 `catch`。
 - 卡片挂在 `conversation.chat.turnTail` 上，所以工具行折叠起来以后卡片也看得见。工具行本身只显示一行（`tool.call.toolview`）。
 - 打开外部网址（比如登录页）一律在页面里用 `window.open` 或 `target="_blank"` 的链接：桌面版会交给系统默认浏览器，网页版开新标签。不要让插件后端去跑 `open` / `explorer`：Windows 的 `explorer` 收到带 `?`、`&` 的网址可能打开文件夹，网页版远程访问时还会在跑 DSH 的那台电脑上打开。
 - 客户端只用 DSH 的主题变量（`--dsw-alias-*`），不引用 DSH 的 UI 组件包。

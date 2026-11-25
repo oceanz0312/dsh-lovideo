@@ -56,10 +56,13 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
-    "watch": "node scripts/build.mjs --watch",
+    "dev": "node scripts/build.mjs --dev --watch",
     "test": "node --test test/*.test.mjs",
     "sync-vendor": "node scripts/sync-vendor.mjs",
-    "prepack": "node scripts/build.mjs"
+    "prepack": "node scripts/build.mjs",
+    "dev:desktop": "node scripts/dev-desktop.mjs on",
+    "dev:desktop:off": "node scripts/dev-desktop.mjs off",
+    "dev:desktop:status": "node scripts/dev-desktop.mjs status"
   },
   "dependencies": {
     "@puppeteer/browsers": "^2.10.0",

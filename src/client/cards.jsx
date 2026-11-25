@@ -130,7 +130,7 @@ export function StylesCard(props) {
         <div className="lv-grid" style={{ '--lv-min': '150px' }}>
           {picks.map((s, i) => (
             <div key={s.slug}>
-              <Media src={coverOf(s)} chip={i === 0 ? '最推荐' : null} chipRight={s.gpu ? '需要独立显卡' : null} />
+              <Media src={coverOf(s)} chip={i === 0 ? '最推荐' : null} chipRight={s.gpu ? '3D 绘制' : null} />
               <div className="lv-tile-title">{s.name}</div>
               <div className="lv-subtle lv-truncate">{s.source === 'mine' ? '我的风格' : s.use || (s.aspects || []).join(' · ')}</div>
             </div>

@@ -103,8 +103,15 @@ export async function startProduction(id, opts = {}) {
     }
     return w
   })
-  run_(id, ctl).finally(() => controllers.delete(id))
+  // run_ 自己接住所有错误并写进作品；这里只做清理，也不留没人接的 promise
+  const done = () => controllers.delete(id)
+  run_(id, ctl).then(done, done)
   return requireWork(id)
+}
+
+/** 插件卸载（重启、热重载、停用）时调用：正在做的片子都暂停，之后点「继续」接着做 */
+export function pauseAllProductions() {
+  for (const id of [...controllers.keys()]) pauseProduction(id)
 }
 
 export function pauseProduction(id) {
