@@ -20,7 +20,7 @@ const PAGE_CSS = `
 @keyframes lv-side-in{from{opacity:0;transform:translateX(12px)}}
 .lv-pane{animation:lv-fade var(--lv-dur) var(--lv-ease)}
 .lv-h1{font-size:20px;font-weight:600;margin:0}
-.lv-head{display:flex;align-items:flex-end;gap:12px;margin-bottom:16px}
+.lv-head{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px;margin-bottom:16px}
 .lv-section{border:1px solid var(--dsw-alias-border-l2);border-radius:12px;padding:4px 18px;margin-bottom:16px;background:var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-base))}
 .lv-section h3{font-size:14px;margin:14px 0 2px}
 .lv-section .lv-subtle{margin-bottom:6px}
@@ -149,6 +149,12 @@ function WorkPanel({ id, onClose }) {
 
 /* ---------- 官方风格 ---------- */
 
+/** 「AI 帮你推荐」的草稿：带上页面上已选的画幅和搜索词，用户在冒号后面补一句想做什么再发出 */
+function recommendPrompt(q, aspect) {
+  const want = [aspect === '9:16' ? '竖版 9:16' : aspect === '16:9' ? '横版 16:9' : '', q.trim() ? `和「${q.trim()}」有关` : ''].filter(Boolean).join('，')
+  return `不知道用哪个风格，帮我从官方风格里推荐几个${want ? `（${want}）` : ''}。我想做的视频是：`
+}
+
 function Platform() {
   const [data, , reload] = useLive('styles', () => false)
   const [st] = useLive('state', () => false)
@@ -164,6 +170,10 @@ function Platform() {
           <h1 className="lv-h1">官方风格</h1>
           <span className="lv-subtle">{data?.platform?.length || 0} 个 · 注册即免费 · 用到时下载到本机</span>
           <span className="lv-grow" />
+          <Button onClick={() => startDirector(recommendPrompt(q, aspect))} title="说说你想做什么视频，导演从官方风格里挑几个给你选">
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.2 6.3 6.3 2.2-6.3 2.2L12 19.5l-2.2-6.3L3.5 11l6.3-2.2z" fill="#ff6b3d" /></svg>
+            不知道选哪个？AI 帮你推荐
+          </Button>
           <input className="lv-input" style={{ width: 200 }} placeholder="搜风格、用途…" value={q} onChange={e => setQ(e.target.value)} />
           <div className="lv-seg">{[['all', '全部'], ['16:9', '16:9'], ['9:16', '9:16']].map(([k, l]) => <button key={k} type="button" className={aspect === k ? 'on' : ''} onClick={() => setAspect(k)}>{l}</button>)}</div>
         </div>
