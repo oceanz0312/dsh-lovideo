@@ -6,7 +6,7 @@
 //   redraw    让导演重画某一镜（只重做这一段，其余不动）
 // 前四种只改时间线、马上重新拼一遍成片（几秒）；redraw 在后台重做这一段。
 import { requireWork, updateWork } from './works.js'
-import { assembleFilm, normalizeTimeline } from './assemble.js'
+import { assembleFilm, captionCues, normalizeTimeline } from './assemble.js'
 import { startProduction } from './produce.js'
 
 /** 「第 2 镜」「shot-2」「2」都能认出来 */
@@ -51,10 +51,14 @@ export async function reviseFilm(id, ops = []) {
       done.push(`第 ${n} 镜挪到第 ${to + 1} 个`)
     } else if (op.op === 'caption') {
       if (!subs) throw Object.assign(new Error('这部片子没有字幕'), { status: 400 })
-      const c = subs.clips.find(x => x.of === sid)
-      if (!c) throw Object.assign(new Error(`第 ${n} 镜没有字幕`), { status: 400 })
-      c.text = String(op.text || '').trim().slice(0, 200)
-      done.push(`第 ${n} 镜字幕改成「${c.text}」`)
+      // 一镜的字幕按句子分成几条；改字幕时在原来那段时间里重新按句子切开
+      const mine = subs.clips.filter(x => x.of === sid)
+      if (!mine.length) throw Object.assign(new Error(`第 ${n} 镜没有字幕`), { status: 400 })
+      const text = String(op.text || '').trim().slice(0, 200)
+      const from = Math.min(...mine.map(x => x.start))
+      const to = Math.max(...mine.map(x => x.start + x.dur))
+      subs.clips = [...subs.clips.filter(x => x.of !== sid), ...captionCues(text, from, to - from, sid)].sort((a, b) => a.start - b.start)
+      done.push(`第 ${n} 镜字幕改成「${text}」`)
     } else if (op.op === 'subtitles') {
       if (subs) subs.hidden = op.show === false
       done.push(op.show === false ? '隐藏字幕' : '显示字幕')

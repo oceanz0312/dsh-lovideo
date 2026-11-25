@@ -83,6 +83,16 @@ test('确认分镜后在本机做出成片', { timeout: 300_000 }, async () => {
   assert.ok(existsSync(mp4.path) && mp4.burned)
   assert.ok(existsSync(join(jy.path, 'lovideo_timeline', 'draft_content.json')), '没有剪映草稿')
   assert.ok(existsSync(join(jy.path, jy.installer)), '没有导入脚本')
-  if (process.platform !== 'linux') assert.ok(jy.imported && existsSync(join(jy.imported.path, 'draft_content.json')), '没有放进剪映草稿目录')
+  // 在剪映中打开用的导入：复制草稿、填上路径、改名，重名加序号
+  const { importDraft } = await import('../src/host/jianying.js')
+  const root = process.env.JIANYING_DRAFT_ROOT
+  const a = importDraft(join(jy.path, 'lovideo_timeline'), '测试片', root)
+  const b = importDraft(join(jy.path, 'lovideo_timeline'), '测试片', root)
+  assert.equal(a.name, '测试片')
+  assert.equal(b.name, '测试片-2')
+  const content = readFileSync(join(a.path, 'draft_content.json'), 'utf8')
+  assert.ok(!content.includes('##_draftpath_placeholder_') && !content.includes('##_lovideo_draft_root_##'), '草稿里还有路径占位符')
+  assert.ok(content.includes(a.path.replace(/\\/g, '/')), '草稿里的素材路径没有指向导入后的位置')
+  assert.match(readFileSync(join(a.path, 'draft_meta_info.json'), 'utf8'), /"draft_name":\s*"测试片"/)
   console.log('exports', e.exporting.results)
 })

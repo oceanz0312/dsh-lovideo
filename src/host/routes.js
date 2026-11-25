@@ -8,7 +8,8 @@ import { deleteWork, events, getWork, listWorks, requireWork, updateWork, workDi
 import { listStyles, mineDir, removeMine, installPlatformStyle, platformCatalog } from './styles.js'
 import { pauseProduction, startProduction, isRunning } from './produce.js'
 import { reviseFilm } from './edit.js'
-import { startExport } from './export.js'
+import { openInJianying, startExport } from './export.js'
+import { jianyingStatus } from './jianying.js'
 import { saveDistilled, startDistill } from './distill.js'
 import { runtimeStatus, setupProgress, setupRuntime } from './runtime.js'
 import { publicSettings, readSettings, updateSettings } from './settings.js'
@@ -88,7 +89,7 @@ export function view(w) {
   return {
     ...summary(w),
     voice: w.voice, plan: w.plan,
-    job: w.job ? { ...w.job, segments: (w.job.segments || []).map(s => ({ ...s, poster: s.state === 'done' ? file(s.poster) : null, video: s.state === 'done' ? file(s.file) : null })) } : null,
+    job: w.job ? { ...w.job, segments: (w.job.segments || []).map(s => ({ ...s, poster: s.state === 'done' ? file(s.poster) : null, video: s.state === 'done' ? file(s.file) : null, voiceUrl: s.state === 'done' && s.voice?.file ? file(s.voice.file) : null })) } : null,
     film: w.film ? { ...w.film, url: file(w.film.file), posterUrl: file(w.film.poster) } : null,
     subtitles: (w.timeline?.tracks.find(t => t.type === 'subtitle')?.clips || []).map(c => ({ start: c.start, end: c.start + c.dur, text: c.text })),
     subtitlesHidden: Boolean(w.timeline?.tracks.find(t => t.type === 'subtitle')?.hidden),
@@ -149,6 +150,8 @@ export async function route(req, res) {
       const file = resolve(tmpDir(), m[1])
       return isInside(tmpDir(), file) ? sendFile(req, res, file) : json(res, 403, { error: '路径不合法' })
     }
+    // 「在剪映中打开」之前的检查：装没装、草稿目录、能不能写、是不是正开着
+    if (path === 'jianying/status') return json(res, 200, jianyingStatus())
     if (path === 'events') return sse(req, res)
     return json(res, 404, { error: '接口不存在' })
   }
@@ -158,7 +161,7 @@ export async function route(req, res) {
   if (site && site !== 'same-origin' && site !== 'none') return json(res, 403, { error: '拒绝跨站请求' })
   const body = await readBody(req)
 
-  if ((m = /^works\/([\w-]+)\/(produce|revise|export|delete|reveal|rename)$/.exec(path))) {
+  if ((m = /^works\/([\w-]+)\/(produce|revise|export|open-jianying|delete|reveal|rename)$/.exec(path))) {
     const id = assertId(m[1])
     const w = requireWork(id)
     switch (m[2]) {
@@ -170,6 +173,8 @@ export async function route(req, res) {
         return json(res, 200, view((await reviseFilm(id, body.ops)).work))
       case 'export':
         return json(res, 200, view(await startExport(id, body)))
+      case 'open-jianying':
+        return json(res, 200, await openInJianying(id, { restart: Boolean(body.restart) }))
       case 'delete':
         pauseProduction(id)
         deleteWork(id)

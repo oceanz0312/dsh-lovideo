@@ -7,7 +7,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PLUGIN_ROOT } from './paths.js'
 import { bindLlm } from './llm.js'
-import { TOOLS, notifyDone } from './tools.js'
+import { TOOLS, notifyDone, notifyLogin } from './tools.js'
+import { loginEvents } from './site.js'
 import { BASE, route } from './routes.js'
 import { events, listWorks } from './works.js'
 import { markInterrupted, pauseAllProductions } from './produce.js'
@@ -66,8 +67,12 @@ export function apply(ctx) {
     if (prev && work) notifyDone(prev, work, ctx)
   }
   events.on('change', onChange)
+  // 网站确认登录后，叫醒因为没登录卡住的导演接着做
+  const onLogin = account => notifyLogin(account, ctx)
+  loginEvents.on('login', onLogin)
   ctx.effect(() => () => {
     events.off('change', onChange)
+    loginEvents.off('login', onLogin)
     // 热重载时旧代码不能在后台接着做：先暂停，新代码起来后可以「继续」
     pauseAllProductions()
     closeBrowser()

@@ -2,13 +2,13 @@
 // 剪映工程用的是网站同一份导出器（vendor/jianying，来自 lovideo 仓库 workers/sandbox/job），
 // 所以插件和网站导出的工程完全一样。第一次导出剪映时会用 Python 装一次 pyJianYingDraft。
 import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { PLUGIN_ROOT, defaultExportDir, ensureDir, runtimeDir, tmpDir } from './paths.js'
 import { readSettings } from './settings.js'
 import { requireWork, updateWork, workDir } from './works.js'
 import { ffmpeg, findPythonForNative, mediaSeconds, run } from './runtime.js'
 import { getBrowser } from './render.js'
+import { importDraft, isRunning as jianyingIsRunning, jianyingStatus, launch as launchJianying, quit as quitJianying } from './jianying.js'
 
 const running = new Map()
 
@@ -93,9 +93,13 @@ async function ensureJianyingLib(py, signal) {
   return lib
 }
 
-async function exportJianying(work, signal) {
+/**
+ * 生成剪映草稿（网站同一份导出器）。out 不给就放到导出目录下的「<片名>-剪映工程」文件夹，
+ * 里面有 lovideo_timeline 草稿和 Windows、macOS 的导入脚本（给拿到别的电脑上用）。
+ */
+async function buildJianyingDraft(work, signal, out = uniquePath(exportDir(), `${safeName(work.title)}-剪映工程`, '')) {
   const py = findPythonForNative()
-  if (!py) throw new Error('导出剪映工程需要 Python 3，这台电脑上没有找到（macOS 可以在终端运行 xcode-select --install 安装）')
+  if (!py) throw Object.assign(new Error(process.platform === 'darwin' ? '生成剪映草稿需要 Python 3：在「终端」里运行 xcode-select --install 装一下，再试一次' : '生成剪映草稿需要 Python 3，这台电脑上没有找到'), { code: 'no-python' })
   const lib = await ensureJianyingLib(py, signal)
   const dir = workDir(work.id)
   // 素材换成本机绝对路径，交给网站同一份导出器
@@ -105,13 +109,12 @@ async function exportJianying(work, signal) {
   const tmp = ensureDir(join(tmpDir(), `jy-${work.id}-${Date.now()}`))
   const docFile = join(tmp, 'timeline.json')
   writeFileSync(docFile, JSON.stringify(doc))
-  const out = uniquePath(exportDir(), `${safeName(work.title)}-剪映工程`, '')
   mkdirSync(out, { recursive: true })
   try {
     const r = await run(py, [join(PLUGIN_ROOT, 'vendor', 'jianying', 'timeline_export.py'), docFile, out], {
       signal, timeoutMs: 600_000, env: { PYTHONPATH: lib, PYTHONIOENCODING: 'utf-8' },
     })
-    if (r.code !== 0) throw new Error(`导出剪映工程失败：${(r.stderr || r.stdout).trim().split('\n').slice(-3).join(' ')}`)
+    if (r.code !== 0) throw new Error(`生成剪映草稿失败：${(r.stderr || r.stdout).trim().split('\n').slice(-3).join(' ')}`)
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }
@@ -123,41 +126,50 @@ async function exportJianying(work, signal) {
   }
   rmSync(join(out, 'jianying_draft.zip'), { force: true })
   rmSync(join(out, 'README.md'), { force: true })
-  const installer = process.platform === 'win32' ? 'install_windows.bat' : 'install_mac.command'
   if (existsSync(join(out, 'install_mac.command'))) chmodSync(join(out, 'install_mac.command'), 0o755)
+  return out
+}
+
+/** 导出剪映工程文件夹（拿到别的电脑上导入用） */
+async function exportJianying(work, signal) {
+  const out = await buildJianyingDraft(work, signal)
+  const installer = process.platform === 'win32' ? 'install_windows.bat' : 'install_mac.command'
   writeFileSync(join(out, '说明.txt'), [
     `《${work.title}》的剪映专业版工程（lovideo 导出）。`,
     '',
-    `导入：退出剪映，双击 ${installer}，再打开剪映，在草稿列表里就能看到。`,
+    `导入：退出剪映，双击 ${installer}（Windows 用 install_windows.bat），再打开剪映，在草稿列表里就能看到。`,
     '不要手动复制 lovideo_timeline 文件夹：素材路径要靠导入脚本填好。',
     'jianying_report.json 里写了哪些效果在剪映里是近似的或没带过去。',
     '',
   ].join('\n'))
-  // 这台电脑装了剪映：直接放进剪映的草稿列表
-  const imported = await importToJianying(out, safeName(work.title), signal).catch(() => null)
-  return { kind: 'jianying', path: out, installer, imported }
+  return { kind: 'jianying', path: out, installer }
 }
 
-/** 剪映草稿目录（没装剪映返回 null；Linux 没有剪映） */
-function jianyingDraftRoot() {
-  if (process.env.JIANYING_DRAFT_ROOT) return process.env.JIANYING_DRAFT_ROOT
-  const root = process.platform === 'darwin'
-    ? join(homedir(), 'Movies', 'JianyingPro', 'User Data', 'Projects', 'com.lveditor.draft')
-    : process.platform === 'win32' && process.env.LOCALAPPDATA
-      ? join(process.env.LOCALAPPDATA, 'JianyingPro', 'User Data', 'Projects', 'com.lveditor.draft')
-      : null
-  return root && existsSync(root) ? root : null
-}
-
-async function importToJianying(out, title, signal) {
-  const root = jianyingDraftRoot()
-  if (!root) return null
-  let name = title
-  for (let i = 2; existsSync(join(root, name)); i++) name = `${title}-${i}`
-  const r = process.platform === 'win32'
-    ? await run('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(out, 'install_windows.ps1'), name], { signal, timeoutMs: 120_000, env: { JIANYING_DRAFT_ROOT: root } })
-    : await run('/bin/bash', [join(out, 'install_mac.command'), name], { signal, timeoutMs: 120_000, env: { JIANYING_DRAFT_ROOT: root } })
-  return r.code === 0 ? { name, path: join(root, name) } : null
+/**
+ * 在剪映中打开：生成草稿 → 导入剪映草稿目录 → 打开剪映。
+ * 剪映开着时，新草稿要重开剪映才出现：restart 为 true 时先让剪映正常退出再打开；否则只导入、不动正在用的剪映。
+ * @returns {{ name:string, path:string, launched:boolean, needsRestart:boolean }}
+ */
+export async function openInJianying(id, { restart = false } = {}) {
+  const work = requireWork(id)
+  if (!work.film || !work.timeline) throw Object.assign(new Error('成片还没做好，做好后再在剪映中打开'), { status: 409 })
+  const st = jianyingStatus()
+  if (st.problem) throw Object.assign(new Error(st.problem), { status: 409, code: st.code })
+  const tmp = ensureDir(join(tmpDir(), `jy-open-${work.id}-${Date.now()}`))
+  try {
+    await buildJianyingDraft(work, undefined, tmp)
+    const wasRunning = jianyingIsRunning()
+    if (wasRunning && restart && !(await quitJianying(20_000, st.app))) {
+      throw Object.assign(new Error('剪映没能自动关掉（可能有弹窗在等你确认），请手动关掉剪映后再点一次'), { status: 409, code: 'quit-failed' })
+    }
+    const imported = importDraft(join(tmp, 'lovideo_timeline'), work.title, st.draftRoot)
+    const stillRunning = wasRunning && !restart
+    if (!stillRunning) launchJianying(st.app)
+    await updateWork(id, w => ((w.exports = [...(w.exports || []), { kind: 'jianying-open', name: imported.name, path: imported.path, at: new Date().toISOString() }].slice(-20)), w))
+    return { ...imported, launched: !stillRunning, needsRestart: stillRunning }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
 }
 
 /**

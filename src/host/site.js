@@ -1,6 +1,10 @@
 // lovideo.ai 账号和接口。登录走设备码：插件用系统浏览器打开网站，用户在网站上登录并确认同一串代码，
 // 插件轮询拿到令牌，存在本机设置里（0600）。之后用 Bearer 调接口：平台风格列表、下载风格包、网站上的作品。
+import { EventEmitter } from 'node:events'
 import { readSettings, setAccount } from './settings.js'
+
+/** 网站确认登录成功时发 'login'（带邮箱）：等着登录的导演据此自动继续 */
+export const loginEvents = new EventEmitter()
 
 const CLIENT_ID = 'dsh-lovideo'
 
@@ -91,11 +95,12 @@ async function poll(p) {
       })
       const body = await res.json().catch(() => ({}))
       if (res.ok && body.access_token) {
-        setAccount({ token: body.access_token, at: new Date().toISOString() })
-        // 账号信息用 Better Auth 自带的 get-session（带 Bearer 返回 {session, user}，没登录返回 null）
-        const me = await siteJson('/api/auth/get-session', { auth: true }).catch(() => null)
+        // 账号信息用 Better Auth 自带的 get-session（带 Bearer 返回 {session, user}，没登录返回 null）；
+        // 先拿到邮箱再一次存好，页面不会看到「已登录但没有邮箱」的中间状态
+        const me = await siteJson('/api/auth/get-session', { headers: { authorization: `Bearer ${body.access_token}` } }).catch(() => null)
         setAccount({ token: body.access_token, email: me?.user?.email ?? null, name: me?.user?.name ?? null, at: new Date().toISOString() })
         p.state = 'done'
+        loginEvents.emit('login', { email: me?.user?.email ?? null })
         return
       }
       if (body.error === 'slow_down') p.interval += 5

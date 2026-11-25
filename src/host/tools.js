@@ -8,13 +8,48 @@ import { createWork, listWorks, requireWork, updateWork } from './works.js'
 import { listMine, listStyles } from './styles.js'
 import { pauseProduction, startProduction, narrationText } from './produce.js'
 import { reviseFilm } from './edit.js'
-import { startExport, waitExport } from './export.js'
+import { openInJianying, startExport, waitExport } from './export.js'
 import { saveDistilled, startDistill } from './distill.js'
 import { runtimeStatus } from './runtime.js'
 import { readSettings } from './settings.js'
 import { modelInfo } from './llm.js'
 
 const text = s => [{ type: 'text', text: s }]
+
+/** 「要先登录」的工具错误带这个记号：卡片据此在原地给登录按钮，而不是把给模型的话显示给用户 */
+export const LOGIN_MARK = '【需要登录】'
+
+/* ---------- 登录后自动继续 ---------- */
+
+// 因为没登录卡住的会话（会话 id → 导演）；网站确认登录后逐个通知它们接着做
+const loginWaiters = new Map()
+function waitLogin(exec) {
+  const agent = exec?.agent
+  if (agent && typeof agent.followup === 'function') loginWaiters.set(agent.id ?? randomUUID(), agent)
+}
+
+/** 登录成功：叫醒所有等着登录的导演，让它们自己把卡住的那一步重做一遍 */
+export function notifyLogin(account, ctx) {
+  for (const [sessionId, held] of loginWaiters) {
+    let live
+    try {
+      live = ctx?.get('agents')?.get(sessionId)
+    } catch {
+      live = undefined
+    }
+    followup(live || held, `[lovideo 通知] 用户已经登录 lovideo${account?.email ? `（${account.email}）` : ''}，官方风格现在可以用了。请直接继续刚才因为没登录卡住的那一步（比如用同样的参数重新调用 lovideo_plan，或重新开拍），不要再问用户，也不用再调用 lovideo_setup。`)
+  }
+  loginWaiters.clear()
+}
+
+function followup(agent, msg) {
+  try {
+    // 和 DSH 的 createUserMessage 一样：要有 id 和 role，否则会话历史会坏
+    agent.followup(Object.freeze({ id: randomUUID(), role: 'user', content: [{ type: 'text', text: msg }], source: { kind: 'dsh-lovideo' } }))
+  } catch {
+    // 会话已经关了
+  }
+}
 const ANY = { type: 'object', additionalProperties: true }
 
 /** 只做最基本的校验：必填、类型、枚举；复杂的约束在函数里报错 */
@@ -52,7 +87,14 @@ function tool(def) {
     async execute(args, exec) {
       const errs = check(args ?? {}, def.parameters)
       if (errs.length) throw new Error(errs.join('；'))
-      return def.run(args ?? {}, exec)
+      try {
+        return await def.run(args ?? {}, exec)
+      } catch (err) {
+        if (err?.code !== 'login_required') throw err
+        // 没登录：记下这位导演，登录成功后通知它；卡片看到记号会在原地给登录按钮
+        waitLogin(exec)
+        throw Object.assign(new Error(`${LOGIN_MARK}${err.message.replace(LOGIN_MARK, '')}。卡片上已经给了用户登录按钮，不用再调用 lovideo_setup；用户登录后你会收到「[lovideo 通知] 用户已经登录」，到时直接重做这一步。`), { code: 'login_required' })
+      }
     },
   }
 }
@@ -71,14 +113,15 @@ const setup = tool({
   name: 'lovideo_setup',
   description: '检查这台电脑能不能做 lovideo 视频：模型、渲染环境（浏览器、ffmpeg）、lovideo 账号、配音设置。用户第一次做视频、或制作报环境错误时调用；结果以卡片展示，用户在卡片上点按钮准备环境和登录。',
   parameters: { type: 'object', additionalProperties: false, properties: {} },
-  async run() {
+  async run(_args, exec) {
     const env = runtimeStatus()
     const s = readSettings()
+    if (!s.account) waitLogin(exec)
     const m = modelInfo()
     const lines = [
       `模型：${m ? m.label : '没有可用模型'}`,
       `渲染环境：${env.ready ? '已就绪' : `缺 ${[!env.chrome.ok && '浏览器', !env.ffmpeg.ok && 'ffmpeg'].filter(Boolean).join('、')}，需要用户在卡片上点「准备」`}`,
-      `lovideo 账号：${s.account ? '已登录（平台风格可用）' : '未登录（用平台风格要先登录，注册即免费；卡片上有登录按钮）'}`,
+      `lovideo 账号：${s.account ? '已登录（平台风格可用）' : '未登录（用平台风格要先登录，注册即免费；卡片上有登录按钮，用户登录后你会收到通知）'}`,
       `配音：${s.voice.provider === 'system' ? '系统自带语音' : s.voice.provider === 'none' ? '不配音（只出字幕）' : s.voice.provider}`,
       `我的风格：${listMine().filter(x => !x.draft).length} 个`,
     ]
@@ -140,7 +183,7 @@ const plan = tool({
     const { platform, mine } = await listStyles('zh').catch(() => ({ platform: [], mine: listMine() }))
     const st = [...mine, ...platform].find(s => s.slug === args.style)
     if (!st) throw new Error(`没有风格「${args.style}」，先用 lovideo_styles 看可用的风格`)
-    if (st.source === 'platform' && !readSettings().account) throw new Error('这是平台风格，需要用户先登录 lovideo（注册即免费）。请调用 lovideo_setup 让用户在卡片上登录')
+    if (st.source === 'platform' && !readSettings().account) throw Object.assign(new Error('这是官方风格，需要先登录 lovideo（注册即免费）'), { code: 'login_required' })
     const aspect = args.aspect || (st.aspects || ['16:9'])[0]
     if (st.aspects && !st.aspects.includes(aspect)) throw new Error(`风格「${st.name}」只支持 ${st.aspects.join('、')}`)
     const scenes = args.scenes.map((s, i) => ({ id: `shot-${i + 1}`, title: s.title, description: s.description, narration: s.narration || '', seconds: Math.max(3, Math.min(20, Number(s.seconds) || 6)) }))
@@ -228,7 +271,7 @@ const revise = tool({
 
 const exportTool = tool({
   name: 'lovideo_export',
-  description: '把成片导出到用户电脑：MP4（可选清晰度、是否把字幕烧进画面）和/或剪映工程（打开剪映可以继续精剪）。等导出完成后返回文件位置。只要有过成片就能导出：分镜改了还没重新开拍时，导出的是上一版成片。',
+  description: '把成片导出到用户电脑：MP4（可选清晰度、是否把字幕烧进画面）和/或剪映工程文件夹。用户说「在剪映里打开」「导到剪映」「用剪映精剪」时用 open_in_jianying：直接导入这台电脑的剪映草稿列表并打开剪映。只要有过成片就能导出：分镜改了还没重新开拍时，导出的是上一版成片。',
   parameters: {
     type: 'object', additionalProperties: false, required: ['work_id'],
     properties: {
@@ -236,10 +279,16 @@ const exportTool = tool({
       format: { type: 'string', enum: ['mp4', 'jianying', 'both'], description: '默认 mp4' },
       quality: { type: 'string', enum: ['720', '1080', '2160'], description: 'MP4 清晰度，默认 1080' },
       burn_subtitles: { type: 'boolean', description: '把字幕烧进画面，默认是' },
+      open_in_jianying: { type: 'boolean', description: '在这台电脑的剪映专业版里打开（导入草稿并打开剪映）；给了它就不导出文件，format 等参数不用填' },
     },
   },
   timeoutMs: 900_000,
   async run(args) {
+    if (args.open_in_jianying) {
+      // 剪映正开着时只导入、不替用户关掉剪映；要重开由用户在卡片上点「在剪映中打开」确认
+      const r = await openInJianying(args.work_id, { restart: false })
+      return { text: `${workLine(requireWork(args.work_id))}\n${r.launched ? `已在剪映中打开：草稿「${r.name}」在剪映草稿列表最上面。` : `已导入剪映草稿「${r.name}」。剪映正开着，关掉重开就能在草稿列表里看到；也可以在卡片上点「在剪映中打开」，我帮用户重开。`}` }
+    }
     await startExport(args.work_id, { format: args.format || 'mp4', quality: args.quality || '1080', burn: args.burn_subtitles !== false })
     const w = await waitExport(args.work_id)
     if (w.exporting?.state !== 'done') throw new Error(w.exporting?.error || '导出没完成')
@@ -299,18 +348,17 @@ export function notifyDone(prev, work, ctx) {
   watchers.delete(work.id)
   if (!agent) return
   const secs = work.film?.duration ? Math.round(work.film.duration) : null
+  const needLogin = work.status === 'failed' && /登录/.test(work.job?.error || '')
+  // 因为没登录做不了：登录成功后同一位导演会再收到通知，接着重新开拍
+  if (needLogin) loginWaiters.set(agent.id ?? randomUUID(), agent)
   const msg = work.status === 'done'
     ? `[lovideo 通知] ${workLine(work)}《${work.title}》做好了${secs ? `，${secs} 秒` : ''}。卡片里已经可以播放。请用一两句话告诉用户：可以直接在卡片里看，想改哪里直接说（裁短、换顺序、改字幕、重画某一镜），或者导出 MP4 / 剪映工程。`
-    : work.status === 'failed'
-      ? `[lovideo 通知] ${workLine(work)}《${work.title}》制作失败：${work.job?.error || '原因不明'}。请告诉用户原因，并给出下一步（例如重试、换风格或检查渲染环境）。`
-      : null
-  if (!msg) return
-  try {
-    // 和 DSH 的 createUserMessage 一样：要有 id 和 role，否则会话历史会坏
-    agent.followup(Object.freeze({ id: randomUUID(), role: 'user', content: [{ type: 'text', text: msg }], source: { kind: 'dsh-lovideo' } }))
-  } catch {
-    // 会话已经关了
-  }
+    : needLogin
+      ? `[lovideo 通知] ${workLine(work)}《${work.title}》没能开始：这个官方风格要先登录 lovideo（注册即免费）。请调用 lovideo_setup 给用户登录卡片，用一句话请用户登录；用户登录后你会收到通知，到时调用 lovideo_produce（action: start）重新开拍。`
+      : work.status === 'failed'
+        ? `[lovideo 通知] ${workLine(work)}《${work.title}》制作失败：${work.job?.error || '原因不明'}。请告诉用户原因，并给出下一步（例如重试、换风格或检查渲染环境）。`
+        : null
+  if (msg) followup(agent, msg)
 }
 
 export { narrationText }

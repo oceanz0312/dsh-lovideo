@@ -10,6 +10,48 @@ import { ffmpeg, mediaSeconds } from './runtime.js'
 const r3 = n => Math.round(n * 1000) / 1000
 
 /** 从制作结果生成一条新时间线 */
+/** 一行字幕最多多少个字：超过就在逗号处断开，还长就硬切 */
+const CAPTION_MAX = 18
+
+/** 按句子切开：先按句号问号感叹号分号，太长再按逗号顿号冒号，还长就按字数切。句末的逗号句号去掉 */
+export function splitCaption(text) {
+  const out = []
+  const sentences = String(text || '').replace(/\s+/g, ' ').match(/[^。！？!?；;\n]+[。！？!?；;]?/g) || []
+  for (const raw of sentences) {
+    const sentence = raw.trim()
+    if (!sentence) continue
+    const parts = sentence.length <= CAPTION_MAX ? [sentence] : sentence.match(/[^，,、：:]+[，,、：:]?/g) || [sentence]
+    let line = ''
+    for (const part of parts) {
+      if ((line + part).length <= CAPTION_MAX) line += part
+      else {
+        if (line) out.push(line)
+        line = part
+        while (line.length > CAPTION_MAX) {
+          out.push(line.slice(0, CAPTION_MAX))
+          line = line.slice(CAPTION_MAX)
+        }
+      }
+    }
+    if (line) out.push(line)
+  }
+  return out.map(l => l.trim().replace(/[，,。.；;：:、]+$/, '')).filter(Boolean)
+}
+
+/** 一镜的字幕：句子按字数分配这一镜口播的时长，首尾相接 */
+export function captionCues(text, start, dur, sceneId) {
+  const lines = splitCaption(text)
+  const weight = l => Math.max(1, l.replace(/\s/g, '').length)
+  const total = lines.reduce((n, l) => n + weight(l), 0) || 1
+  let t = start
+  return lines.map((l, k) => {
+    const d = k === lines.length - 1 ? start + dur - t : (dur * weight(l)) / total
+    const cue = { id: `sub-${sceneId}-${k + 1}`, of: sceneId, text: l, start: r3(t), dur: r3(Math.max(0.4, d)) }
+    t += d
+    return cue
+  })
+}
+
 export function buildTimeline(work) {
   const job = work.job
   const fps = job.fps
@@ -28,7 +70,7 @@ export function buildTimeline(work) {
       assets[`n-${s.id}`] = { kind: 'audio', r2: s.voice.file, uri: s.voice.file, dur: r3(s.voice.seconds) }
       voice.push({ id: `vo-${s.id}`, of: s.id, asset: `n-${s.id}`, start: r3(start + 0.3), dur: r3(s.voice.seconds), offset: 0, gain: 0, fadeOut: 0 })
     }
-    if (text) subs.push({ id: `sub-${s.id}`, of: s.id, text, start: r3(start + 0.3), dur: r3(Math.max(1, s.voice ? s.voice.seconds : dur - 0.6)) })
+    if (text) subs.push(...captionCues(text, start + 0.3, Math.max(1, s.voice ? s.voice.seconds : dur - 0.6), s.id))
   }
   const duration = r3(job.segments.reduce((n, s) => n + s.frames, 0) / fps)
   const tracks = [{ id: 't-scene', type: 'scene', clips: sceneClips }]

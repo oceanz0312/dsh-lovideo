@@ -1,7 +1,7 @@
 // 侧栏「lovideo 视频」：作品、官方风格、我的风格、设置。随时点开看，和对话里的卡片读同一份数据。
 import * as React from 'react'
 import { api, fileUrl, loginUrl, openExternal, useLive } from './api.js'
-import { Badge, Button, LinkButton, Mark, Media, Player, StatusBadge, Styles, fmtSec } from './ui.jsx'
+import { Badge, Button, ConfirmDialog, LinkButton, Mark, Media, Player, StatusBadge, Styles, fmtSec } from './ui.jsx'
 import { Doctor, WorkActions, WorkBody, coverOf } from './cards.jsx'
 import { host, openSession, startDirector } from './host.js'
 
@@ -10,11 +10,14 @@ const PAGE_CSS = `
 .lv-top{display:flex;align-items:center;gap:18px;height:52px;padding:0 24px;border-bottom:1px solid var(--dsw-alias-border-l2);flex:none}
 .lv-brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px}
 .lv-tabs{display:flex;gap:4px;align-self:stretch}
-.lv-tabs button{border:0;background:none;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13.5px;padding:0 10px;cursor:pointer;border-bottom:2px solid transparent}
+.lv-tabs button{border:0;background:none;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13.5px;padding:0 10px;cursor:pointer;border-bottom:2px solid transparent;transition:color var(--lv-dur) var(--lv-ease),border-color var(--lv-dur) var(--lv-ease)}
+.lv-tabs button:hover{color:var(--dsw-alias-label-primary)}
 .lv-tabs button.on{color:var(--dsw-alias-label-primary);font-weight:600;border-bottom-color:var(--dsw-alias-label-primary)}
 .lv-body{flex:1;min-height:0;overflow:auto;padding:22px 24px 40px}
 .lv-split{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:22px;align-items:start}
-.lv-side{position:sticky;top:0;display:flex;flex-direction:column;gap:12px}
+.lv-side{position:sticky;top:0;display:flex;flex-direction:column;gap:12px;animation:lv-side-in var(--lv-slow) var(--lv-ease-out)}
+@keyframes lv-side-in{from{opacity:0;transform:translateX(12px)}}
+.lv-pane{animation:lv-fade var(--lv-dur) var(--lv-ease)}
 .lv-h1{font-size:20px;font-weight:600;margin:0}
 .lv-head{display:flex;align-items:flex-end;gap:12px;margin-bottom:16px}
 .lv-section{border:1px solid var(--dsw-alias-border-l2);border-radius:12px;padding:4px 18px;margin-bottom:16px;background:var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-base))}
@@ -25,9 +28,9 @@ const PAGE_CSS = `
 .lv-srow>.l{flex:1;min-width:0}
 .lv-srow>.l b{font-weight:500;display:block}
 .lv-chips{display:flex;flex-wrap:wrap;gap:6px}
-.lv-chips button{height:28px;padding:0 12px;border-radius:999px;border:1px solid var(--dsw-alias-border-l4);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;cursor:pointer}
+.lv-chips button{transition:border-color var(--lv-dur) var(--lv-ease),color var(--lv-dur) var(--lv-ease),background-color var(--lv-dur) var(--lv-ease);height:28px;padding:0 12px;border-radius:999px;border:1px solid var(--dsw-alias-border-l4);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;cursor:pointer}
 .lv-chips button.on{border-color:var(--dsw-alias-label-primary);color:var(--dsw-alias-label-primary);font-weight:500;background:var(--dsw-alias-interactive-bg-hover)}
-.lv-banner{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--dsw-alias-card-fill);margin-bottom:16px}
+.lv-banner{animation:lv-in var(--lv-slow) var(--lv-ease-out);display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--dsw-alias-card-fill);margin-bottom:16px}
 `
 
 const TABS = [['works', '作品'], ['platform', '官方风格'], ['mine', '我的风格'], ['settings', '设置']]
@@ -54,7 +57,7 @@ export function ManagePage() {
         <Button kind="pri" onClick={() => startDirector('我想做一个视频：')}>做一部新片</Button>
       </div>
       <div className="lv-body">
-        {tab === 'works' ? <Works /> : tab === 'platform' ? <Platform /> : tab === 'mine' ? <Mine /> : <Settings />}
+        <div key={tab} className="lv-pane">{tab === 'works' ? <Works /> : tab === 'platform' ? <Platform /> : tab === 'mine' ? <Mine /> : <Settings />}</div>
       </div>
     </div>
   )
@@ -301,6 +304,18 @@ function Settings() {
   const [form, setForm] = React.useState(null)
   const [msg, setMsg] = React.useState(null)
   const [busy, setBusy] = React.useState(null)
+  const [askLogout, setAskLogout] = React.useState(false)
+  const [loggingOut, setLoggingOut] = React.useState(false)
+  const logout = async () => {
+    setLoggingOut(true)
+    try {
+      await api('logout', {})
+      setAskLogout(false)
+      reload()
+    } finally {
+      setLoggingOut(false)
+    }
+  }
   React.useEffect(() => {
     if (st && !form) setForm({ voice: { ...st.settings.voice, key: '' }, exportDir: st.settings.exportDir, parallel: st.settings.parallel, model: st.settings.model })
   }, [st, form])
@@ -399,10 +414,13 @@ function Settings() {
         <h3>lovideo 账号</h3>
         <div className="lv-srow">
           <div className="l"><b>{st.login.account ? st.login.account.email || '已登录' : '未登录'}</b><span className="lv-subtle">{st.login.account ? '平台风格免费使用' : '登录后可以用平台上的风格（注册即免费）'}</span></div>
-          {st.login.account ? <Button size="sm" onClick={() => api('logout', {}).then(reload)}>退出</Button> : null}
+          {st.login.account ? <Button size="sm" onClick={() => setAskLogout(true)}>退出</Button> : null}
         </div>
         {!st.login.account ? <LoginBanner onDone={reload} /> : null}
       </div>
+      <ConfirmDialog open={askLogout} title="退出 lovideo 账号？" confirmText="退出" danger busy={loggingOut} onConfirm={logout} onCancel={() => setAskLogout(false)}>
+        <p>退出后不能再用官方风格开新片，要用时重新登录就行。这台电脑上的作品、你自己的风格和已经下载的风格都会保留。</p>
+      </ConfirmDialog>
     </div>
   )
 }
