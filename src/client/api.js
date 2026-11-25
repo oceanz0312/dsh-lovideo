@@ -27,6 +27,17 @@ export const fileUrl = rel => (rel ? API + rel : null)
  * 不要让插件后端去跑 open / explorer：Windows 的 explorer 收到带 ? & 的网址可能打开文件夹，
  * 网页版远程访问时还会在跑 DSH 的那台电脑上打开。
  */
+/**
+ * 登录确认页地址：桌面版（页面地址是 dsh-app:）加上 app=desktop，
+ * 网站在登录成功后就会给一个「回到 DeepSeek Harness」按钮（打开 dsh://open 把应用切到前台）。
+ */
+export function loginUrl(url) {
+  if (!url || location.protocol !== 'dsh-app:') return url
+  const u = new URL(url)
+  u.searchParams.set('app', 'desktop')
+  return u.toString()
+}
+
 export function openExternal(url) {
   if (/^https:\/\//.test(url || '')) window.open(url, '_blank', 'noopener,noreferrer')
 }

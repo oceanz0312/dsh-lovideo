@@ -1,6 +1,6 @@
 // 侧栏「lovideo 视频」：作品、官方风格、我的风格、设置。随时点开看，和对话里的卡片读同一份数据。
 import * as React from 'react'
-import { api, fileUrl, openExternal, useLive } from './api.js'
+import { api, fileUrl, loginUrl, openExternal, useLive } from './api.js'
 import { Badge, Button, LinkButton, Mark, Media, Player, StatusBadge, Styles, fmtSec } from './ui.jsx'
 import { Doctor, WorkActions, WorkBody, coverOf } from './cards.jsx'
 import { host, openSession, startDirector } from './host.js'
@@ -188,13 +188,13 @@ function LoginBanner({ onDone }) {
   }, [st?.login?.account, onDone])
   const login = async () => {
     const r = await api('login', {})
-    if (r.pending?.url) openExternal(r.pending.url)
+    if (r.pending?.url) openExternal(loginUrl(r.pending.url))
     reload()
   }
   return (
     <div className="lv-banner">
       <span className="lv-grow">{pending ? <>已在浏览器打开 lovideo.ai，确认页面上的代码是 <b className="lv-mono">{pending.userCode}</b> 后点「允许」。</> : '登录 lovideo 后就能用这些风格（注册即免费）。'}</span>
-      {pending ? <LinkButton size="sm" kind="pri" href={pending.url}>重新打开</LinkButton> : <Button size="sm" kind="pri" onClick={login}>登录</Button>}
+      {pending ? <LinkButton size="sm" kind="pri" href={loginUrl(pending.url)}>重新打开</LinkButton> : <Button size="sm" kind="pri" onClick={login}>登录</Button>}
     </div>
   )
 }

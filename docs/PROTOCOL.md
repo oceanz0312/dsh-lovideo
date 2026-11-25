@@ -16,6 +16,7 @@
 
 - 客户端 id 固定为 `dsh-lovideo`。拿到的 `access_token` 就是网站的会话 token，插件用 `Authorization: Bearer` 调接口。
 - 账号信息用 Better Auth 自带的 `/api/auth/get-session`（带 Bearer）；返回 `null` 表示 token 已失效。
+- 桌面版打开确认页时在链接后加 `app=desktop`，网站允许后给一个打开 `dsh://open` 的「回到 DeepSeek Harness」按钮；网页版不加。
 - 收到 401 时插件清掉本机账号，提示用户重新登录。
 - 风格包按内容寻址：下载后的 sha256 必须等于列表里的 `revision`，不相等就不装。
 - 插件只读不写：不付费、不改账号，也不把作品传回网站。
