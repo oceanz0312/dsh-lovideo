@@ -556,26 +556,6 @@ function GradeBadge({ m, st }) {
   return st.recommended === m.id ? <Badge tone="info">推荐</Badge> : <Badge tone="ok">流畅</Badge>
 }
 
-/** 正在用的模型：选中文、英文各用哪个声音，选完马上能试听 */
-function VoicePicker({ m, busy, onPick, onListen }) {
-  const langs = [['zh', '中文'], ['en', '英文']].filter(([l]) => (m.voices[l] || []).length > 1)
-  if (!langs.length) return null
-  return (
-    <div className="lv-row" style={{ gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
-      {langs.map(([l, label]) => (
-        <div key={l} className="lv-row" style={{ gap: 6 }}>
-          <span className="lv-subtle">{label}</span>
-          <select className="lv-select" style={{ width: "auto" }} value={m.chosenVoices[l]} disabled={busy === 'voice'} onChange={e => onPick({ [l]: e.target.value })}>
-            {m.voices[l].map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-          </select>
-          <ListenButton size="sm" kind="ghost" load={() => onListen(l)} />
-        </div>
-      ))}
-    </div>
-  )
-}
-
-export { Player }
 // 同一时间只放一段试听：点另一个试听时，前一个停下
 let stopCurrent = null
 
@@ -667,3 +647,23 @@ function Wave({ audio }) {
   return <span className="lv-wave" aria-hidden="true">{[0, 1, 2, 3, 4].map(i => <i key={i} ref={el => { bars.current[i] = el }} />)}</span>
 }
 
+/** 正在用的模型：选中文、英文各用哪个声音，选完马上能试听 */
+function VoicePicker({ m, busy, onPick, onListen }) {
+  const langs = [['zh', '中文'], ['en', '英文']].filter(([l]) => (m.voices[l] || []).length > 1)
+  if (!langs.length) return null
+  return (
+    <div className="lv-row" style={{ gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
+      {langs.map(([l, label]) => (
+        <div key={l} className="lv-row" style={{ gap: 6 }}>
+          <span className="lv-subtle">{label}</span>
+          <select className="lv-select" style={{ width: "auto" }} value={m.chosenVoices[l]} disabled={busy === 'voice'} onChange={e => onPick({ [l]: e.target.value })}>
+            {m.voices[l].map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+          <ListenButton size="sm" kind="ghost" load={() => onListen(l)} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export { Player }
