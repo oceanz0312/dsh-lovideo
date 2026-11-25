@@ -6,10 +6,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 process.env.LOVIDEO_DATA_DIR = mkdtempSync(join(tmpdir(), 'lovideo-lv-test-'))
-const { BUDGET_SECONDS, chooseModel, estimateSeconds, fit, recommend, MODELS } = await import('../src/host/localvoice.js')
+const { BUDGET_SECONDS, chooseModel, estimateSeconds, fit, meetsMinimum, recommend, MODELS } = await import('../src/host/localvoice.js')
 
-const mac = ramGB => ({ backend: 'mlx', appleSilicon: true, ramGB, gpu: null, freeDiskGB: 200 })
-const pc = (ramGB, gpu) => ({ backend: 'torch', appleSilicon: false, ramGB, gpu, freeDiskGB: 200 })
+const mac = ramGB => ({ backend: 'mlx', arch: 'arm64', cores: 10, appleSilicon: true, ramGB, gpu: null, freeDiskGB: 200 })
+const pc = (ramGB, gpu, cores = 8) => ({ backend: 'torch', arch: 'x64', cores, appleSilicon: false, ramGB, gpu, freeDiskGB: 200 })
 const byId = id => MODELS.find(m => m.id === id)
 
 test('按电脑配置推荐', () => {
@@ -43,4 +43,14 @@ test('按口播长度挑模型：好的来得及就用好的，来不及就往�
   assert.equal(chooseModel({ kokoro: { rtf: 2, load: 2 } }, 300), null)
   assert.equal(chooseModel({}, 10), null)
   assert.ok(chooseModel(installed, 60).predicted <= BUDGET_SECONDS)
+})
+
+test('配置低于门槛：不推荐本机模型，原因写清楚', () => {
+  for (const hw of [pc(4, null), pc(16, null, 2), { ...mac(16), freeDiskGB: 2 }, { ...pc(16, null), arch: 'ia32' }]) {
+    assert.equal(meetsMinimum(hw).ok, false)
+    assert.equal(recommend(hw), null)
+    assert.match(fit(MODELS.find(m => m.id === 'kokoro'), hw).reason, /配置偏低/)
+  }
+  assert.match(meetsMinimum(pc(16, null, 2)).reason, /CPU 2 核/)
+  assert.equal(meetsMinimum(pc(8, null, 4)).ok, true)
 })

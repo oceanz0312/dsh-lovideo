@@ -468,6 +468,16 @@ function LocalVoicePanel() {
     }
   }
   const s = st.setup
+  // 配置低于门槛：直接说明用系统语音，不列模型、不给下载
+  if (!st.minimum.ok) {
+    return (
+      <div className="lv-local">
+        <div className="lv-banner" style={{ marginBottom: 0 }}>
+          <span className="lv-grow">这台电脑配置偏低（{st.minimum.reason}），本机模型跑不动，配音用系统自带语音。本机模型最低要 {st.minimum.spec.ramGB}GB 内存、{st.minimum.spec.cores} 核 CPU、{st.minimum.spec.freeDiskGB}GB 磁盘剩余。</span>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="lv-local">
       <div className="lv-subtle">

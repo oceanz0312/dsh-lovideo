@@ -78,12 +78,30 @@ export function hardware() {
   } catch {
     freeDiskGB = null
   }
-  hwCache = { platform: osPlatform(), arch: process.arch, chip, ramGB, appleSilicon, gpu, freeDiskGB, backend: appleSilicon ? 'mlx' : 'torch' }
+  hwCache = { platform: osPlatform(), arch: process.arch, chip, cores: cpus().length, ramGB, appleSilicon, gpu, freeDiskGB, backend: appleSilicon ? 'mlx' : 'torch' }
   return hwCache
+}
+
+/**
+ * 本机配音的最低配置：低于它就不推荐、也不让下载本机模型，配音直接用系统自带语音。
+ * 内存：最小的 Kokoro 实测峰值 3GB，再算上系统和别的软件；CPU：没显卡时全靠 CPU，核太少会远超 3 分钟。
+ */
+export const MIN_SPEC = { ramGB: 8, cores: 4, freeDiskGB: 3 }
+
+/** 这台电脑够不够用本机配音；不够时给出一句原因 */
+export function meetsMinimum(hw = hardware()) {
+  const why = []
+  if (!['x64', 'arm64'].includes(hw.arch)) why.push('不是 64 位系统')
+  if (hw.ramGB < MIN_SPEC.ramGB) why.push(`内存 ${hw.ramGB}GB，要 ${MIN_SPEC.ramGB}GB 起`)
+  if (hw.cores !== undefined && hw.cores < MIN_SPEC.cores) why.push(`CPU ${hw.cores} 核，要 ${MIN_SPEC.cores} 核起`)
+  if (hw.freeDiskGB !== null && hw.freeDiskGB !== undefined && hw.freeDiskGB < MIN_SPEC.freeDiskGB) why.push(`磁盘剩余 ${hw.freeDiskGB}GB，要 ${MIN_SPEC.freeDiskGB}GB 起`)
+  return { ok: why.length === 0, reason: why.length ? why.join('；') : null }
 }
 
 /** 这台电脑跑这个模型够不够；不够时给出一句原因 */
 export function fit(model, hw = hardware()) {
+  const min = meetsMinimum(hw)
+  if (!min.ok) return { ok: false, reason: `配置偏低：${min.reason}` }
   const b = model[hw.backend]
   if (!b) return { ok: false, reason: hw.backend === 'mlx' ? '这台 Mac 上用不了' : '只支持 Apple 芯片的 Mac' }
   if (b.gpuOnly && !hw.gpu) return { ok: false, reason: '需要 NVIDIA 显卡' }
@@ -327,6 +345,7 @@ export function localVoiceStatus() {
   const rec = recommend(hw)
   return {
     hardware: hw,
+    minimum: { ...meetsMinimum(hw), spec: MIN_SPEC },
     budgetSeconds: BUDGET_SECONDS,
     recommended: rec?.id || null,
     models: MODELS.map(m => {

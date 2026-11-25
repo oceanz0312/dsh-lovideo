@@ -16,7 +16,7 @@ import { speak } from './tts.js'
 import { callModel, extractFiles } from './llm.js'
 import { fill, parseRenderCommand, renderCommand, renderPage, startSite } from './render.js'
 import { ensureFonts, findPython, fontsDir, mediaSeconds, run, runtimeStatus } from './runtime.js'
-import { chooseModel, estimateSeconds } from './localvoice.js'
+import { chooseModel, estimateSeconds, hardware, meetsMinimum } from './localvoice.js'
 import { assembleFilm, buildTimeline } from './assemble.js'
 
 export const ASPECTS = { '16:9': { width: 1920, height: 1080 }, '9:16': { width: 1080, height: 1920 } }
@@ -256,6 +256,12 @@ async function run_(id, ctl) {
 async function pickVoice(settings, work, id) {
   const v = settings.voice
   if (v.provider !== 'local') return v
+  // 配置低于门槛（比如内存不够了、磁盘满了）：不用本机模型
+  const min = meetsMinimum(hardware())
+  if (!min.ok) {
+    await setJob(id, { voiceModel: null, voiceNote: `这台电脑配置偏低（${min.reason}），这次用系统自带语音` })
+    return { ...v, provider: 'system' }
+  }
   const sec = estimateSeconds(work.plan.scenes.map(narrationText))
   const choice = chooseModel(settings.local.models, sec)
   if (choice) {
