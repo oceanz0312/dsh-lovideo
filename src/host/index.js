@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PLUGIN_ROOT } from './paths.js'
 import { bindLlm } from './llm.js'
-import { TOOLS, notifyDone, notifyLogin } from './tools.js'
+import { TOOLS, notifyDone, notifyLogin, setHostCtx } from './tools.js'
 import { loginEvents } from './site.js'
 import { BASE, route } from './routes.js'
 import { events, listWorks } from './works.js'
@@ -56,6 +56,7 @@ function rejection(ctx, req) {
 
 export function apply(ctx) {
   bindLlm(ctx)
+  setHostCtx(ctx)
   for (const tool of TOOLS) ctx.tools.register(tool)
   ctx.effect(() => ctx.skills.registerProvider(skillProvider))
 

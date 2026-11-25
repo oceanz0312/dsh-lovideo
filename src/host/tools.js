@@ -4,10 +4,11 @@ import { randomUUID } from 'node:crypto'
 // 工具和界面按钮调的是同一组函数（docs/DSH-user-actions：一个操作，两个调用方）。
 import { existsSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
-import { createWork, listWorks, requireWork, updateWork } from './works.js'
+import { DEFAULT_DURATION, FILM_DURATIONS, MIN_SHOT_SEC, createWork, listWorks, requireWork, updateWork } from './works.js'
+import { estimateSeconds } from './localvoice.js'
 import { listMine, listStyles } from './styles.js'
 import { pauseProduction, startProduction, narrationText } from './produce.js'
-import { reviseFilm } from './edit.js'
+import { reviseFilm, setSwitches } from './edit.js'
 import { openInJianying, startExport, waitExport } from './export.js'
 import { saveDistilled, startDistill } from './distill.js'
 import { runtimeStatus } from './runtime.js'
@@ -76,6 +77,7 @@ function check(args, schema, at = '') {
     else if (schema.enum && !schema.enum.includes(args)) errs.push(`${at.slice(0, -1)} 只能是 ${schema.enum.join(' / ')}`)
   } else if (schema.type === 'number' || schema.type === 'integer') {
     if (typeof args !== 'number' || !Number.isFinite(args)) errs.push(`${at.slice(0, -1)} 应该是数字`)
+    else if (schema.enum && !schema.enum.includes(args)) errs.push(`${at.slice(0, -1)} 只能是 ${schema.enum.join(' / ')}`)
   } else if (schema.type === 'boolean' && typeof args !== 'boolean') errs.push(`${at.slice(0, -1)} 应该是 true 或 false`)
   return errs
 }
@@ -97,6 +99,24 @@ function tool(def) {
       }
     },
   }
+}
+
+// 插件启动时记下宿主，卡片上的操作（比如改时长）要能叫醒这部片子所在会话的导演
+let hostCtx = null
+export const setHostCtx = ctx => { hostCtx = ctx }
+
+/** 给这部片子的导演发一条消息（会话不在了就什么都不做）；返回有没有发出去 */
+export function askDirector(work, msg) {
+  let live
+  try {
+    live = work.sessionId ? hostCtx?.get('agents')?.get(work.sessionId) : undefined
+  } catch {
+    live = undefined
+  }
+  const agent = live || watchers.get(work.id)
+  if (!agent) return false
+  followup(agent, msg)
+  return true
 }
 
 /** 制作完成时叫醒导演，让它告诉用户（不在对话里时什么都不做） */
@@ -122,7 +142,8 @@ const setup = tool({
       `模型：${m ? m.label : '没有可用模型'}`,
       `渲染环境：${env.ready ? '已就绪' : `缺 ${[!env.chrome.ok && '浏览器', !env.ffmpeg.ok && 'ffmpeg'].filter(Boolean).join('、')}，需要用户在卡片上点「准备」`}`,
       `lovideo 账号：${s.account ? '已登录（平台风格可用）' : '未登录（用平台风格要先登录，注册即免费；卡片上有登录按钮，用户登录后你会收到通知）'}`,
-      `配音：${s.voice.provider === 'system' ? '系统自带语音' : s.voice.provider === 'none' ? '不配音（只出字幕）' : s.voice.provider}`,
+      `配音：${{ local: '离线配音', system: '系统自带语音', none: '不配音（只出字幕）' }[s.voice.provider] || s.voice.provider}`,
+      `配乐来源：${{ local: '离线配乐（没下载时导演建议的配乐会跳过）', volcengine: '火山配乐', elevenlabs: 'ElevenLabs', none: '设置里关了配乐' }[s.music.provider] || s.music.provider}`,
       `我的风格：${listMine().filter(x => !x.draft).length} 个`,
     ]
     return { text: lines.join('\n'), ready: env.ready && Boolean(m), login: Boolean(s.account) }
@@ -160,7 +181,7 @@ const SCENE = {
     title: { type: 'string', description: '这一镜的标题，4 到 12 个字' },
     description: { type: 'string', description: '画面里有什么、怎么动（给制作看的，具体、可画）' },
     narration: { type: 'string', description: '这一镜的口播，一两句口语；不要旁白就给空字符串' },
-    seconds: { type: 'number', description: '这一镜大概几秒（3 到 20）；有口播时以实际念完的时间为准' },
+    seconds: { type: 'number', description: '这一镜大概几秒（15 到 60）；有口播时以实际念完的时间为准' },
   },
 }
 
@@ -168,13 +189,31 @@ const plan = tool({
   name: 'lovideo_plan',
   description: '出分镜或改分镜（每次都给完整的分镜）。分镜以卡片展示给用户，卡片上有「确认开拍」按钮。只在用户确认（点按钮或明确说开拍）后才调用 lovideo_produce；改分镜就带上 work_id 再调用一次本工具。成片已经做好后，用户只想改某几镜（字幕、口播、重画、裁短、调顺序）时不要用本工具，用 lovideo_revise；改分镜后重新开拍时，没改动的镜头会自动沿用。',
   parameters: {
-    type: 'object', additionalProperties: false, required: ['title', 'style', 'scenes'],
+    type: 'object', additionalProperties: false, required: ['title', 'style', 'duration', 'scenes', 'voice', 'music', 'subtitles'],
     properties: {
       work_id: { type: 'string', description: '改已有作品的分镜时填；新片子不填' },
       title: { type: 'string', description: '片名' },
       style: { type: 'string', description: '风格 slug（来自 lovideo_styles）' },
       aspect: { type: 'string', enum: ['16:9', '9:16'], description: '画幅，默认 16:9' },
-      voice: { type: 'boolean', description: '要不要口播配音，默认要' },
+      duration: { type: 'integer', enum: FILM_DURATIONS, description: `目标片长（秒），30 秒一档、最长 300。用户说了就取最近的一档，没说就 ${DEFAULT_DURATION}。这是目标不是指标：素材撑不满就做短一点，不要凑；镜头数不超过「片长 ÷ ${MIN_SHOT_SEC}」` },
+      subtitles: { type: 'boolean', description: '要不要字幕（字幕就是口播原文）。有配音时一般要；用户说不要就 false' },
+      voice: {
+        type: 'object', additionalProperties: false, required: ['use', 'why'],
+        description: '你对这部片子要不要口播配音的建议。卡片上用户可以直接改',
+        properties: {
+          use: { type: 'boolean', description: '要不要配音' },
+          why: { type: 'string', description: '一句话理由，给用户看（15 字以内），比如「讲解片，靠口播讲清楚」' },
+        },
+      },
+      music: {
+        type: 'object', additionalProperties: false, required: ['use', 'brief', 'prompt'],
+        description: '你对这部片子要不要背景配乐的建议，以及配什么样的。不建议配乐时也要写 brief 和 prompt（用户打开开关就按它生成）。卡片上用户可以直接改',
+        properties: {
+          use: { type: 'boolean', description: '建议配乐填 true' },
+          brief: { type: 'string', description: '给用户看的一句中文：什么样的配乐、为什么（30 字以内），例如「轻快的钢琴小品，托住好奇的科普节奏」' },
+          prompt: { type: 'string', description: '给配乐模型的英文描述：曲风、乐器、情绪、速度，只要纯器乐，例如「calm lo-fi piano, soft pads, warm and curious, 80 bpm, instrumental」' },
+        },
+      },
       scenes: { type: 'array', minItems: 1, maxItems: 20, items: SCENE },
       note: { type: 'string', description: '这一版改了什么（改分镜时填，会显示在卡片上）' },
     },
@@ -186,17 +225,32 @@ const plan = tool({
     if (st.source === 'platform' && !readSettings().account) throw Object.assign(new Error('这是官方风格，需要先登录 lovideo（注册即免费）'), { code: 'login_required' })
     const aspect = args.aspect || (st.aspects || ['16:9'])[0]
     if (st.aspects && !st.aspects.includes(aspect)) throw new Error(`风格「${st.name}」只支持 ${st.aspects.join('、')}`)
-    const scenes = args.scenes.map((s, i) => ({ id: `shot-${i + 1}`, title: s.title, description: s.description, narration: s.narration || '', seconds: Math.max(3, Math.min(20, Number(s.seconds) || 6)) }))
+    const cur = args.work_id ? requireWork(args.work_id) : null
+    // 用户在分镜卡上定过的（时长、配音、配乐、字幕）以用户为准，导演这一版给的不算
+    const userSet = cur?.choices || {}
+    const duration = userSet.duration ?? args.duration
+    const maxShots = Math.max(1, Math.floor(duration / MIN_SHOT_SEC))
+    if (args.scenes.length > maxShots) throw new Error(`片长 ${duration} 秒最多 ${maxShots} 镜（每镜至少 ${MIN_SHOT_SEC} 秒，一镜里可以有好几个画面变化），把相邻的镜头合并后再出分镜`)
+    const scenes = args.scenes.map((s, i) => ({ id: `shot-${i + 1}`, title: s.title, description: s.description, narration: s.narration || '', seconds: Math.max(3, Math.min(90, Number(s.seconds) || MIN_SHOT_SEC)) }))
+    const est = scenes.reduce((n, s) => n + Math.max(s.seconds, s.narration ? estimateSeconds([s.narration]) + 0.9 : 0), 0)
+    if (est > duration * 1.3) throw new Error(`这版分镜估计约 ${Math.round(est)} 秒，比目标片长 ${duration} 秒长太多：精简口播（中文每秒约 4.5 个字）或减少镜头后再出`)
+    const pickOn = (key, suggested) => (typeof userSet[key] === 'boolean' ? userSet[key] : suggested)
     const fields = {
       title: args.title, aspect, style: { slug: st.slug, name: st.name, source: st.source, cover: st.cover || null },
-      voice: { enabled: args.voice !== false }, sessionId: exec?.agent?.id ?? null,
+      duration,
+      voice: { enabled: pickOn('voice', args.voice.use), suggested: args.voice.use, why: String(args.voice.why || '').slice(0, 40) },
+      music: { enabled: pickOn('music', args.music.use), suggested: args.music.use, brief: String(args.music.brief || '').slice(0, 60), mood: String(args.music.prompt || '').slice(0, 300) },
+      subtitles: { enabled: pickOn('subtitles', args.subtitles) },
+      sessionId: exec?.agent?.id ?? null,
     }
     let work
-    if (args.work_id) {
-      const cur = requireWork(args.work_id)
+    if (cur) {
       if (cur.status === 'producing') throw new Error('这部片子正在制作中，先暂停或等它做完再改分镜')
       work = await updateWork(cur.id, w => {
+        // 配乐描述没变时，上一版生成好的配乐留着，开拍时直接沿用
+        const keepMusic = w.music?.file && w.music.mood === fields.music.mood ? { file: w.music.file, seconds: w.music.seconds, model: w.music.model, source: w.music.source } : {}
         Object.assign(w, fields)
+        Object.assign(w.music, keepMusic)
         w.plan = { revision: (w.plan?.revision || 0) + 1, scenes, note: args.note || '', at: new Date().toISOString() }
         w.status = 'draft'
         return w
@@ -206,10 +260,11 @@ const plan = tool({
     }
     // 用户在卡片上点「确认开拍」时没有工具调用，做完也要能叫醒这位导演
     watch(work.id, exec)
-    const secs = scenes.reduce((n, s) => n + s.seconds, 0)
+    const secs = Math.round(est)
+    const userNotes = Object.keys(userSet).map(k => ({ duration: `时长 ${userSet.duration} 秒`, voice: userSet.voice ? '要配音' : '不配音', music: userSet.music ? '要配乐' : '不配乐', subtitles: userSet.subtitles ? '要字幕' : '不要字幕' })[k]).filter(Boolean)
     const keep = work.film ? '上一版成片还在，现在照样能看、能导出；确认开拍后，没改动的镜头直接沿用，只改字幕或改短的镜头不重画，几十秒就换成新成片。' : ''
     return {
-      text: `${workLine(work)}\n分镜 v${work.plan.revision}：${scenes.length} 镜，约 ${secs} 秒，${aspect}，风格「${st.name}」，${args.voice === false ? '不配音' : '配音'}。卡片已经展示给用户；等用户确认开拍再调用 lovideo_produce。${keep}`,
+      text: `${workLine(work)}\n分镜 v${work.plan.revision}：${scenes.length} 镜，约 ${secs} 秒，${aspect}（目标 ${duration} 秒），风格「${st.name}」，${work.voice.enabled ? '配音' : '不配音'}、${work.music.enabled ? '配乐' : '不配乐'}、${work.subtitles.enabled ? '有字幕' : '无字幕'}。${userNotes.length ? `其中「${userNotes.join('、')}」是用户在卡片上定的，已照用户的来。` : ''}用户可以在卡片上改时长和这几个开关。卡片已经展示给用户；等用户确认开拍再调用 lovideo_produce。${keep}`,
       work_id: work.id, revision: work.plan.revision,
     }
   },
@@ -240,7 +295,7 @@ const produce = tool({
 
 const revise = tool({
   name: 'lovideo_revise',
-  description: '修改做好的成片（用户说「第 2 镜太长」「第 3 镜字幕改成…」「把最后一镜挪到前面」「第 4 镜重画成…」时用）。裁短、挪位置、改字幕几秒就好；重画某一镜会在后台只重做那一段。更大的改动（换风格、加减镜头、改整体内容）请用 lovideo_plan 出新分镜。',
+  description: '修改做好的成片（用户说「第 2 镜太长」「第 3 镜字幕改成…」「把最后一镜挪到前面」「第 4 镜重画成…」「去掉配乐」「不要配音」「关掉字幕」时用）。配音、配乐、字幕的开关和卡片上的开关是同一个：关掉就不播放、导出也没有；片子没有配乐时打开配乐会按分镜里的配乐描述现做一首。裁短、挪位置、改字幕几秒就好；重画某一镜会在后台只重做那一段。更大的改动（换风格、加减镜头、改整体内容）请用 lovideo_plan 出新分镜。',
   parameters: {
     type: 'object', additionalProperties: false, required: ['work_id', 'ops'],
     properties: {
@@ -250,12 +305,12 @@ const revise = tool({
         items: {
           type: 'object', additionalProperties: false, required: ['op'],
           properties: {
-            op: { type: 'string', enum: ['trim', 'move', 'caption', 'subtitles', 'redraw'] },
-            scene: { type: 'integer', description: '第几镜（从 1 开始）；subtitles 不用' },
+            op: { type: 'string', enum: ['trim', 'move', 'caption', 'subtitles', 'voice', 'music', 'redraw'] },
+            scene: { type: 'integer', description: '第几镜（从 1 开始）；subtitles / voice / music 不用' },
             seconds: { type: 'number', description: 'trim：这一镜改成几秒（只能变短）' },
             to: { type: 'integer', description: 'move：挪到第几个' },
             text: { type: 'string', description: 'caption：新的字幕文字' },
-            show: { type: 'boolean', description: 'subtitles：显示还是隐藏字幕' },
+            show: { type: 'boolean', description: 'subtitles / voice / music：打开还是关掉' },
             brief: { type: 'string', description: 'redraw：这一镜要怎么改' },
           },
         },
@@ -263,9 +318,22 @@ const revise = tool({
     },
   },
   async run(args, exec) {
-    const r = await reviseFilm(args.work_id, args.ops)
+    // 开关类的操作走和卡片同一套（配音、配乐要重新拼成片）
+    const sw = args.ops.filter(o => ['voice', 'music', 'subtitles'].includes(o.op))
+    const rest = args.ops.filter(o => !sw.includes(o))
+    const lines = []
+    if (sw.length) {
+      await setSwitches(args.work_id, Object.fromEntries(sw.map(o => [o.op, o.show !== false])))
+      lines.push(...sw.map(o => `${o.show !== false ? '打开' : '关掉'}${{ voice: '配音', music: '配乐', subtitles: '字幕' }[o.op]}`))
+      if (!rest.length) {
+        const w = requireWork(args.work_id)
+        const making = w.remix && w.remix.state !== 'failed'
+        return { text: `${workLine(w)}\n${lines.join('；')}。${making ? '正在做配乐，做好后成片自动更新，卡片里能看到进度。' : '成片已经更新，卡片里可以直接看。'}` }
+      }
+    }
+    const r = await reviseFilm(args.work_id, rest)
     if (r.background) watch(args.work_id, exec)
-    return { text: `${workLine(r.work)}\n${r.done.join('；')}。${r.background ? '正在后台重画，卡片里能看到进度；做完会通知你。' : '成片已经更新，卡片里可以直接看。'}` }
+    return { text: `${workLine(r.work)}\n${[...lines, ...r.done].join('；')}。${r.background ? '正在后台重画，卡片里能看到进度；做完会通知你。' : '成片已经更新，卡片里可以直接看。'}` }
   },
 })
 

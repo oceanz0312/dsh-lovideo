@@ -4,6 +4,23 @@ import * as React from 'react'
 import { fmtSec } from './api.js'
 
 export const CSS = `
+.lv-switch{position:relative;flex:none;width:32px;height:18px;border-radius:999px;border:0;padding:0;cursor:pointer;background:var(--dsw-alias-border-l4,rgba(0,0,0,.2));transition:background-color var(--lv-dur) var(--lv-ease)}
+.lv-switch i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform var(--lv-dur) var(--lv-ease)}
+.lv-switch.on{background:var(--dsw-alias-label-primary,#111)}
+.lv-switch.on i{transform:translateX(14px)}
+.lv-switch:disabled{cursor:default;opacity:.55}
+.lv-switch.busy i{animation:lv-pulse 0.9s var(--lv-ease) infinite alternate}
+@keyframes lv-pulse{from{opacity:1}to{opacity:.35}}
+.lv-opts{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:10px}
+.lv-opt{display:flex;align-items:center;gap:12px;padding:9px 12px;border-top:1px solid var(--dsw-alias-border-l2)}
+.lv-opt:first-child{border-top:0}
+.lv-opt>.k{flex:none;width:34px;color:var(--dsw-alias-label-secondary);font-size:12.5px}
+.lv-opt>.v{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.lv-opt>.v b{font-weight:500;font-size:13px}
+.lv-opt.off>.v{opacity:.6}
+.lv-switches{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.lv-warn-text{color:var(--dsw-alias-state-warn-primary,#b26a00)}
+.lv-switches label{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--dsw-alias-label-secondary)}
 .lv,.lv-page,.lv-modal{--lv-ease:var(--ds-ease-in-out,cubic-bezier(.4,0,.2,1));--lv-ease-out:cubic-bezier(.16,1,.3,1);--lv-fast:var(--ds-transition-duration-fast,.1s);--lv-dur:var(--ds-transition-duration,.2s);--lv-slow:var(--ds-transition-duration-slow,.3s)}
 .lv{font-family:var(--dsw-font-family,system-ui);color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.5}
 .lv *{box-sizing:border-box}
@@ -41,8 +58,10 @@ a.lv-btn{text-decoration:none}
 .lv-media{position:relative;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:var(--dsw-alias-interactive-bg-hover)}
 .lv-media.p{aspect-ratio:9/16}
 .lv-media img,.lv-media video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;transition:transform var(--lv-slow) var(--lv-ease-out)}
-.lv-media .lv-chip{position:absolute;left:6px;top:6px;font-size:11px;color:#fff;background:rgba(0,0,0,.55);border-radius:5px;padding:0 6px;line-height:18px}
+.lv-media .lv-chip{position:absolute;left:6px;top:6px;z-index:2;font-size:11px;color:#fff;background:rgba(0,0,0,.55);border-radius:5px;padding:0 6px;line-height:18px}
 .lv-media .lv-chip.r{left:auto;right:6px}
+.lv-media .lv-hv{z-index:1;pointer-events:none;background:#000;opacity:0;transition:opacity var(--lv-dur) var(--lv-ease)}
+.lv-media .lv-hv.on{opacity:1}
 .lv-player{position:relative;border-radius:10px;overflow:hidden;background:#000}
 .lv-player video{display:block;width:100%;max-height:420px;background:#000}
 .lv-speed{position:absolute;top:8px;right:8px;height:24px;min-width:40px;padding:0 9px;border:0;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;font:inherit;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;cursor:pointer;opacity:.75;transition:opacity var(--lv-dur) var(--lv-ease),background-color var(--lv-dur) var(--lv-ease),transform var(--lv-fast) var(--lv-ease)}
@@ -181,6 +200,16 @@ export function Mark() {
   )
 }
 
+/** 开关：busy 时转圈且不能点 */
+export function Switch({ checked, onChange, disabled, busy, label }) {
+  return (
+    <button type="button" role="switch" aria-checked={Boolean(checked)} aria-label={label} disabled={disabled || busy}
+      className={`lv-switch ${checked ? 'on' : ''} ${busy ? 'busy' : ''}`} onClick={() => onChange(!checked)}>
+      <i />
+    </button>
+  )
+}
+
 export function Badge({ tone, children }) {
   return <span className={`lv-badge ${tone || ''}`}>{children}</span>
 }
@@ -243,11 +272,24 @@ export function Player({ src, poster, subtitles, hidden, portrait, autoPlay }) {
   const [t, setT] = React.useState(0)
   const video = React.useRef(null)
   const speed = usePlaybackRate(video)
+  // 成片换了新版本（比如切了配音、配乐开关重新拼过）：接着原来的位置和播放状态，不从头播
+  const last = React.useRef({ src, time: 0, playing: false })
+  const loaded = e => {
+    speed.apply()
+    const v = e.currentTarget
+    if (last.current.src !== src) {
+      if (last.current.time > 0) v.currentTime = Math.min(last.current.time, Math.max(0, (v.duration || 0) - 0.1))
+      if (last.current.playing) v.play().catch(() => {})
+      last.current.src = src
+    }
+  }
   const cap = !hidden && (subtitles || []).find(s => t >= s.start && t < s.end)
   return (
     <div className={`lv-player ${portrait ? 'p' : ''}`}>
       <video ref={video} src={src} poster={poster || undefined} controls playsInline preload="metadata" autoPlay={autoPlay}
-        onLoadedMetadata={speed.apply} onTimeUpdate={e => setT(e.currentTarget.currentTime)} />
+        onLoadedMetadata={loaded}
+        onPlay={() => (last.current.playing = true)} onPause={e => { if (!e.currentTarget.ended && e.currentTarget.src.endsWith(last.current.src || '')) last.current.playing = false }}
+        onTimeUpdate={e => { setT(e.currentTarget.currentTime); last.current.time = e.currentTarget.currentTime }} />
       {cap ? <div className="lv-cap"><span>{cap.text}</span></div> : null}
       <SpeedButton rate={speed.rate} onNext={speed.next} />
     </div>

@@ -1,6 +1,7 @@
 // 时间线和成片。时间线用网站编辑器同一个格式（schema 2，见 docs/PROTOCOL.md），
 // 素材地址写本机相对路径；改片（裁短、换顺序、改字幕、重画）都改时间线，再按时间线重新拼成片。
-// 成片不烧字幕（和网站一样），导出时可以选择把字幕烧进画面。
+// 成片不烧字幕（和网站一样），导出时可以选择把字幕烧进画面。配音和配乐是混进成片的，
+// 所以它们的开关一变，成片要按开关重新拼一遍。
 import { copyFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { ensureDir } from './paths.js'
@@ -80,12 +81,44 @@ export function buildTimeline(work) {
     assets.bgm = { kind: 'audio', r2: work.music.file, uri: work.music.file, dur: duration }
     tracks.push({ id: 't-bgm', type: 'audio', role: 'bgm', clips: [{ id: 'bgm-1', asset: 'bgm', start: 0, dur: duration, offset: 0, gain: -14, fadeOut: 2, label: work.music.label || '配乐' }] })
   }
-  return {
+  return syncSwitches({
     schema: 2, schemaVersion: 2, taskId: work.id, version: 1, template: work.style?.slug || '',
     planRevision: work.plan?.revision ?? 0,
     output: { width: job.width, height: job.height, fps }, duration, assets, tracks,
-  }
+  }, work)
 }
+
+/** 按作品上的开关（work.voice / music / subtitles 的 enabled）给对应轨道打上或去掉 hidden */
+export function syncSwitches(tl, work) {
+  for (const key of Object.keys(SWITCHES)) {
+    const t = trackOf(tl, key)
+    if (t) t.hidden = work[key]?.enabled === false
+  }
+  return tl
+}
+
+/**
+ * 配音、字幕、配乐三个开关，各对应时间线上的一条轨道。关掉就是给这条轨道打 hidden：
+ * 播放时不显示、成片里不混进声音、导出 MP4 不烧字幕、剪映工程里不带这条轨道。
+ */
+export const SWITCHES = {
+  voice: { label: '配音', is: t => t.type === 'audio' && t.role === 'voice' },
+  subtitles: { label: '字幕', is: t => t.type === 'subtitle' },
+  music: { label: '配乐', is: t => t.type === 'audio' && t.role === 'bgm' },
+}
+
+export const trackOf = (tl, key) => tl?.tracks.find(SWITCHES[key].is)
+
+/** 每个开关现在是开还是关；这部片子没有的轨道（比如没配乐）不出现 */
+export function switchesOf(tl) {
+  const out = {}
+  for (const key of Object.keys(SWITCHES)) {
+    const t = trackOf(tl, key)
+    if (t) out[key] = !t.hidden
+  }
+  return out
+}
+
 
 function narration(scene) {
   if (!scene) return ''
@@ -126,7 +159,8 @@ export async function assembleFilm(id, timeline, { signal } = {}) {
   const dir = workDir(id)
   normalizeTimeline(timeline)
   const scene = timeline.tracks.find(t => t.type === 'scene')
-  const audio = timeline.tracks.filter(t => t.type === 'audio').flatMap(t => t.clips.map(c => ({ ...c, role: t.role })))
+  // 关掉的配音、配乐不混进成片
+  const audio = timeline.tracks.filter(t => t.type === 'audio' && !t.hidden).flatMap(t => t.clips.map(c => ({ ...c, role: t.role })))
   const { width, height, fps } = timeline.output
   const args = []
   const filters = []

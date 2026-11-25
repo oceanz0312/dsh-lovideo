@@ -1,5 +1,6 @@
 // 制作：确认分镜以后，在这台电脑上把片子做出来。
 //   1. 配音：每段口播念一遍，段长跟着口播走（和网站一样）
+//      段长定了就在后台生成配乐（要配乐时），和画面同时进行，拼成片前等它做完
 //   2. 准备工程：写一份和网站沙箱同格式的 job.json，跑风格包自带的 scripts/setup.py
 //   3. 逐段制作：模型（用户在 DSH 选的）按风格 SKILL.md 写这一段的画面代码，本机渲染；
 //      渲染失败就把报错交回模型改，最多 3 次；还不行就用准备脚本的草稿兜底
@@ -17,7 +18,9 @@ import { callModel, extractFiles } from './llm.js'
 import { fill, parseRenderCommand, renderCommand, renderPage, startSite } from './render.js'
 import { ensureFonts, findPython, fontsDir, mediaSeconds, run, runtimeStatus } from './runtime.js'
 import { MODELS, activeModel, chooseModel, estimateSeconds, hardware, meetsMinimum } from './localvoice.js'
-import { assembleFilm, buildTimeline } from './assemble.js'
+import { assembleFilm, buildTimeline, syncSwitches } from './assemble.js'
+import { MUSIC_NAMES, generateMusic } from './music.js'
+import { musicReady } from './localvoice.js'
 
 export const ASPECTS = { '16:9': { width: 1920, height: 1080 }, '9:16': { width: 1080, height: 1920 } }
 const MAX_ATTEMPTS = 3
@@ -178,6 +181,9 @@ async function run_(id, ctl) {
       work = requireWork(id)
     }
 
+    // 配乐和画面同时做；makeMusic 自己接住所有错误（配乐没做成不影响出片）
+    const musicTask = makeMusic(id, settings, signal)
+
     // 2. 准备工程（平台字体只在第一次用到时下载）
     await setJob(id, { state: 'preparing' })
     await ensureFonts()
@@ -221,6 +227,8 @@ async function run_(id, ctl) {
     if (failed.length) throw new Error(`第 ${failed.map(s => s.idx).join('、')} 段没做出来：${failed[0].error || '原因不明'}`)
 
     // 4. 拼成片
+    await musicTask
+    if (signal.aborted) throw abortError()
     await setJob(id, { state: 'assembling' })
     work = requireWork(id)
     const timeline = work.timeline && work.timeline.planRevision === work.plan.revision ? mergeTimeline(work.timeline, work) : buildTimeline(work)
@@ -279,6 +287,39 @@ async function pickVoice(settings, work, id) {
     : '还没有下载离线配音，这次先用系统语音'
   await setJob(id, { voiceModel: null, voiceNote: note, voiceNoteCode: installed ? 'too-slow' : 'not-installed' })
   return { ...v, provider: 'system' }
+}
+
+/**
+ * 配乐：按成片长度生成一首，写进 work.music.file；进度和没配上的原因写在 job.music 里给卡片显示。
+ * 不抛错：配乐没做成就不加配乐，片子照样出。
+ */
+async function makeMusic(id, settings, signal) {
+  const note = (state, text, code = null) => setJob(id, { music: { state, note: text, code } })
+  try {
+    const work = requireWork(id)
+    if (!work.music?.enabled) return await setJob(id, { music: null })
+    const fps = work.job.fps || 30
+    const total = segmentsOf(work).reduce((n, sg) => n + sg.frames, 0) / fps
+    if (work.music.file && existsSync(join(workDir(id), work.music.file))) return await note('done', null)
+    const p = settings.music.provider
+    if (p === 'none') return await note('skipped', '设置里选了不配乐，这次没加配乐', 'off')
+    if (p === 'local') {
+      const ready = musicReady(total)
+      if (!ready.ok) return await note('skipped', ready.reason, ready.code)
+    }
+    await note('making', null)
+    const file = join('music', 'bgm.wav')
+    ensureDir(join(workDir(id), 'music'))
+    const r = await generateMusic({ brief: work.music.brief, mood: work.music.mood || work.music.brief, seconds: total, out: join(workDir(id), file), signal, settings })
+    await updateWork(id, w => {
+      w.music = { ...w.music, file, seconds: r.seconds, model: r.model, source: p }
+      w.job.music = { state: 'done', note: null, code: null }
+      return w
+    })
+  } catch (err) {
+    if (err.name === 'AbortError' || signal.aborted) return
+    await note('skipped', `配乐没做成（${MUSIC_NAMES[settings.music.provider] || settings.music.provider}）：${err.message}`.slice(0, 200), 'failed').catch(() => {})
+  }
 }
 
 /** 一镜的内容指纹：标题、画面、口播都没变才算同一镜 */
@@ -548,7 +589,11 @@ function mergeTimeline(timeline, work) {
   }
   timeline.version = (timeline.version || 1) + 1
   timeline.assets = { ...fresh.assets, ...timeline.assets }
-  return timeline
+  // 这一轮新做了配乐（或原来没有配乐轨）：用新的配乐轨
+  const bgm = fresh.tracks.find(t => t.role === 'bgm')
+  timeline.tracks = timeline.tracks.filter(t => t.role !== 'bgm')
+  if (bgm) timeline.tracks.push(bgm)
+  return syncSwitches(timeline, work)
 }
 
 export { mediaSeconds }

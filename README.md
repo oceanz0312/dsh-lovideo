@@ -7,6 +7,8 @@ lovideo 的 DeepSeek Harness 插件：在 DSH 的对话里用一句话做出任�
 - **风格**：官方风格从 lovideo.ai 下载（登录后免费），用户也可以把参考视频蒸馏成「我的风格」。
 - **作品管理**：侧栏「lovideo 视频」里有作品、官方风格、我的风格和设置。对话里的卡片和管理页读的是同一份本机数据。
 - **配音**：默认系统自带语音；可以一键下载离线配音（默认 Kokoro，哪台电脑都能跑），设置页按这台电脑的配置给每个模型标推荐 / 流畅 / 吃力 / 跑不动，用户自己选下载、切换模型和声音。用的那个配一部片子预计超过 3 分钟时，这部片子换成更快的，都来不及就退回系统语音。
+- **配乐**：和配音分开设置。默认离线配乐（Stable Audio 3 Small，纯器乐，Mac 上一首几秒做好），也可以用自己的火山或 ElevenLabs key。
+- **时长、配音、配乐、字幕**：和网站一样，片长 30 秒到 5 分钟、30 秒一档，每镜至少 15 秒；导演每次给出建议（配乐附中文说明和给模型的英文描述），用户在分镜卡上改，改过的导演再出分镜时照用户的来，改时长会自动请导演重出。成片下面三个开关随时切换，关掉的不播放、不进 MP4 和剪映工程。
 - **导出**：MP4（可以把字幕烧进画面），或者在剪映专业版里直接打开。
 
 用户看到的说明在 [docs/DETAIL.md](docs/DETAIL.md)。和网站保持一致的约定在 [docs/PROTOCOL.md](docs/PROTOCOL.md)。
@@ -21,10 +23,10 @@ lovideo 的 DeepSeek Harness 插件：在 DSH 的对话里用一句话做出任�
 | `cordis.patch.yml` | 注册插件和「lovideo 导演」预设 |
 | `vendor/base-style/` | 蒸馏风格用的通用画布引擎和页面约定 |
 | `vendor/jianying/` | 剪映导出器，从网站原样拷贝 |
-| `vendor/tts/worker.py` | 离线配音的常驻进程（Apple 芯片用 mlx-audio，其他用 PyTorch） |
+| `vendor/tts/worker.py` | 离线配音、配乐的常驻进程（Apple 芯片用 mlx-audio，其他用 PyTorch；配乐的 PyTorch 版单独一个环境） |
 | `test/` | 集成测试：用假模型和网站仓库里的一个风格，跑一遍制作和导出 |
 
-本机数据放在 `~/.dsh/lovideo/`：`works/` 是作品，`styles/` 是风格，`runtime/` 放浏览器、ffmpeg、字体、剪映依赖和离线配音（`runtime/tts/`），`settings.json` 的权限是 0600。
+本机数据放在 `~/.dsh/lovideo/`：`works/` 是作品，`styles/` 是风格，`runtime/` 放浏览器、ffmpeg、字体、剪映依赖和离线配音、配乐（`runtime/tts/`），`settings.json` 的权限是 0600。
 
 ## 开发
 

@@ -430,6 +430,8 @@ function Settings() {
         </div>
       </div>
 
+      <MusicSettings st={st} onSaved={setSt} />
+
       <div className="lv-section">
         <h3>制作和导出</h3>
         <div className="lv-srow">
@@ -457,28 +459,108 @@ function Settings() {
   )
 }
 
+const MUSICS = [['local', '离线配乐'], ['volcengine', '火山配乐'], ['elevenlabs', 'ElevenLabs'], ['none', '不配乐']]
+
+/**
+ * 配乐的来源，和配音分开设。每部片子要不要配乐由导演建议、用户在分镜卡上定；这里只管「用什么做」。
+ * 离线配乐在这台电脑上生成；火山（AccessKey + SecretKey）和 ElevenLabs 用你自己的 key。
+ */
+function MusicSettings({ st, onSaved }) {
+  const [form, setForm] = React.useState(() => ({ provider: st.settings.music.provider, key: '', secret: '' }))
+  const [busy, setBusy] = React.useState(false)
+  const [msg, setMsg] = React.useState(null)
+  const cur = st.settings.music
+  const save = async (patch = form) => {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const next = await api('settings', { music: patch })
+      onSaved(next)
+      setForm(f => ({ ...f, provider: next.settings.music.provider, key: '', secret: '' }))
+      toast({ text: '配乐设置已保存' })
+      return next
+    } catch (e) {
+      setMsg(e.message)
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }
+  const pick = k => {
+    setForm(f => ({ ...f, provider: k }))
+    // 离线和不配乐不用填东西，点了就存
+    if (k === 'local' || k === 'none') save({ provider: k })
+  }
+  const test = async () => {
+    setMsg(null)
+    try {
+      if (form.provider !== cur.provider || form.key || form.secret) await api('settings', { music: form })
+      const r = await api('settings/test-music', {})
+      return fileUrl(r.url)
+    } catch (e) {
+      setMsg(e.message)
+      return null
+    }
+  }
+  const p = form.provider
+  const keyNote = (has, masked) => (has && cur.provider === p ? `（已保存 ${masked}，留空不改）` : '')
+  // 离线配乐装好、换模型时设置会在后台变：重新读一次
+  const sync = async () => onSaved(await api('state'))
+  return (
+    <div className="lv-section">
+      <h3>配乐</h3>
+      <div className="lv-subtle">每部片子要不要配乐，导演会建议，你在分镜卡上定；这里选用什么来做。推荐「离线配乐」：在这台电脑上几秒做好一首，不联网、不用 key。</div>
+      <div className="lv-srow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+        <div className="lv-chips">{MUSICS.map(([k, l]) => <button key={k} type="button" className={p === k ? 'on' : ''} onClick={() => pick(k)}>{l}</button>)}</div>
+        {p === 'local' ? <LocalVoicePanel kind="music" onChange={sync} /> : null}
+        {p === 'volcengine' ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="lv-field"><label>AccessKey ID {keyNote(cur.hasKey, cur.key)}</label><input className="lv-input" type="password" autoComplete="off" placeholder="火山引擎 AccessKey ID" value={form.key} onChange={e => setForm(f => ({ ...f, key: e.target.value }))} /></div>
+            <div className="lv-field"><label>SecretKey {keyNote(cur.hasSecret, cur.secret)}</label><input className="lv-input" type="password" autoComplete="off" placeholder="火山引擎 SecretAccessKey" value={form.secret} onChange={e => setForm(f => ({ ...f, secret: e.target.value }))} /></div>
+          </div>
+        ) : null}
+        {p === 'elevenlabs' ? (
+          <div className="lv-field"><label>密钥 {keyNote(cur.hasKey, cur.key)}</label><input className="lv-input" type="password" autoComplete="off" placeholder="填你自己的 ElevenLabs key" value={form.key} onChange={e => setForm(f => ({ ...f, key: e.target.value }))} /></div>
+        ) : null}
+        {p === 'volcengine' || p === 'elevenlabs' ? (
+          <div className="lv-row">
+            <Button kind="pri" busy={busy} onClick={() => save()}>保存</Button>
+            <ListenButton load={test} />
+            {msg ? <span className="lv-err">{msg}</span> : null}
+          </div>
+        ) : msg ? <div className="lv-err">{msg}</div> : null}
+      </div>
+    </div>
+  )
+}
+
 const LOCAL_STEP = { uv: '准备下载工具', packages: '安装运行环境', model: '下载模型', test: '测速' }
 
 /**
  * 本机配音：显示这台电脑的配置，每个模型按配置标推荐 / 流畅 / 吃力 / 跑不动；
  * 用户自己选下载哪个、用哪个、用哪个声音。开拍时先用选的那个，3 分钟内配不完才换更快的。
  */
-function LocalVoicePanel({ onChange }) {
-  const [st, err, reload] = useLive('local-voice', () => false)
+function LocalVoicePanel({ onChange, kind = 'voice' }) {
+  const music = kind === 'music'
+  const what = music ? '配乐' : '配音'
+  const [st, err, reload] = useLive(music ? 'local-voice?kind=music' : 'local-voice', () => false)
   const [busy, setBusy] = React.useState(null)
   const [fail, setFail] = React.useState(null)
   const running = st?.setup?.running
+  // 配音和配乐的下载共用一条队伍：另一类在下载时这边先不能点
+  const other = Boolean(st?.setup?.busyOther)
   const wasRunning = React.useRef(false)
   React.useEffect(() => {
     if (wasRunning.current && !running) onChange?.()
     wasRunning.current = running
-    if (!running) return undefined
+    if (!running && !other) return undefined
     const t = setInterval(reload, 1000)
     return () => clearInterval(t)
-  }, [running, reload])
+  }, [running, other, reload])
   if (err) return <div className="lv-err">{err.message}</div>
   if (!st) return <div className="lv-subtle lv-shimmer">正在看这台电脑的配置…</div>
   const hw = st.hardware
+  const blocked = running || other
   const act = async (key, path, body, after) => {
     setBusy(key)
     setFail(null)
@@ -488,13 +570,14 @@ function LocalVoicePanel({ onChange }) {
       reload()
     } catch (e) {
       setFail(e.message)
-      return null
+    } finally {
+      setBusy(null)
     }
   }
   const listen = async (m, lang) => {
     setFail(null)
     try {
-      const r = await api('local-voice/preview', { model: m.id, lang, voice: m.chosenVoices[lang] })
+      const r = await api('local-voice/preview', music ? { kind: 'music', model: m.id } : { model: m.id, lang, voice: m.chosenVoices[lang] })
       return fileUrl(r.url)
     } catch (e) {
       setFail(e.message)
@@ -507,7 +590,7 @@ function LocalVoicePanel({ onChange }) {
     return (
       <div className="lv-local">
         <div className="lv-banner" style={{ marginBottom: 0 }}>
-          <span className="lv-grow">这台电脑配置偏低（{st.minimum.reason}），离线配音跑不动，配音用系统自带语音。离线配音最低要 {st.minimum.spec.ramGB}GB 内存、{st.minimum.spec.cores} 核 CPU、{st.minimum.spec.freeDiskGB}GB 磁盘剩余。</span>
+          <span className="lv-grow">这台电脑配置偏低（{st.minimum.reason}），离线{what}跑不动，{music ? '可以选火山配乐或 ElevenLabs' : '配音用系统自带语音'}。离线{what}最低要 {st.minimum.spec.ramGB}GB 内存、{st.minimum.spec.cores} 核 CPU、{st.minimum.spec.freeDiskGB}GB 磁盘剩余。</span>
         </div>
       </div>
     )
@@ -525,8 +608,9 @@ function LocalVoicePanel({ onChange }) {
                 <b className="lv-row" style={{ gap: 8 }}>{m.name}<GradeBadge m={m} st={st} />{using ? <Badge tone="ok">使用中</Badge> : null}</b>
                 <span className="lv-subtle">{m.note}</span>
                 {m.gradeReason ? <span className="lv-subtle">{m.gradeReason}</span> : null}
-                {m.installed ? <span className="lv-subtle">已装好 · 配 1 分钟口播约 {m.installed.oneMinute} 秒 · {m.installed.maxMinutes >= 1 ? `最长能配约 ${m.installed.maxMinutes} 分钟` : '这台电脑上偏慢'}</span> : null}
-                {using ? <VoicePicker m={m} busy={busy} onPick={voices => act('voice', 'local-voice/use', { model: m.id, voices }, () => onChange?.())} onListen={lang => listen(m, lang)} /> : null}
+                {m.installed ? <span className="lv-subtle">{music ? `已装好 · 做 1 分钟配乐约 ${Math.max(1, m.installed.oneMinute)} 秒` : `已装好 · 配 1 分钟口播约 ${m.installed.oneMinute} 秒 · ${m.installed.maxMinutes >= 1 ? `最长能配约 ${m.installed.maxMinutes} 分钟` : '这台电脑上偏慢'}`}</span> : null}
+                {using && music ? <div className="lv-row" style={{ marginTop: 8 }}><ListenButton size="sm" kind="ghost" load={() => listen(m)} /><span className="lv-subtle">听一段 15 秒的样曲</span></div> : null}
+                {using && !music ? <VoicePicker m={m} busy={busy} onPick={voices => act('voice', 'local-voice/use', { model: m.id, voices }, () => onChange?.())} onListen={lang => listen(m, lang)} /> : null}
                 {doing ? (
                   <div className="lv-col" style={{ marginTop: 6 }}>
                     <span className="lv-subtle">{LOCAL_STEP[s.step] || '准备中'}…{s.step === 'model' ? ` ${Math.round((s.progress || 0) * 100)}%` : ''}</span>
@@ -536,14 +620,15 @@ function LocalVoicePanel({ onChange }) {
                 {!running && s.model === m.id && s.error ? <span className="lv-err">{s.error}</span> : null}
               </div>
               <div className="lv-row" style={{ gap: 6, flexShrink: 0 }}>
-                {m.grade !== 'unable' && !m.installed ? <Button size="sm" kind={st.recommended === m.id ? 'pri' : ''} busy={busy === m.id || doing} disabled={running} onClick={() => act(m.id, 'local-voice/setup', { model: m.id })}>下载（约 {m.downloadGB}GB）</Button> : null}
-                {m.installed && !using ? <Button size="sm" kind="pri" busy={busy === `use-${m.id}`} disabled={running} onClick={() => act(`use-${m.id}`, 'local-voice/use', { model: m.id }, () => { onChange?.(); toast({ text: `配音换成 ${m.name}` }) })}>用这个</Button> : null}
-                {m.installed ? <Button size="sm" kind="ghost" busy={doing} disabled={running} onClick={() => act(m.id, 'local-voice/setup', { model: m.id })}>重新测速</Button> : null}
+                {m.grade !== 'unable' && !m.installed ? <Button size="sm" kind={st.recommended === m.id ? 'pri' : ''} busy={busy === m.id || doing} disabled={blocked} onClick={() => act(m.id, 'local-voice/setup', { model: m.id })}>下载（约 {m.downloadGB}GB）</Button> : null}
+                {m.installed && !using ? <Button size="sm" kind="pri" busy={busy === `use-${m.id}`} disabled={blocked} onClick={() => act(`use-${m.id}`, 'local-voice/use', { model: m.id }, () => { onChange?.(); toast({ text: `${what}换成 ${m.name}` }) })}>用这个</Button> : null}
+                {m.installed ? <Button size="sm" kind="ghost" busy={doing} disabled={blocked} onClick={() => act(m.id, 'local-voice/setup', { model: m.id })}>重新测速</Button> : null}
               </div>
             </div>
           )
         })}
       </div>
+      {other ? <div className="lv-subtle">正在下载离线{music ? '配音' : '配乐'}，下完再装这里的</div> : null}
       {fail ? <div className="lv-err">{fail}</div> : null}
     </div>
   )

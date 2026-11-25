@@ -32,6 +32,7 @@ const { startProduction } = await import('../src/host/produce.js')
 const { closeBrowser } = await import('../src/host/render.js')
 const { startExport, waitExport } = await import('../src/host/export.js')
 const { updateSettings } = await import('../src/host/settings.js')
+const { setSwitches } = await import('../src/host/edit.js')
 
 // 假模型：把用户消息里「段目录现有文件」的 scene.js 原样交回
 const fakeLlm = {
@@ -95,4 +96,28 @@ test('确认分镜后在本机做出成片', { timeout: 300_000 }, async () => {
   assert.ok(content.includes(a.path.replace(/\\/g, '/')), '草稿里的素材路径没有指向导入后的位置')
   assert.match(readFileSync(join(a.path, 'draft_meta_info.json'), 'utf8'), /"draft_name":\s*"测试片"/)
   console.log('exports', e.exporting.results)
+
+  // 成片下面的开关：字幕只改时间线；关配音要重新拼成片（新版本），剪映工程里也没有配音轨
+  const v0 = getWork(work.id).film.version
+  let x = await setSwitches(work.id, { subtitles: false })
+  assert.equal(x.timeline.tracks.find(t => t.type === 'subtitle').hidden, true)
+  assert.equal(x.film.version, v0, '只切字幕不该重新拼成片')
+  x = await setSwitches(work.id, { voice: false })
+  assert.equal(x.timeline.tracks.find(t => t.role === 'voice').hidden, true)
+  assert.equal(x.voice.enabled, false)
+  assert.notEqual(x.film.version, v0, '关配音后成片要重新拼')
+  assert.ok(existsSync(join(process.env.LOVIDEO_DATA_DIR, 'works', work.id, 'film', 'final.mp4')))
+  // 设置里选了不配乐：打开配乐会失败，开关和成片都不变
+  updateSettings({ music: { provider: 'none' } })
+  await setSwitches(work.id, { music: true })
+  for (let i = 0; i < 50 && getWork(work.id).remix?.state !== 'failed'; i++) await new Promise(r => setTimeout(r, 100))
+  x = getWork(work.id)
+  assert.equal(x.remix?.state, 'failed')
+  assert.match(x.remix.error, /不配乐/)
+  assert.equal(x.timeline.tracks.some(t => t.role === 'bgm'), false)
+  await startExport(work.id, { format: 'jianying' })
+  const e2 = await waitExport(work.id)
+  await closeBrowser()
+  const draft = readFileSync(join(e2.exporting.results[0].path, 'lovideo_timeline', 'draft_content.json'), 'utf8')
+  assert.ok(!/vo-shot-1|n-shot-1/.test(draft), '关掉的配音不该进剪映工程')
 })

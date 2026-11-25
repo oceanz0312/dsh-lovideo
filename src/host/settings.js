@@ -5,19 +5,20 @@ import { dataDir, defaultExportDir, ensureDir } from './paths.js'
 import { readJson, writeJson } from './json-file.js'
 
 export const VOICE_PROVIDERS = ['local', 'system', 'doubao', 'openai', 'elevenlabs', 'none']
-export const MUSIC_PROVIDERS = ['none', 'elevenlabs', 'file']
+export const MUSIC_PROVIDERS = ['local', 'volcengine', 'elevenlabs', 'none']
 
 const DEFAULTS = {
   version: 1,
   // 系统自带语音：电脑上本来就有，默认用它；想要更好的声音再填自己的 key
   voice: { provider: 'system', url: '', voice: '', model: '', key: '' },
-  music: { provider: 'none', url: '', model: '', key: '', file: '' },
+  // 配乐：默认用离线配乐（没下载模型时这部片子先不配，卡片上提示去下载）。火山要 AccessKey + SecretKey 两个
+  music: { provider: 'local', key: '', secret: '' },
   exportDir: '',
   parallel: 2,
   model: null,
   site: 'https://lovideo.ai',
   account: null,
-  // 本机配音模型：装好并测过速的模型 { id: { rtf, load, backend, at } }
+  // 离线模型：装好并测过速的模型 { id: { rtf, load, backend, at } }；active 是配音用的，musicActive 是配乐用的
   local: { models: {} },
 }
 
@@ -45,7 +46,7 @@ const mask = key => (key ? `••••${String(key).slice(-4)}` : '')
 export function publicSettings(s = readSettings()) {
   return {
     voice: { ...s.voice, key: mask(s.voice.key), hasKey: Boolean(s.voice.key) },
-    music: { ...s.music, key: mask(s.music.key), hasKey: Boolean(s.music.key) },
+    music: { ...s.music, key: mask(s.music.key), hasKey: Boolean(s.music.key), secret: mask(s.music.secret), hasSecret: Boolean(s.music.secret) },
     exportDir: s.exportDir || defaultExportDir(),
     parallel: s.parallel,
     model: s.model,
@@ -66,9 +67,12 @@ export function updateSettings(patch = {}) {
       if (!providers.includes(p.provider)) throw Object.assign(new Error('不支持的服务商'), { status: 400 })
       out.provider = p.provider
     }
-    for (const k of ['url', 'voice', 'model', 'file']) if (p[k] !== undefined) out[k] = str(p[k]) ?? ''
-    if (p.key === null) out.key = ''
-    else if (typeof p.key === 'string' && p.key.trim() && !p.key.startsWith('••••')) out.key = p.key.trim()
+    for (const k of ['url', 'voice', 'model']) if (k in cur && p[k] !== undefined) out[k] = str(p[k]) ?? ''
+    for (const k of ['key', 'secret']) {
+      if (!(k in cur)) continue
+      if (p[k] === null) out[k] = ''
+      else if (typeof p[k] === 'string' && p[k].trim() && !p[k].startsWith('••••')) out[k] = p[k].trim()
+    }
     return out
   }
   s.voice = merge(s.voice, patch.voice, VOICE_PROVIDERS)

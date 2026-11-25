@@ -7,6 +7,9 @@
 #   回复：{"id": 1, "ok": true, "seconds": 12.3, "gen": 4.5} 或 {"id": 1, "ok": false, "error": "..."}
 #   启动完成先回一行 {"ready": true, "load": 秒数}
 #
+# 配乐模型（id 里带 sa3）用同一个协议，请求换成：
+#   {"id": 1, "prompt": "calm lo-fi piano ...", "seconds": 60, "out": "/path/bgm.wav"}
+#
 # 后端两种：Apple 芯片的 Mac 用 mlx-audio；Windows、Linux、Intel Mac 用 PyTorch（有 NVIDIA 显卡就用显卡）。
 import json
 import sys
@@ -93,7 +96,86 @@ def load():
     raise SystemExit(f"不认识的模型：{MODEL}")
 
 
+# 配乐：Stable Audio 3 small-music，一次最长 120 秒，按秒指定时长；只要纯器乐
+SA3_MAX = 120
+SA3_TAIL = "VocalType: Instrumental"
+
+
+def load_music():
+    """返回 make(prompt, seconds) -> (音频 [样本, 声道], 采样率)"""
+    if MODEL == "mlx-sa3-small":
+        from mlx_audio.music.utils import load_model
+
+        m = load_model("mlx-community/stable-audio-3-small-music")
+
+        def make_mlx(prompt, seconds, seed):
+            chunks, sr = [], None
+            for r in m.generate(text=f"{prompt}, {SA3_TAIL}", duration=seconds, steps=8, seed=seed):
+                chunks.append(np.asarray(r.audio, dtype=np.float32))
+                sr = r.sample_rate
+            return np.concatenate(chunks, axis=0), sr
+
+        return make_mlx
+    if MODEL == "torch-sa3-small":
+        # 官方 PyTorch 版。官方仓库要登录同意条款才能下载，这里用同样文件的公开镜像，
+        # 从本地目录加载（和 StableAudioModel.from_pretrained 做的事一样，只是文字编码器也指向本地）
+        import json as _json
+        import os
+
+        import torch
+        from huggingface_hub import snapshot_download
+        from stable_audio_3.loading_utils import load_diffusion_cond
+        from stable_audio_3.model import StableAudioModel
+
+        root = snapshot_download("cocktailpeanut/stable-audio-3-small-music")
+        with open(os.path.join(root, "model_config.json"), encoding="utf-8") as f:
+            cfg = _json.load(f)
+        for c in cfg["model"]["conditioning"]["configs"]:
+            if c["type"] == "t5gemma":
+                c["config"].pop("repo_id", None)
+                c["config"].pop("subfolder", None)
+                c["config"]["model_path"] = os.path.join(root, "t5gemma-b-b-ul2")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        half = device == "cuda"
+        model = load_diffusion_cond(cfg, os.path.join(root, "model.safetensors"), device=device, model_half=half)
+        model.use_lora = False
+        model.lora_names = []
+        sa = StableAudioModel(model, cfg, device, half)
+
+        def make_torch(prompt, seconds, seed):
+            audio = sa.generate(prompt=f"{prompt}, {SA3_TAIL}", duration=seconds, steps=8, seed=seed,
+                                sample_size=cfg["sample_size"])
+            a = audio[0].float().cpu().numpy().T
+            return a, sa.model.sample_rate
+
+        return make_torch
+    raise SystemExit(f"不认识的配乐模型：{MODEL}")
+
+
+def main_music():
+    t = time.time()
+    make = load_music()
+    reply({"ready": True, "load": round(time.time() - t, 2)})
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        req = json.loads(line)
+        rid = req.get("id")
+        try:
+            t = time.time()
+            seconds = max(5, min(SA3_MAX, int(round(float(req.get("seconds", 30))))))
+            audio, sr = make(req["prompt"], seconds, int(req.get("seed", 0)))
+            sf.write(req["out"], audio, sr)
+            reply({"id": rid, "ok": True, "seconds": round(len(audio) / sr, 3), "gen": round(time.time() - t, 3)})
+        except Exception as e:  # 一首失败不影响后面的请求
+            traceback.print_exc(file=sys.stderr)
+            reply({"id": rid, "ok": False, "error": f"{type(e).__name__}: {e}"[:400]})
+
+
 def main():
+    if "sa3" in MODEL:
+        return main_music()
     t = time.time()
     speak = load()
     reply({"ready": True, "load": round(time.time() - t, 2)})

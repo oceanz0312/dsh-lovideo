@@ -4,13 +4,16 @@ import { createReadStream, existsSync, statSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { dirname, extname, join, resolve } from 'node:path'
 import { assertId, isInside } from './paths.js'
-import { deleteWork, events, getWork, listWorks, requireWork, updateWork, workDir } from './works.js'
+import { FILM_DURATIONS, deleteWork, events, getWork, listWorks, requireWork, updateWork, workDir } from './works.js'
+import { askDirector } from './tools.js'
+import { generateMusic } from './music.js'
+import { switchesOf, trackOf } from './assemble.js'
 import { listStyles, mineDir, removeMine, installPlatformStyle, platformCatalog } from './styles.js'
 import { pauseProduction, startProduction, isRunning } from './produce.js'
-import { reviseFilm } from './edit.js'
+import { reviseFilm, setSwitches } from './edit.js'
 import { openInJianying, startExport } from './export.js'
 import { jianyingStatus } from './jianying.js'
-import { localVoiceStatus, speakLocal, startSetup as startLocalVoiceSetup, useModel as useLocalVoice } from './localvoice.js'
+import { localVoiceStatus, musicReady, speakLocal, startSetup as startLocalVoiceSetup, useModel as useLocalVoice, worker as localWorker } from './localvoice.js'
 import { saveDistilled, startDistill } from './distill.js'
 import { mediaSeconds, runtimeStatus, setupProgress, setupRuntime } from './runtime.js'
 import { publicSettings, readSettings, updateSettings } from './settings.js'
@@ -90,7 +93,12 @@ export function view(w) {
   const file = p => (p ? `works/${w.id}/file/${p}${w.film?.version ? `?v=${w.film.version}` : ''}` : null)
   return {
     ...summary(w),
-    voice: w.voice, plan: w.plan,
+    voice: w.voice, plan: w.plan, duration: w.duration || null, choices: w.choices || {},
+    subtitlesOn: w.subtitles?.enabled !== false,
+    // 成片下面的开关：这部片子有的轨道才给开关（配乐除外：没有配乐时也能打开，打开就现做一首）
+    switches: w.timeline ? { ...switchesOf(w.timeline), music: Boolean(trackOf(w.timeline, 'music') && !trackOf(w.timeline, 'music').hidden) } : null,
+    remix: w.remix || null,
+    music: w.music ? { enabled: w.music.enabled, suggested: w.music.suggested, brief: w.music.brief, seconds: w.music.seconds || null, model: w.music.model || null, url: w.music.enabled && w.music.file ? file(w.music.file) : null } : null,
     job: w.job ? { ...w.job, segments: (w.job.segments || []).map(s => ({ ...s, poster: s.state === 'done' ? file(s.poster) : null, video: s.state === 'done' ? file(s.file) : null, voiceUrl: s.state === 'done' && s.voice?.file ? file(s.voice.file) : null })) } : null,
     film: w.film ? { ...w.film, url: file(w.film.file), posterUrl: file(w.film.poster) } : null,
     subtitles: (w.timeline?.tracks.find(t => t.type === 'subtitle')?.clips || []).map(c => ({ start: c.start, end: c.start + c.dur, text: c.text })),
@@ -120,7 +128,21 @@ function state() {
     login: loginState(),
     model: modelInfo(),
     site: siteUrl(),
+    // 配乐现在能不能做（分镜卡上提示用）：离线配乐要先下载；其他来源看有没有填 key
+    musicReady: musicSourceReady(),
   }
+}
+
+function musicSourceReady() {
+  const m = readSettings().music
+  if (m.provider === 'none') return { ok: false, reason: '设置里选了不配乐', code: 'off' }
+  if (m.provider === 'local') {
+    const r = musicReady(60)
+    return r.ok ? { ok: true, source: '离线配乐' } : { ok: false, reason: r.code === 'not-installed' ? '还没下载离线配乐' : r.reason, code: r.code }
+  }
+  if (m.provider === 'volcengine' && !(m.key && m.secret)) return { ok: false, reason: '火山配乐还没填 key', code: 'no-key' }
+  if (m.provider === 'elevenlabs' && !m.key) return { ok: false, reason: 'ElevenLabs 还没填 key', code: 'no-key' }
+  return { ok: true, source: m.provider === 'volcengine' ? '火山配乐' : 'ElevenLabs' }
 }
 
 export async function route(req, res) {
@@ -155,7 +177,7 @@ export async function route(req, res) {
     // 「在剪映中打开」之前的检查：装没装、草稿目录、能不能写、是不是正开着
     if (path === 'jianying/status') return json(res, 200, jianyingStatus())
     // 本机配音：电脑配置、能跑哪些模型、装好的测速结果、下载进度
-    if (path === 'local-voice') return json(res, 200, localVoiceStatus())
+    if (path === 'local-voice') return json(res, 200, localVoiceStatus(url.searchParams.get('kind') === 'music' ? 'music' : 'voice'))
     if (path === 'events') return sse(req, res)
     return json(res, 404, { error: '接口不存在' })
   }
@@ -165,7 +187,7 @@ export async function route(req, res) {
   if (site && site !== 'same-origin' && site !== 'none') return json(res, 403, { error: '拒绝跨站请求' })
   const body = await readBody(req)
 
-  if ((m = /^works\/([\w-]+)\/(produce|revise|export|open-jianying|delete|reveal|rename)$/.exec(path))) {
+  if ((m = /^works\/([\w-]+)\/(produce|revise|export|open-jianying|delete|reveal|rename|choices|subtitles|switches)$/.exec(path))) {
     const id = assertId(m[1])
     const w = requireWork(id)
     switch (m[2]) {
@@ -189,6 +211,32 @@ export async function route(req, res) {
         reveal(target)
         return json(res, 200, { path: target })
       }
+      case 'choices': {
+        // 分镜卡上的时长、配音、配乐、字幕：开拍前改。记进 choices，导演再出分镜时照用户的来
+        if (w.status !== 'draft') return json(res, 409, { error: '已经开拍了，要改这些请让导演出新一版分镜' })
+        const dur = body.duration === undefined ? undefined : Number(body.duration)
+        if (dur !== undefined && !FILM_DURATIONS.includes(dur)) return json(res, 400, { error: '片长只能是 30 秒到 5 分钟、30 秒一档' })
+        const next = await updateWork(id, x => {
+          x.choices = { ...(x.choices || {}) }
+          for (const k of ['voice', 'music', 'subtitles']) {
+            if (typeof body[k] !== 'boolean') continue
+            x[k] = { ...(x[k] || {}), enabled: body[k] }
+            x.choices[k] = body[k]
+          }
+          if (dur !== undefined) x.choices.duration = dur
+          return x
+        })
+        // 时长变了分镜要重出：叫导演按新时长出一版
+        let replanning = false
+        if (dur !== undefined && dur !== w.duration) {
+          replanning = askDirector(next, `[lovideo 通知] work_id: ${id}：用户在分镜卡上把目标片长改成 ${dur} 秒。请按这个时长重新出一版分镜（调用 lovideo_plan，带上 work_id，duration 填 ${dur}，镜头数不超过 ${Math.max(1, Math.floor(dur / 15))}），其余照旧；不用问用户，出完用一句话说明改了什么。`)
+        }
+        return json(res, 200, { ...view(next), replanning })
+      }
+      case 'subtitles':
+        return json(res, 200, view(await setSwitches(id, { subtitles: body.visible !== false })))
+      case 'switches':
+        return json(res, 200, view(await setSwitches(id, body)))
       case 'rename':
         return json(res, 200, view(await updateWork(id, x => ((x.title = String(body.title || x.title).slice(0, 60)), x))))
     }
@@ -225,14 +273,24 @@ export async function route(req, res) {
     const sec = await speak(body.text || '你好，这是 lovideo 的配音试听。', file, readSettings().voice)
     return json(res, 200, { seconds: sec, url: `tmp/${file.split(/[\\/]/).pop()}` })
   }
+  if (path === 'settings/test-music') {
+    const file = join(ensureDir(tmpDir()), `music-test-${Date.now()}.wav`)
+    const r = await generateMusic({ brief: '轻快温暖的钢琴小品，适合科普讲解', mood: 'light warm piano, soft pads, curious, 90 bpm', seconds: 30, out: file })
+    return json(res, 200, { seconds: r.seconds, url: `tmp/${file.split(/[\\/]/).pop()}` })
+  }
   if (path === 'local-voice/setup') return json(res, 200, startLocalVoiceSetup(String(body.model || '')))
   if (path === 'local-voice/use') return json(res, 200, useLocalVoice(String(body.model || ''), body.voices || {}))
   if (path === 'local-voice/preview') {
-    // 试听某个装好的模型、某个声音（设置页选声音时用）
+    // 试听某个装好的模型：配音念一句（选的声音），配乐做 15 秒
     const file = join(ensureDir(tmpDir()), `voice-local-${Date.now()}.wav`)
-    const lang = body.lang === 'en' ? 'en' : 'zh'
-    const text = lang === 'en' ? 'Hi, this is a lovideo narration preview.' : '你好，这是 lovideo 的离线配音试听。'
-    await speakLocal(String(body.model || ''), { text, lang, out: file, voice: body.voice })
+    if (body.kind === 'music') {
+      const w = await localWorker(String(body.model || ''))
+      await w.speak({ prompt: String(body.prompt || 'calm lo-fi piano, soft pads, warm and curious, 80 bpm').slice(0, 300), seconds: 15, out: file })
+    } else {
+      const lang = body.lang === 'en' ? 'en' : 'zh'
+      const text = lang === 'en' ? 'Hi, this is a lovideo narration preview.' : '你好，这是 lovideo 的离线配音试听。'
+      await speakLocal(String(body.model || ''), { text, lang, out: file, voice: body.voice })
+    }
     return json(res, 200, { seconds: await mediaSeconds(file), url: `tmp/${file.split(/[\\/]/).pop()}` })
   }
   return json(res, 404, { error: '接口不存在' })

@@ -105,6 +105,8 @@ async function buildJianyingDraft(work, signal, out = uniquePath(exportDir(), `$
   const dir = workDir(work.id)
   // 素材换成本机绝对路径，交给网站同一份导出器
   const doc = structuredClone(work.timeline)
+  // 关掉的配音、配乐、字幕不带进剪映工程（网站的导出器不认 hidden）
+  doc.tracks = doc.tracks.filter(t => !t.hidden)
   for (const a of Object.values(doc.assets)) a.localPath = join(dir, a.uri || a.r2)
   for (const t of doc.tracks) for (const c of t.clips) delete c.of
   const tmp = ensureDir(join(tmpDir(), `jy-${work.id}-${Date.now()}`))

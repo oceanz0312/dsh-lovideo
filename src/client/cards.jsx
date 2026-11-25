@@ -2,7 +2,7 @@
 // 卡片只从工具结果里拿作品 id，内容实时读本机数据，所以和管理页、和后续的修改永远一致。
 import * as React from 'react'
 import { api, argsOf, fileUrl, loginUrl, openExternal, pick, resultText, useLive } from './api.js'
-import { Badge, Bar, Button, Dialog, LinkButton, Mark, Media, Player, SEG, STEP, SpeedButton, Spin, StatusBadge, Styles, fmtSec, usePlaybackRate } from './ui.jsx'
+import { Badge, Bar, Button, Dialog, LinkButton, Mark, Media, Player, SEG, STEP, SpeedButton, Spin, StatusBadge, Styles, Switch, fmtSec, usePlaybackRate } from './ui.jsx'
 import { openManager } from './host.js'
 import { toast } from './toast.jsx'
 
@@ -142,6 +142,7 @@ export function Doctor({ onVoiceChange } = {}) {
         extra={pending ? <div className="lv-code" style={{ marginTop: 8 }}>{pending.userCode}</div> : st.login.error ? <div className="lv-err">{st.login.error}</div> : null}
         action={st.login.account ? null : pending ? <LinkButton size="sm" href={loginUrl(pending.url)}>重新打开</LinkButton> : <Button size="sm" kind={env.ready ? 'pri' : ''} busy={busy === 'login'} onClick={() => act('login', login)}>登录</Button>} />
       <VoiceRow voice={st.settings.voice} onChange={() => { reload(); onVoiceChange?.() }} />
+      <MusicRow music={st.settings.music} onChange={() => { reload(); onVoiceChange?.() }} />
       {err ? <div className="lv-err">{err}</div> : null}
     </div>
   )
@@ -176,9 +177,31 @@ function VoiceRow({ voice, onChange }) {
   )
 }
 
+/** 配乐这一行：选的离线配乐还没下载时，点一下下载默认的配乐模型，装好自动用上 */
+function MusicRow({ music, onChange }) {
+  const lv = useLocalVoice(music.provider === 'local', onChange, 'music')
+  const settings = <Button size="sm" kind="ghost" onClick={() => openManager('settings')}>设置</Button>
+  const names = { volcengine: '火山配乐', elevenlabs: 'ElevenLabs', none: '不配乐' }
+  if (music.provider !== 'local') {
+    const desc = music.provider === 'none' ? '不配乐' : `${names[music.provider] || music.provider}${music.hasKey ? '' : '（还没填 key）'}`
+    return <Row ok title="配乐" desc={desc} action={settings} />
+  }
+  if (!lv.st) return <Row ok title="配乐" desc="离线配乐" action={settings} />
+  const st = lv.st
+  const active = st.models.find(m => m.id === st.active)
+  if (active) return <Row ok title="配乐" desc={`离线配乐 · ${active.name}`} action={settings} />
+  if (!st.minimum.ok) return <Row ok title="配乐" desc="这台电脑配置偏低，离线配乐跑不动；可以在设置里换成火山配乐或 ElevenLabs" action={settings} />
+  return (
+    <Row ok title="配乐"
+      desc={lv.running ? `正在下载离线配乐（${lv.def.name}）：${lv.progress}` : `还没下载离线配乐 · 下载后导演建议配乐的片子会自动配上（${lv.def.name}，约 ${lv.def.downloadGB}GB）`}
+      extra={lv.running && st.setup.step === 'model' ? <div style={{ marginTop: 6 }}><Bar value={st.setup.progress} /></div> : lv.error ? <div className="lv-err">{lv.error}</div> : null}
+      action={<div className="lv-row" style={{ gap: 6 }}>{lv.running ? null : <Button size="sm" busy={lv.busy} disabled={Boolean(st.setup.busyOther)} onClick={lv.download}>下载</Button>}{settings}</div>} />
+  )
+}
+
 /** 离线配音的状态和一键下载默认模型（会话里的提示用） */
-function useLocalVoice(enabled = true, onDone) {
-  const [st, , reload] = useLive(enabled ? 'local-voice' : null, () => false)
+function useLocalVoice(enabled = true, onDone, kind = 'voice') {
+  const [st, , reload] = useLive(enabled ? (kind === 'music' ? 'local-voice?kind=music' : 'local-voice') : null, () => false)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState(null)
   const running = Boolean(st?.setup?.running)
@@ -294,7 +317,7 @@ export function PlanCard(props) {
         <>
           {err
             ? <span className="lv-grow lv-err">{err}</span>
-            : <span className="lv-grow lv-subtle lv-truncate">风格「{w.style?.name}」 · {w.voice?.enabled === false ? '不配音' : '配音'} · 在这台电脑上制作，约 {Math.max(2, Math.round(w.plan.scenes.length * 1.2))} 分钟</span>}
+            : <span className="lv-grow lv-subtle lv-truncate">风格「{w.style?.name}」 · 在这台电脑上制作，约 {Math.max(2, Math.round(w.plan.scenes.length * 1.2))} 分钟</span>}
           {started ? null : <Button kind="pri" busy={busy} onClick={confirm}>确认开拍</Button>}
         </>
       ) : <span className="lv-subtle">已经有新版本（v{w.plan.revision}），看下面最新的分镜卡</span>}
@@ -305,6 +328,7 @@ export function PlanCard(props) {
           <div className="lv-row" style={{ marginTop: 10 }}><WorkActions w={w} /></div>
         </div>
       ) : null}
+      {latest && !started ? <PlanOptions w={w} /> : null}
       {scenes && started ? (
         <button type="button" className="lv-btn ghost sm" style={{ margin: '8px 10px' }} onClick={() => setOpen(o => !o)}>{open ? '收起分镜' : `看分镜（${scenes.length} 镜）`}</button>
       ) : null}
@@ -323,6 +347,125 @@ export function PlanCard(props) {
         </div>
       ) : null}
     </Shell>
+  )
+}
+
+/* ---------- 成片下面的配音、配乐、字幕开关 ---------- */
+
+/**
+ * 关掉就不播放、导出的 MP4 和剪映工程里也没有。字幕马上生效；配音、配乐要按开关重新拼一遍成片（几秒），
+ * 拼好播放器接着原来的位置播。这部片子还没有配乐时，打开配乐就按导演写的描述现做一首。
+ */
+function FilmSwitches({ w }) {
+  const [busy, setBusy] = React.useState(null)
+  const [err, setErr] = React.useState(null)
+  const sw = w.switches || {}
+  const remix = w.remix
+  const working = remix && remix.state !== 'failed'
+  const set = async (key, value) => {
+    setBusy(key)
+    setErr(null)
+    try {
+      await api(`works/${w.id}/switches`, { [key]: value })
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(null)
+    }
+  }
+  const items = [
+    ['voice', '配音', sw.voice],
+    ['subtitles', '字幕', sw.subtitles],
+    // 没配乐的片子也给开关：打开就现做一首
+    ['music', '配乐', sw.music],
+  ].filter(([k]) => k === 'music' || sw[k] !== undefined)
+  return (
+    <div className="lv-switches">
+      {items.map(([k, label, on]) => (
+        <label key={k}>
+          {label}
+          <Switch checked={Boolean(on)} busy={busy === k || (working && remix.keys?.includes(k))} disabled={Boolean(working) && !remix.keys?.includes(k)} label={label} onChange={v => set(k, v)} />
+        </label>
+      ))}
+      {working ? <span className="lv-subtle"><Spin /> {remix.state === 'music' ? '正在做配乐…' : '正在重新拼成片…'}</span> : null}
+      {remix?.state === 'failed' ? <span className="lv-err">{remix.error}</span> : err ? <span className="lv-err">{err}</span> : null}
+    </div>
+  )
+}
+
+/* ---------- 分镜卡上的时长、配音、配乐、字幕 ---------- */
+
+const DURATIONS = Array.from({ length: 10 }, (_, i) => 30 + i * 30)
+const durLabel = n => (n < 60 ? `${n} 秒` : n % 60 ? `${Math.floor(n / 60)} 分 ${n % 60} 秒` : `${n / 60} 分钟`)
+
+/**
+ * 导演给的建议，用户在这里直接改（开拍前）。改过的记在作品上，导演再出分镜时照用户的来；
+ * 改时长要重出分镜，会自动叫导演按新时长出一版。
+ */
+function PlanOptions({ w }) {
+  const [st] = useLive('state', () => false)
+  const [busy, setBusy] = React.useState(null)
+  const [err, setErr] = React.useState(null)
+  const [replan, setReplan] = React.useState(null)
+  const set = async (key, value) => {
+    setBusy(key)
+    setErr(null)
+    try {
+      const r = await api(`works/${w.id}/choices`, { [key]: value })
+      if (key === 'duration') setReplan(r.replanning ? value : -1)
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(null)
+    }
+  }
+  const voiceOn = w.voice?.enabled !== false
+  const musicOn = w.music?.enabled === true
+  const subsOn = w.subtitlesOn !== false
+  const mr = st?.musicReady
+  const musicDesc = musicOn
+    ? (mr && !mr.ok ? <span className="lv-warn-text">{mr.reason}，现在开拍这部片子不会有配乐 · <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>去设置</a></span> : `画面做好前一起配好${mr?.source ? `（${mr.source}）` : ''}`)
+    : w.music?.suggested ? '建议配乐，打开就会做' : '不建议配乐'
+  return (
+    <div className="lv-card-body" style={{ paddingBottom: 0 }}>
+      <div className="lv-opts">
+        <div className="lv-opt">
+          <span className="k">时长</span>
+          <span className="v">
+            <b>目标 {durLabel(w.duration || 30)}</b>
+            <span className="lv-subtle">{replan > 0 ? `已经请导演按 ${durLabel(replan)} 重出分镜…` : replan === -1 ? '会话已经关了，回到对话里请导演按新时长重出分镜' : '素材撑不满时会做短一点'}</span>
+          </span>
+          <select className="lv-select" style={{ width: 'auto' }} value={w.duration || 30} disabled={busy === 'duration'} onChange={e => set('duration', Number(e.target.value))}>
+            {DURATIONS.map(n => <option key={n} value={n}>{durLabel(n)}</option>)}
+          </select>
+        </div>
+        <div className={`lv-opt ${voiceOn ? '' : 'off'}`}>
+          <span className="k">配音</span>
+          <span className="v">
+            <b>{w.voice?.suggested !== false ? '建议配音' : '建议不配音'}{w.voice?.why ? `：${w.voice.why}` : ''}</b>
+            <span className="lv-subtle">{voiceOn ? '每镜口播按设置里的配音念' : '不念口播，片长按画面定'}</span>
+          </span>
+          <Switch checked={voiceOn} busy={busy === 'voice'} label="配音" onChange={v => set('voice', v)} />
+        </div>
+        <div className={`lv-opt ${musicOn ? '' : 'off'}`}>
+          <span className="k">配乐</span>
+          <span className="v">
+            <b>{w.music?.suggested ? '建议配乐' : '建议不配乐'}{w.music?.brief ? `：${w.music.brief}` : ''}</b>
+            <span className="lv-subtle">{musicDesc}</span>
+          </span>
+          <Switch checked={musicOn} busy={busy === 'music'} label="配乐" onChange={v => set('music', v)} />
+        </div>
+        <div className={`lv-opt ${subsOn ? '' : 'off'}`}>
+          <span className="k">字幕</span>
+          <span className="v">
+            <b>{subsOn ? '显示字幕' : '不显示字幕'}</b>
+            <span className="lv-subtle">字幕就是口播原文，成片后也能随时开关</span>
+          </span>
+          <Switch checked={subsOn} busy={busy === 'subtitles'} label="字幕" onChange={v => set('subtitles', v)} />
+        </div>
+      </div>
+      {err ? <div className="lv-err" style={{ marginTop: 6 }}>{err}</div> : null}
+    </div>
   )
 }
 
@@ -351,7 +494,12 @@ export function WorkBody({ w }) {
   const [preview, setPreview] = React.useState(null)
   const job = w.job
   if (w.status === 'done' && w.film) {
-    return <Player src={fileUrl(w.film.url)} poster={fileUrl(w.film.posterUrl)} subtitles={w.subtitles} hidden={w.subtitlesHidden} portrait={w.aspect === '9:16'} />
+    return (
+      <div className="lv" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <Player src={fileUrl(w.film.url)} poster={fileUrl(w.film.posterUrl)} subtitles={w.subtitles} hidden={w.switches ? w.switches.subtitles === false : w.subtitlesHidden} portrait={w.aspect === '9:16'} />
+        <FilmSwitches w={w} />
+      </div>
+    )
   }
   if (!job) return <div className="lv-subtle">分镜还没确认开拍。</div>
   const segs = job.segments || []
@@ -392,6 +540,7 @@ export function WorkBody({ w }) {
           })}
         </div>
       ) : null}
+      {job.music ? <div className="lv-subtle">{job.music.state === 'making' ? <><Spin /> 配乐生成中…</> : job.music.state === 'done' ? '配乐已做好' : job.music.note}{job.music.code === 'not-installed' ? <> · <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>下载离线配乐</a></> : null}</div> : null}
       {job.voiceNote ? <div className="lv-subtle">{job.voiceNote}{job.voiceNoteCode === 'not-installed' ? <> · <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>下载离线配音</a></> : null}</div> : null}
       {job.error ? <div className="lv-err">{job.error}</div> : null}
       {w.status === 'producing' ? <div className="lv-subtle">做好一段显示一段。关掉 DeepSeek Harness 会自动暂停，下次打开接着做。</div> : null}

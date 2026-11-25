@@ -66,12 +66,38 @@ export const MODELS = [
 /** 会话里一键下载的默认模型：最小、最快、哪台电脑都能跑 */
 export const DEFAULT_MODEL = 'kokoro'
 
+/**
+ * 离线配乐模型。Stable Audio 3 small-music：纯器乐、按秒指定时长、一首最长 120 秒（更长的片子循环接上）。
+ * 实测（M4 Pro，MLX）：加载 1.2 秒，30 秒的曲子 1–2 秒、120 秒 3.3 秒。
+ * 许可：Stability 社区许可，年收入 100 万美元以下可商用。
+ */
+export const MUSIC_MODELS = [
+  {
+    id: 'sa3-small', kind: 'music', name: 'Stable Audio 3 Small', quality: 1, note: '纯器乐，按描述和时长生成，几秒出一首',
+    mlx: { worker: 'mlx-sa3-small', repos: ['mlx-community/stable-audio-3-small-music'], sizeGB: 3.5, minRamGB: 8, comfyRamGB: 8 },
+    // 没有显卡也能跑（CPU），只是慢一些
+    torch: { worker: 'torch-sa3-small', repos: ['cocktailpeanut/stable-audio-3-small-music'], sizeGB: 3.5, minRamGB: 8, comfyVramGB: 4, comfyNeedsGpu: true },
+  },
+]
+export const DEFAULT_MUSIC_MODEL = 'sa3-small'
+// 配乐一首最长 120 秒；更长的片子生成 120 秒循环
+export const MUSIC_MAX_SECONDS = 120
+
+const ALL = () => [...MODELS, ...MUSIC_MODELS]
+const byId = id => ALL().find(m => m.id === id)
+const kindOf = m => m?.kind || 'voice'
+
 // Python 环境要装的包（大约的磁盘占用写在 envGB 里）
 const PACKAGES = {
   mlx: { pkgs: ['mlx-audio==0.6.8', 'misaki[zh,en]', 'soundfile', 'huggingface_hub'], envGB: 1.2 },
   torch: { pkgs: ['kokoro==0.9.4', 'misaki[zh,en]', 'soundfile', 'huggingface_hub'], envGB: 1.5 },
   'torch-qwen': { pkgs: ['qwen-tts==0.1.1'], envGB: 3 },
+  // 配乐的 PyTorch 版：官方包锁定了自己的 torch 版本，单独一个环境，免得和配音的包打架
+  'torch-music': { pkgs: ['stable-audio-3 @ https://github.com/Stability-AI/stable-audio-3/archive/1e1058a082d0a810132e34cfa822ce110592bdfd.zip', 'soundfile', 'huggingface_hub'], envGB: 3 },
 }
+
+/** 模型装在哪个 Python 环境：Mac 都在 mlx；PyTorch 版配音一个、配乐一个 */
+const envKey = (model, hw) => (hw.backend === 'mlx' ? 'mlx' : kindOf(model) === 'music' ? 'torch-music' : 'torch')
 
 /* ---------- 电脑配置 ---------- */
 
@@ -137,6 +163,7 @@ export function fit(model, hw = hardware()) {
 
 function envGB(model, hw) {
   if (hw.backend === 'mlx') return PACKAGES.mlx.envGB
+  if (kindOf(model) === 'music') return PACKAGES['torch-music'].envGB
   return PACKAGES.torch.envGB + (model.id.startsWith('qwen3') ? PACKAGES['torch-qwen'].envGB : 0)
 }
 
@@ -152,13 +179,15 @@ export function grade(model, hw = hardware(), installed = null) {
   if (b.comfyRamGB && hw.ramGB < b.comfyRamGB) why.push(`内存 ${hw.ramGB}GB，${b.comfyRamGB}GB 以上更流畅`)
   if (b.comfyVramGB && hw.gpu && hw.gpu.vramGB < b.comfyVramGB) why.push(`显存 ${hw.gpu.vramGB}GB，${b.comfyVramGB}GB 以上更流畅`)
   if (b.comfyCores && !hw.gpu && hw.cores !== undefined && hw.cores < b.comfyCores) why.push(`没有显卡、CPU ${hw.cores} 核，生成会慢一些`)
-  if (installed && predictSeconds(installed, BUDGET_SECONDS) > BUDGET_SECONDS) why.push('实测配 3 分钟口播要超过 3 分钟')
+  if (b.comfyNeedsGpu && !hw.gpu) why.push('没有显卡，用 CPU 生成会慢一些')
+  const sample = kindOf(model) === 'music' ? MUSIC_MAX_SECONDS : BUDGET_SECONDS
+  if (installed && predictSeconds(installed, sample) > BUDGET_SECONDS) why.push(kindOf(model) === 'music' ? '实测做一首 2 分钟的配乐要超过 3 分钟' : '实测配 3 分钟口播要超过 3 分钟')
   return why.length ? { grade: 'heavy', reason: why.join('；') } : { grade: 'ok', reason: null }
 }
 
 /** 推荐：这台电脑上跑得流畅的里面最好的一个；都吃力就推荐吃力里最好的 */
-export function recommend(hw = hardware(), installedMap = {}) {
-  const runnable = MODELS.map(m => ({ m, g: grade(m, hw, installedMap[m.id]).grade })).filter(x => x.g !== 'unable')
+export function recommend(hw = hardware(), installedMap = {}, models = MODELS) {
+  const runnable = models.map(m => ({ m, g: grade(m, hw, installedMap[m.id]).grade })).filter(x => x.g !== 'unable')
   const best = list => list.sort((a, b) => b.m.quality - a.m.quality)[0]?.m || null
   return best(runnable.filter(x => x.g === 'ok')) || best(runnable)
 }
@@ -174,21 +203,55 @@ export function voicesFor(modelId, s = readSettings()) {
   return { zh: pick('zh'), en: pick('en') }
 }
 
-/** 正在用的离线模型：用户选的那个；没选过就是装好的里面最好的一个 */
-export function activeModel(s = readSettings()) {
+const ACTIVE_KEY = { voice: 'active', music: 'musicActive' }
+const listOf = kind => (kind === 'music' ? MUSIC_MODELS : MODELS)
+
+/** 正在用的离线模型（配音或配乐）：用户选的那个；没选过就是装好的里面最好的一个 */
+export function activeModel(s = readSettings(), kind = 'voice') {
   const installed = s.local?.models || {}
-  if (s.local?.active && installed[s.local.active]) return s.local.active
-  return MODELS.filter(m => installed[m.id]).sort((a, b) => b.quality - a.quality)[0]?.id || null
+  const picked = s.local?.[ACTIVE_KEY[kind]]
+  if (picked && installed[picked]) return picked
+  return listOf(kind).filter(m => installed[m.id]).sort((a, b) => b.quality - a.quality)[0]?.id || null
 }
 
-/** 用户选定用哪个离线模型、哪个声音；同时把配音切到本机模型 */
+/** 用户选定用哪个离线模型（配音的还能选声音）；同时把配音或配乐切到离线 */
 export function useModel(modelId, voices = {}) {
   const s = readSettings()
-  if (!s.local?.models?.[modelId]) throw Object.assign(new Error('这个模型还没下载'), { status: 409 })
-  s.local = { ...s.local, active: modelId, voices: { ...(s.local.voices || {}), [modelId]: { ...voicesFor(modelId, s), ...voices } } }
-  s.voice = { ...s.voice, provider: 'local' }
+  const model = byId(modelId)
+  if (!model || !s.local?.models?.[modelId]) throw Object.assign(new Error('这个模型还没下载'), { status: 409 })
+  const kind = kindOf(model)
+  s.local = { ...s.local, [ACTIVE_KEY[kind]]: modelId }
+  if (kind === 'voice') {
+    s.local.voices = { ...(s.local.voices || {}), [modelId]: { ...voicesFor(modelId, s), ...voices } }
+    s.voice = { ...s.voice, provider: 'local' }
+  } else s.music = { ...s.music, provider: 'local' }
   writeSettings(s)
-  return localVoiceStatus()
+  return localVoiceStatus(kind)
+}
+
+/**
+ * 这部片子能不能用离线配乐：配置够、装好了、预计 3 分钟内做得完。
+ * @returns {{ ok: boolean, reason?: string, code?: string }}
+ */
+export function musicReady(filmSeconds) {
+  const min = meetsMinimum(hardware())
+  if (!min.ok) return { ok: false, reason: `这台电脑配置偏低（${min.reason}），离线配乐跑不动，这次没加配乐`, code: 'low-spec' }
+  const s = readSettings()
+  const id = activeModel(s, 'music')
+  if (!id) return { ok: false, reason: '还没有下载离线配乐，这次没加配乐', code: 'not-installed' }
+  const predicted = predictSeconds(s.local.models[id], Math.min(MUSIC_MAX_SECONDS, filmSeconds))
+  if (predicted > BUDGET_SECONDS) return { ok: false, reason: `离线配乐预计要 ${Math.round(predicted / 60)} 分钟以上，这次没加配乐`, code: 'too-slow' }
+  return { ok: true, model: id }
+}
+
+/** 用离线模型做一首配乐（最长 120 秒，片子更长时拼成片会循环接上） */
+export async function musicLocal({ prompt, seconds, out }) {
+  const id = activeModel(readSettings(), 'music')
+  if (!id) throw new Error('还没有下载离线配乐，请在 lovideo 设置的「配乐」里下载')
+  ensureDir(join(out, '..'))
+  const w = await worker(id)
+  const r = await w.speak({ prompt, seconds: Math.min(MUSIC_MAX_SECONDS, Math.max(5, Math.round(seconds))), out })
+  return { seconds: r.seconds, model: id }
 }
 
 /* ---------- 按口播长度挑模型 ---------- */
@@ -340,12 +403,12 @@ async function uvRun(uv, args) {
 }
 
 async function ensureEnv(uv, model, hw) {
-  const backend = hw.backend
-  const py = envPython(backend)
-  if (!existsSync(py)) await uvRun(uv, ['venv', '--python', '3.12', envDir(backend)])
-  const pkgs = [...PACKAGES[backend].pkgs, ...(backend === 'torch' && model.id.startsWith('qwen3') ? PACKAGES['torch-qwen'].pkgs : [])]
+  const key = envKey(model, hw)
+  const py = envPython(key)
+  if (!existsSync(py)) await uvRun(uv, ['venv', '--python', '3.12', envDir(key)])
+  const pkgs = [...PACKAGES[key].pkgs, ...(key === 'torch' && model.id.startsWith('qwen3') ? PACKAGES['torch-qwen'].pkgs : [])]
   // PyTorch 按这台电脑的显卡自动选 CUDA 或 CPU 版本
-  const extra = backend === 'torch' ? ['--torch-backend', 'auto'] : []
+  const extra = key !== 'mlx' ? ['--torch-backend', 'auto'] : []
   await uvRun(uv, ['pip', 'install', '--python', py, ...extra, ...pkgs])
   return py
 }
@@ -380,10 +443,15 @@ async function downloadModel(py, b) {
 const TEST_ZH = '光刻机是造芯片这条路上最贵、也最精密的一台机器，它把画好的图案缩小再缩小，印到硅片上。'
 const TEST_EN = 'A lithography machine shrinks a drawn pattern again and again, and prints it onto a silicon wafer.'
 
-/** 测速：中英文各热身一句，再各测一段，取慢的那个 */
+/** 测速：中英文各热身一句，再各测一段，取慢的那个；配乐热身 5 秒、再测一首 30 秒 */
 async function benchmark(modelId) {
   const w = await worker(modelId)
   const tmp = ensureDir(join(ttsDir(), 'bench'))
+  if (kindOf(byId(modelId)) === 'music') {
+    await w.speak({ prompt: 'warm piano', seconds: 5, out: join(tmp, 'warm.wav') })
+    const m = await w.speak({ prompt: 'calm lo-fi piano, soft pads, warm and curious, 80 bpm', seconds: 30, out: join(tmp, 'music.wav') })
+    return { rtf: Math.round((m.gen / m.seconds) * 1000) / 1000, load: w.load, sample: join(tmp, 'music.wav') }
+  }
   // 中英文各热身一句：第一次用会编译、装语言包，这些一次性开销不算进速度
   await w.speak({ text: '你好。', lang: 'zh', out: join(tmp, 'warm.wav') })
   await w.speak({ text: 'Hello.', lang: 'en', out: join(tmp, 'warm.wav') })
@@ -396,7 +464,7 @@ async function benchmark(modelId) {
 /** 下载并测速一个模型（后台进行，进度看 setupState） */
 export function startSetup(modelId) {
   if (state.running) return setupState()
-  const model = MODELS.find(m => m.id === modelId)
+  const model = byId(modelId)
   if (!model) throw Object.assign(new Error('没有这个模型'), { status: 400 })
   const hw = hardware()
   const f = fit(model, hw)
@@ -414,10 +482,13 @@ export function startSetup(modelId) {
       const r = await benchmark(modelId)
       const s = readSettings()
       s.local = { ...(s.local || {}), models: { ...(s.local?.models || {}), [modelId]: { rtf: r.rtf, load: r.load, backend: hw.backend, at: new Date().toISOString() } } }
-      // 还没选过离线模型（第一次装、或从会话里一键下载）：装好就用上
-      if (!s.local.active || !s.local.models[s.local.active]) {
-        s.local.active = modelId
-        s.voice = { ...s.voice, provider: 'local' }
+      // 这一类还没选过离线模型（第一次装、或从会话里一键下载）：装好就用上
+      const kind = kindOf(model)
+      const cur = s.local[ACTIVE_KEY[kind]]
+      if (!cur || !s.local.models[cur]) {
+        s.local[ACTIVE_KEY[kind]] = modelId
+        if (kind === 'voice') s.voice = { ...s.voice, provider: 'local' }
+        else s.music = { ...s.music, provider: 'local' }
       }
       writeSettings(s)
       state = { running: false, model: modelId, step: 'done', progress: 1, error: null }
@@ -428,35 +499,38 @@ export function startSetup(modelId) {
   return setupState()
 }
 
-/** 设置页要的全部信息 */
-export function localVoiceStatus() {
+/** 设置页要的全部信息（kind：voice 配音 / music 配乐） */
+export function localVoiceStatus(kind = 'voice') {
   const hw = hardware()
   const s = readSettings()
   const installed = s.local?.models || {}
-  const rec = recommend(hw, installed)
+  const list = listOf(kind)
+  const rec = recommend(hw, installed, list)
   return {
-    active: activeModel(s),
-    usingLocal: s.voice.provider === 'local',
-    defaultModel: DEFAULT_MODEL,
+    kind,
+    active: activeModel(s, kind),
+    usingLocal: (kind === 'music' ? s.music : s.voice).provider === 'local',
+    defaultModel: kind === 'music' ? DEFAULT_MUSIC_MODEL : DEFAULT_MODEL,
     hardware: hw,
     minimum: { ...meetsMinimum(hw), spec: MIN_SPEC },
     budgetSeconds: BUDGET_SECONDS,
     recommended: rec?.id || null,
     // 这个平台上没有的版本（比如 Mac 上的 PyTorch 版）不列出来
-    models: MODELS.filter(m => m[hw.backend]).map(m => {
+    models: list.filter(m => m[hw.backend]).map(m => {
       const b = m[hw.backend]
       const f = fit(m, hw)
       const inst = installed[m.id]
       const g = grade(m, hw, inst)
       return {
         id: m.id, name: m.name, note: m.note, quality: m.quality, grade: g.grade, gradeReason: g.reason,
-        voices: m.voices, chosenVoices: voicesFor(m.id, s),
+        voices: m.voices || null, chosenVoices: m.voices ? voicesFor(m.id, s) : null,
         downloadGB: b ? Math.round((b.sizeGB + envGB(m, hw)) * 10) / 10 : null,
         ok: f.ok, reason: f.reason,
         installed: inst ? { rtf: inst.rtf, load: inst.load, oneMinute: Math.round(predictSeconds(inst, 60)), maxMinutes: Math.max(0, Math.floor(((BUDGET_SECONDS - (inst.load || 0)) / (inst.rtf * 1.15)) / 60 * 10) / 10) } : null,
       }
     }),
-    setup: setupState(),
+    // 下载是配音、配乐共用的一条队伍：只显示这一类的进度
+    setup: kindOf(byId(state.model)) === kind ? setupState() : { ...setupState(), running: false, model: null, error: null, busyOther: state.running },
   }
 }
 
@@ -468,13 +542,14 @@ const IDLE_MS = 10 * 60_000
 /** 拿到（必要时启动）一个模型的常驻进程 */
 export function worker(modelId) {
   const hw = hardware()
-  const model = MODELS.find(m => m.id === modelId)
+  const model = byId(modelId)
   const b = model?.[hw.backend]
-  if (!b) throw new Error(`离线配音模型不可用：${modelId}`)
+  if (!b) throw new Error(`离线模型不可用：${modelId}`)
   const cur = workers.get(modelId)
   if (cur) return cur.ready
-  const child = spawn(envPython(hw.backend), [workerScript(), b.worker], {
-    env: pyEnv(hw.backend), windowsHide: true,
+  const key = envKey(model, hw)
+  const child = spawn(envPython(key), [workerScript(), b.worker], {
+    env: pyEnv(key), windowsHide: true,
   })
   const pending = new Map()
   let seq = 0
@@ -524,7 +599,7 @@ export function worker(modelId) {
     child.on('close', code => {
       workers.delete(modelId)
       clearTimeout(idle)
-      const e = new Error(`离线配音没能启动：${err.trim().split('\n').pop().slice(0, 160)}`)
+      const e = new Error(`${kindOf(model) === 'music' ? '离线配乐' : '离线配音'}没能启动：${err.trim().split('\n').pop().slice(0, 160)}`)
       reject(e)
       for (const p of pending.values()) p.fail(e)
       pending.clear()
