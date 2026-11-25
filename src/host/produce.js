@@ -16,7 +16,7 @@ import { speak } from './tts.js'
 import { callModel, extractFiles } from './llm.js'
 import { fill, parseRenderCommand, renderCommand, renderPage, startSite } from './render.js'
 import { ensureFonts, findPython, fontsDir, mediaSeconds, run, runtimeStatus } from './runtime.js'
-import { chooseModel, estimateSeconds, hardware, meetsMinimum } from './localvoice.js'
+import { MODELS, activeModel, chooseModel, estimateSeconds, hardware, meetsMinimum } from './localvoice.js'
 import { assembleFilm, buildTimeline } from './assemble.js'
 
 export const ASPECTS = { '16:9': { width: 1920, height: 1080 }, '9:16': { width: 1080, height: 1920 } }
@@ -250,8 +250,8 @@ async function run_(id, ctl) {
 }
 
 /**
- * 本机配音：按这部片子的口播长度，在装好的模型里挑一个 3 分钟内能配完的（越好越优先）。
- * 都来不及、或者还没装好时，这部片子先用系统语音，原因写在 job.voiceNote 里给卡片显示。
+ * 本机配音：先用用户选的模型；这部片子 3 分钟内配不完，就换装好的里面来得及的（越好越优先），原因写进 job.voiceNote。
+ * 都来不及、或者还没装好时，这部片子先用系统语音。
  */
 async function pickVoice(settings, work, id) {
   const v = settings.voice
@@ -259,19 +259,25 @@ async function pickVoice(settings, work, id) {
   // 配置低于门槛（比如内存不够了、磁盘满了）：不用本机模型
   const min = meetsMinimum(hardware())
   if (!min.ok) {
-    await setJob(id, { voiceModel: null, voiceNote: `这台电脑配置偏低（${min.reason}），这次用系统自带语音` })
+    await setJob(id, { voiceModel: null, voiceNote: `这台电脑配置偏低（${min.reason}），这次用系统自带语音`, voiceNoteCode: 'low-spec' })
     return { ...v, provider: 'system' }
   }
   const sec = estimateSeconds(work.plan.scenes.map(narrationText))
-  const choice = chooseModel(settings.local.models, sec)
+  const preferred = activeModel(settings)
+  const choice = chooseModel(settings.local.models, sec, preferred)
   if (choice) {
-    await setJob(id, { voiceModel: choice.id, voiceNote: null })
+    const name = mid => MODELS.find(m => m.id === mid)?.name || mid
+    const note = choice.degraded
+      ? `${name(preferred)} 配这部片子（约 ${Math.round(sec)} 秒口播）预计要超过 3 分钟，这次换成更快的 ${name(choice.id)}`
+      : null
+    await setJob(id, { voiceModel: choice.id, voiceNote: note, voiceNoteCode: note ? 'degraded' : null })
     return { ...v, localModel: choice.id }
   }
-  const note = Object.keys(settings.local.models).length
-    ? `本机配音模型配这部片子（约 ${Math.round(sec)} 秒口播）预计要超过 3 分钟，这次先用系统语音`
-    : '还没有装好本机配音模型，这次先用系统语音'
-  await setJob(id, { voiceModel: null, voiceNote: note })
+  const installed = Object.keys(settings.local.models).length > 0
+  const note = installed
+    ? `离线配音配这部片子（约 ${Math.round(sec)} 秒口播）预计要超过 3 分钟，这次先用系统语音`
+    : '还没有下载离线配音，这次先用系统语音'
+  await setJob(id, { voiceModel: null, voiceNote: note, voiceNoteCode: installed ? 'too-slow' : 'not-installed' })
   return { ...v, provider: 'system' }
 }
 

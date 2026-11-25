@@ -100,7 +100,7 @@ export function SetupCard(props) {
   return <Shell title="准备好就能开拍"><div className="lv-card-body"><Doctor /></div></Shell>
 }
 
-export function Doctor() {
+export function Doctor({ onVoiceChange } = {}) {
   const [st, , reload] = useLive('state', () => false)
   const [busy, setBusy] = React.useState(null)
   const [err, setErr] = React.useState(null)
@@ -141,12 +141,73 @@ export function Doctor() {
         desc={st.login.account ? `已登录 ${st.login.account.email || ''} · 平台风格可用` : pending ? '已在浏览器打开 lovideo.ai，核对下面的代码后点「允许」' : '登录后可以用平台上的 100 多种风格，注册即免费'}
         extra={pending ? <div className="lv-code" style={{ marginTop: 8 }}>{pending.userCode}</div> : st.login.error ? <div className="lv-err">{st.login.error}</div> : null}
         action={st.login.account ? null : pending ? <LinkButton size="sm" href={loginUrl(pending.url)}>重新打开</LinkButton> : <Button size="sm" kind={env.ready ? 'pri' : ''} busy={busy === 'login'} onClick={() => act('login', login)}>登录</Button>} />
-      <Row ok title="配音"
-        desc={st.settings.voice.provider === 'local' ? '本机模型（按口播长度自动挑 3 分钟内能配完的）' : st.settings.voice.provider === 'system' ? '系统自带语音（可以在设置里换成本机模型，更有语气）' : st.settings.voice.provider === 'none' ? '不配音，只出字幕' : `${st.settings.voice.provider}${st.settings.voice.hasKey ? '' : '（还没填 key）'}`}
-        action={<Button size="sm" kind="ghost" onClick={() => openManager('settings')}>设置</Button>} />
+      <VoiceRow voice={st.settings.voice} onChange={() => { reload(); onVoiceChange?.() }} />
       {err ? <div className="lv-err">{err}</div> : null}
     </div>
   )
+}
+
+/**
+ * 配音这一行。没装离线配音时给一个轻量提示，点一下就下载默认的 Kokoro（最小、哪台电脑都能跑），装好自动用上；
+ * 换别的模型、换声音去设置页。
+ */
+function VoiceRow({ voice, onChange }) {
+  const lv = useLocalVoice(['system', 'local'].includes(voice.provider), onChange)
+  const settings = <Button size="sm" kind="ghost" onClick={() => openManager('settings')}>设置</Button>
+  const p = voice.provider
+  if (!['system', 'local'].includes(p) || !lv.st) {
+    const desc = p === 'none' ? '不配音，只出字幕' : p === 'system' ? '系统自带语音' : p === 'local' ? '离线配音' : `${p}${voice.hasKey ? '' : '（还没填 key）'}`
+    return <Row ok title="配音" desc={desc} action={settings} />
+  }
+  const st = lv.st
+  const active = st.models.find(m => m.id === st.active)
+  if (p === 'local' && active) {
+    const names = Object.fromEntries((active.voices.zh || []).concat(active.voices.en || []))
+    const voices = [active.chosenVoices.zh, active.chosenVoices.en].filter(id => id && names[id] && Object.keys(names).length > 2).map(id => names[id].split(' · ').pop())
+    return <Row ok title="配音" desc={`离线配音 · ${active.name}${voices.length ? ` · ${voices.join(' / ')}` : ''}`} action={settings} />
+  }
+  if (!st.minimum.ok) return <Row ok title="配音" desc="系统自带语音（这台电脑配置偏低，离线配音跑不动）" action={settings} />
+  if (st.models.some(m => m.installed)) return <Row ok title="配音" desc="系统自带语音 · 已下载离线配音，可以在设置里换过去" action={settings} />
+  return (
+    <Row ok title="配音"
+      desc={lv.running ? `正在下载离线配音（${lv.def.name}）：${lv.progress}` : `系统自带语音 · 下载离线配音会更自然（${lv.def.name}，约 ${lv.def.downloadGB}GB，不用联网生成）`}
+      extra={lv.running && st.setup.step === 'model' ? <div style={{ marginTop: 6 }}><Bar value={st.setup.progress} /></div> : lv.error ? <div className="lv-err">{lv.error}</div> : null}
+      action={<div className="lv-row" style={{ gap: 6 }}>{lv.running ? null : <Button size="sm" busy={lv.busy} onClick={lv.download}>下载</Button>}{settings}</div>} />
+  )
+}
+
+/** 离线配音的状态和一键下载默认模型（会话里的提示用） */
+function useLocalVoice(enabled = true, onDone) {
+  const [st, , reload] = useLive(enabled ? 'local-voice' : null, () => false)
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState(null)
+  const running = Boolean(st?.setup?.running)
+  const wasRunning = React.useRef(false)
+  React.useEffect(() => {
+    // 装完时配音会自动切到离线配音，通知外面刷新
+    if (wasRunning.current && !running) onDone?.()
+    wasRunning.current = running
+    if (!running) return undefined
+    const t = setInterval(reload, 1000)
+    return () => clearInterval(t)
+  }, [running, reload])
+  const def = st?.models.find(m => m.id === st.defaultModel)
+  const download = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await api('local-voice/setup', { model: st.defaultModel })
+      reload()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const step = { uv: '准备下载工具', packages: '安装运行环境', model: '下载模型', test: '测速' }[st?.setup?.step]
+  const progress = running ? `${step || '准备中'}${st.setup.step === 'model' ? ` ${Math.round((st.setup.progress || 0) * 100)}%` : ''}` : ''
+  const failed = error || (!running && !busy && st?.setup?.model === st?.defaultModel ? st?.setup?.error : null) || null
+  return { st, def, running, busy, error: failed, download, progress }
 }
 
 function Row({ ok, title, desc, action, extra }) {
@@ -231,12 +292,13 @@ export function PlanCard(props) {
       right={<span className="lv-subtle lv-mono">{w.plan.scenes.length} 镜 · 约 {secs} 秒 · {w.aspect}</span>}
       foot={latest ? (
         <>
-          <span className="lv-grow lv-subtle lv-truncate">风格「{w.style?.name}」 · {w.voice?.enabled === false ? '不配音' : '配音'} · 在这台电脑上制作，约 {Math.max(2, Math.round(w.plan.scenes.length * 1.2))} 分钟</span>
+          {err
+            ? <span className="lv-grow lv-err">{err}</span>
+            : <span className="lv-grow lv-subtle lv-truncate">风格「{w.style?.name}」 · {w.voice?.enabled === false ? '不配音' : '配音'} · 在这台电脑上制作，约 {Math.max(2, Math.round(w.plan.scenes.length * 1.2))} 分钟</span>}
           {started ? null : <Button kind="pri" busy={busy} onClick={confirm}>确认开拍</Button>}
         </>
       ) : <span className="lv-subtle">已经有新版本（v{w.plan.revision}），看下面最新的分镜卡</span>}
     >
-      {err ? <div className="lv-card-body lv-err" style={{ paddingBottom: 0 }}>{err}</div> : null}
       {latest && started ? (
         <div className="lv-card-body" style={{ borderBottom: '1px solid var(--dsw-alias-border-l2)' }}>
           <WorkBody w={w} />
@@ -330,7 +392,7 @@ export function WorkBody({ w }) {
           })}
         </div>
       ) : null}
-      {job.voiceNote ? <div className="lv-subtle">{job.voiceNote}</div> : null}
+      {job.voiceNote ? <div className="lv-subtle">{job.voiceNote}{job.voiceNoteCode === 'not-installed' ? <> · <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>下载离线配音</a></> : null}</div> : null}
       {job.error ? <div className="lv-err">{job.error}</div> : null}
       {w.status === 'producing' ? <div className="lv-subtle">做好一段显示一段。关掉 DeepSeek Harness 会自动暂停，下次打开接着做。</div> : null}
     </div>

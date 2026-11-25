@@ -22,26 +22,49 @@ export const BUDGET_SECONDS = 180
  * 可选的模型，quality 越大越好。mlx / torch 两种后端各自的下载、配置要求。
  * 实测（M4 Pro）：Qwen3 1.7B 约 0.55×实时、峰值 10GB；Ming 0.5B 约 0.32×、4.3GB；Kokoro 约 0.05×、3GB。
  */
+const QWEN_VOICES = {
+  zh: [['Vivian', '女声 · 薇薇安'], ['Serena', '女声 · 塞丽娜'], ['Uncle_Fu', '男声 · 福叔'], ['Dylan', '男声 · 北京口音'], ['Eric', '男声 · 四川口音']],
+  en: [['Ryan', '男声 · Ryan'], ['Aiden', '男声 · Aiden'], ['Vivian', '女声 · Vivian'], ['Serena', '女声 · Serena']],
+}
+
+/**
+ * 可选的模型，quality 越大越好。mlx / torch 两种后端各自的下载、配置要求：
+ * min* 是跑得起来的最低配置，comfy* 是跑得流畅的配置（低于它标「吃力」）。
+ * voices 是能选的声音，第一个是默认。
+ * 实测（M4 Pro）：Qwen3 1.7B 约 0.48×实时；Ming 0.5B 约 0.32×；Kokoro 约 0.12×（短句）。
+ */
 export const MODELS = [
   {
     id: 'qwen3-1.7b', name: 'Qwen3-TTS 1.7B', quality: 3, note: '语气最有起伏，能按描述换语气',
-    mlx: { worker: 'mlx-qwen3-1.7b', repos: ['mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit'], sizeGB: 3.1, minRamGB: 16 },
-    torch: { worker: 'torch-qwen3-1.7b', repos: ['Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice'], sizeGB: 4.5, minVramGB: 8, gpuOnly: true },
+    mlx: { worker: 'mlx-qwen3-1.7b', repos: ['mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit'], sizeGB: 3.1, minRamGB: 16, comfyRamGB: 24 },
+    torch: { worker: 'torch-qwen3-1.7b', repos: ['Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice'], sizeGB: 4.5, minVramGB: 8, comfyVramGB: 12, gpuOnly: true },
+    voices: QWEN_VOICES,
   },
   {
     id: 'ming3-0.5b', name: 'Ming-3.0-tts 0.5B', quality: 2, note: '有情感控制里最快最省',
-    mlx: { worker: 'mlx-ming3-0.5b', repos: ['mlx-community/Ming-3.0-tts-0.5B-bf16'], sizeGB: 3.0, minRamGB: 16 },
+    mlx: { worker: 'mlx-ming3-0.5b', repos: ['mlx-community/Ming-3.0-tts-0.5B-bf16'], sizeGB: 3.0, minRamGB: 16, comfyRamGB: 16 },
+    voices: { zh: [['narrator', '按语气描述生成的旁白声']], en: [['narrator', '按语气描述生成的旁白声']] },
   },
   {
     id: 'qwen3-0.6b', name: 'Qwen3-TTS 0.6B', quality: 2, note: '比 1.7B 省一半显存，不能换语气',
-    torch: { worker: 'torch-qwen3-0.6b', repos: ['Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice'], sizeGB: 2.5, minVramGB: 4, gpuOnly: true },
+    torch: { worker: 'torch-qwen3-0.6b', repos: ['Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice'], sizeGB: 2.5, minVramGB: 4, comfyVramGB: 6, gpuOnly: true },
+    voices: QWEN_VOICES,
   },
   {
     id: 'kokoro', name: 'Kokoro 82M', quality: 1, note: '最快最省，没显卡也能跑，没有语气控制',
-    mlx: { worker: 'mlx-kokoro', repos: ['mlx-community/Kokoro-82M-bf16'], sizeGB: 0.4, minRamGB: 8 },
-    torch: { worker: 'torch-kokoro', repos: ['hexgrad/Kokoro-82M'], sizeGB: 0.4, minRamGB: 8 },
+    mlx: { worker: 'mlx-kokoro', repos: ['mlx-community/Kokoro-82M-bf16'], sizeGB: 0.4, minRamGB: 8, comfyRamGB: 8 },
+    torch: { worker: 'torch-kokoro', repos: ['hexgrad/Kokoro-82M'], sizeGB: 0.4, minRamGB: 8, comfyRamGB: 8, comfyCores: 8 },
+    // 中文默认「云健」：试听里起伏最大、最不像念稿
+    voices: {
+      zh: [['zm_yunjian', '男声 · 云健'], ['zm_yunxi', '男声 · 云希'], ['zm_yunyang', '男声 · 云扬'], ['zm_yunxia', '男声 · 云夏'],
+        ['zf_xiaobei', '女声 · 晓北'], ['zf_xiaoxiao', '女声 · 晓晓'], ['zf_xiaoni', '女声 · 晓妮'], ['zf_xiaoyi', '女声 · 晓伊']],
+      en: [['af_heart', '女声 · Heart'], ['af_bella', '女声 · Bella'], ['am_michael', '男声 · Michael'], ['bm_george', '男声 · George（英音）']],
+    },
   },
 ]
+
+/** 会话里一键下载的默认模型：最小、最快、哪台电脑都能跑 */
+export const DEFAULT_MODEL = 'kokoro'
 
 // Python 环境要装的包（大约的磁盘占用写在 envGB 里）
 const PACKAGES = {
@@ -117,9 +140,55 @@ function envGB(model, hw) {
   return PACKAGES.torch.envGB + (model.id.startsWith('qwen3') ? PACKAGES['torch-qwen'].envGB : 0)
 }
 
-/** 推荐：这台电脑能跑的里面最好的一个 */
-export function recommend(hw = hardware()) {
-  return MODELS.filter(m => fit(m, hw).ok).sort((a, b) => b.quality - a.quality)[0] || null
+/**
+ * 这个模型在这台电脑上跑得怎么样：unable 跑不动 / heavy 吃力 / ok 流畅，附一句原因。
+ * 测过速的再看实测：3 分钟口播 3 分钟内配不完也算吃力。
+ */
+export function grade(model, hw = hardware(), installed = null) {
+  const f = fit(model, hw)
+  if (!f.ok) return { grade: 'unable', reason: f.reason }
+  const b = model[hw.backend]
+  const why = []
+  if (b.comfyRamGB && hw.ramGB < b.comfyRamGB) why.push(`内存 ${hw.ramGB}GB，${b.comfyRamGB}GB 以上更流畅`)
+  if (b.comfyVramGB && hw.gpu && hw.gpu.vramGB < b.comfyVramGB) why.push(`显存 ${hw.gpu.vramGB}GB，${b.comfyVramGB}GB 以上更流畅`)
+  if (b.comfyCores && !hw.gpu && hw.cores !== undefined && hw.cores < b.comfyCores) why.push(`没有显卡、CPU ${hw.cores} 核，生成会慢一些`)
+  if (installed && predictSeconds(installed, BUDGET_SECONDS) > BUDGET_SECONDS) why.push('实测配 3 分钟口播要超过 3 分钟')
+  return why.length ? { grade: 'heavy', reason: why.join('；') } : { grade: 'ok', reason: null }
+}
+
+/** 推荐：这台电脑上跑得流畅的里面最好的一个；都吃力就推荐吃力里最好的 */
+export function recommend(hw = hardware(), installedMap = {}) {
+  const runnable = MODELS.map(m => ({ m, g: grade(m, hw, installedMap[m.id]).grade })).filter(x => x.g !== 'unable')
+  const best = list => list.sort((a, b) => b.m.quality - a.m.quality)[0]?.m || null
+  return best(runnable.filter(x => x.g === 'ok')) || best(runnable)
+}
+
+/** 某个模型用户选的声音（没选过就用默认），{ zh, en } */
+export function voicesFor(modelId, s = readSettings()) {
+  const m = MODELS.find(x => x.id === modelId)
+  const chosen = s.local?.voices?.[modelId] || {}
+  const pick = lang => {
+    const list = m?.voices?.[lang] || []
+    return list.some(([id]) => id === chosen[lang]) ? chosen[lang] : list[0]?.[0]
+  }
+  return { zh: pick('zh'), en: pick('en') }
+}
+
+/** 正在用的离线模型：用户选的那个；没选过就是装好的里面最好的一个 */
+export function activeModel(s = readSettings()) {
+  const installed = s.local?.models || {}
+  if (s.local?.active && installed[s.local.active]) return s.local.active
+  return MODELS.filter(m => installed[m.id]).sort((a, b) => b.quality - a.quality)[0]?.id || null
+}
+
+/** 用户选定用哪个离线模型、哪个声音；同时把配音切到本机模型 */
+export function useModel(modelId, voices = {}) {
+  const s = readSettings()
+  if (!s.local?.models?.[modelId]) throw Object.assign(new Error('这个模型还没下载'), { status: 409 })
+  s.local = { ...s.local, active: modelId, voices: { ...(s.local.voices || {}), [modelId]: { ...voicesFor(modelId, s), ...voices } } }
+  s.voice = { ...s.voice, provider: 'local' }
+  writeSettings(s)
+  return localVoiceStatus()
 }
 
 /* ---------- 按口播长度挑模型 ---------- */
@@ -140,14 +209,18 @@ export function estimateSeconds(texts) {
 export const predictSeconds = (installed, narrationSec) => (installed.load || 0) + narrationSec * installed.rtf * 1.15
 
 /**
- * 在已经装好的模型里，按质量从高到低挑第一个 3 分钟内能配完的。
- * @returns {{ id, predicted } | null} 都来不及时返回 null（开拍时退回系统语音）
+ * 挑这部片子用哪个模型：先看用户选的那个，3 分钟内配得完就用它；配不完再在装好的里面按质量从高到低找。
+ * @returns {{ id, predicted, degraded } | null} degraded 表示没用上用户选的；都来不及返回 null（退回系统语音）
  */
-export function chooseModel(installedMap, narrationSec, models = MODELS) {
-  const ranked = models.filter(m => installedMap[m.id]).sort((a, b) => b.quality - a.quality)
+export function chooseModel(installedMap, narrationSec, preferred = null, models = MODELS) {
+  if (preferred && installedMap[preferred]) {
+    const predicted = predictSeconds(installedMap[preferred], narrationSec)
+    if (predicted <= BUDGET_SECONDS) return { id: preferred, predicted, degraded: false }
+  }
+  const ranked = models.filter(m => installedMap[m.id] && m.id !== preferred).sort((a, b) => b.quality - a.quality)
   for (const m of ranked) {
     const predicted = predictSeconds(installedMap[m.id], narrationSec)
-    if (predicted <= BUDGET_SECONDS) return { id: m.id, predicted }
+    if (predicted <= BUDGET_SECONDS) return { id: m.id, predicted, degraded: Boolean(preferred && installedMap[preferred]) }
   }
   return null
 }
@@ -218,7 +291,7 @@ async function ensureUv() {
   const found = onPath.status === 0 && onPath.stdout.split(/\r?\n/).find(Boolean)
   if (found) return found.trim()  // 用户自己装的 uv：pyEnv 里的 PATH 会带上当前 PATH，能找到它
   const asset = UV_ASSET[`${process.platform}-${process.arch}`]
-  if (!asset) throw new Error(`这台电脑（${process.platform}-${process.arch}）装不了本机配音`)
+  if (!asset) throw new Error(`这台电脑（${process.platform}-${process.arch}）装不了离线配音`)
   const tmp = ensureDir(join(ttsDir(), 'tmp'))
   const file = join(tmp, asset)
   const res = await fetch(`https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${asset}`, { redirect: 'follow' })
@@ -329,6 +402,11 @@ export function startSetup(modelId) {
       const r = await benchmark(modelId)
       const s = readSettings()
       s.local = { ...(s.local || {}), models: { ...(s.local?.models || {}), [modelId]: { rtf: r.rtf, load: r.load, backend: hw.backend, at: new Date().toISOString() } } }
+      // 还没选过离线模型（第一次装、或从会话里一键下载）：装好就用上
+      if (!s.local.active || !s.local.models[s.local.active]) {
+        s.local.active = modelId
+        s.voice = { ...s.voice, provider: 'local' }
+      }
       writeSettings(s)
       state = { running: false, model: modelId, step: 'done', progress: 1, error: null }
     } catch (e) {
@@ -341,19 +419,26 @@ export function startSetup(modelId) {
 /** 设置页要的全部信息 */
 export function localVoiceStatus() {
   const hw = hardware()
-  const installed = readSettings().local?.models || {}
-  const rec = recommend(hw)
+  const s = readSettings()
+  const installed = s.local?.models || {}
+  const rec = recommend(hw, installed)
   return {
+    active: activeModel(s),
+    usingLocal: s.voice.provider === 'local',
+    defaultModel: DEFAULT_MODEL,
     hardware: hw,
     minimum: { ...meetsMinimum(hw), spec: MIN_SPEC },
     budgetSeconds: BUDGET_SECONDS,
     recommended: rec?.id || null,
-    models: MODELS.map(m => {
+    // 这个平台上没有的版本（比如 Mac 上的 PyTorch 版）不列出来
+    models: MODELS.filter(m => m[hw.backend]).map(m => {
       const b = m[hw.backend]
       const f = fit(m, hw)
       const inst = installed[m.id]
+      const g = grade(m, hw, inst)
       return {
-        id: m.id, name: m.name, note: m.note, quality: m.quality,
+        id: m.id, name: m.name, note: m.note, quality: m.quality, grade: g.grade, gradeReason: g.reason,
+        voices: m.voices, chosenVoices: voicesFor(m.id, s),
         downloadGB: b ? Math.round((b.sizeGB + envGB(m, hw)) * 10) / 10 : null,
         ok: f.ok, reason: f.reason,
         installed: inst ? { rtf: inst.rtf, load: inst.load, oneMinute: Math.round(predictSeconds(inst, 60)), maxMinutes: Math.max(0, Math.floor(((BUDGET_SECONDS - (inst.load || 0)) / (inst.rtf * 1.15)) / 60 * 10) / 10) } : null,
@@ -373,7 +458,7 @@ export function worker(modelId) {
   const hw = hardware()
   const model = MODELS.find(m => m.id === modelId)
   const b = model?.[hw.backend]
-  if (!b) throw new Error(`本机配音模型不可用：${modelId}`)
+  if (!b) throw new Error(`离线配音模型不可用：${modelId}`)
   const cur = workers.get(modelId)
   if (cur) return cur.ready
   const child = spawn(envPython(hw.backend), [join(PLUGIN_ROOT, 'vendor', 'tts', 'worker.py'), b.worker], {
@@ -427,7 +512,7 @@ export function worker(modelId) {
     child.on('close', code => {
       workers.delete(modelId)
       clearTimeout(idle)
-      const e = new Error(`本机配音进程退出（${code}）：${err.trim().split('\n').slice(-2).join(' ').slice(0, 300)}`)
+      const e = new Error(`离线配音进程退出（${code}）：${err.trim().split('\n').slice(-2).join(' ').slice(0, 300)}`)
       reject(e)
       for (const p of pending.values()) p.fail(e)
       pending.clear()
@@ -456,6 +541,6 @@ export function stopAll() {
 export async function speakLocal(modelId, { text, lang, out, instruct }) {
   ensureDir(join(out, '..'))
   const w = await worker(modelId)
-  return w.speak({ text, lang, out, instruct })
+  return w.speak({ text, lang, out, instruct, voice: voicesFor(modelId)[lang] })
 }
 

@@ -307,7 +307,7 @@ function MinePanel({ s, onClose, reload }) {
 
 /* ---------- 设置 ---------- */
 
-const VOICES = [['local', '本机模型'], ['system', '系统自带语音'], ['doubao', '豆包语音'], ['openai', 'OpenAI 兼容'], ['elevenlabs', 'ElevenLabs'], ['none', '不配音']]
+const VOICES = [['local', '离线配音'], ['system', '系统自带语音'], ['doubao', '豆包语音'], ['openai', 'OpenAI 兼容'], ['elevenlabs', 'ElevenLabs'], ['none', '不配音']]
 const VOICE_HINT = {
   local: { url: null, voice: null, model: null },
   system: { url: null, voice: '留空自动选（中文用系统的中文声音）', model: null },
@@ -325,6 +325,7 @@ function Settings() {
   const [busy, setBusy] = React.useState(null)
   const [askLogout, setAskLogout] = React.useState(false)
   const [loggingOut, setLoggingOut] = React.useState(false)
+  const [voiceRev, setVoiceRev] = React.useState(0)
   const logout = async () => {
     setLoggingOut(true)
     try {
@@ -340,6 +341,13 @@ function Settings() {
     if (st && !form) setForm({ voice: { ...st.settings.voice, key: '' }, exportDir: st.settings.exportDir, parallel: st.settings.parallel, model: st.settings.model })
   }, [st, form])
   if (!st || !form) return <div className="lv-subtle lv-shimmer">读取中…</div>
+  // 离线配音装好、换了模型时，配音会在后台切过去：重新读一次，免得表单还停在旧的服务商上
+  const syncVoice = async () => {
+    const next = await api('state')
+    setSt(next)
+    setForm(f => ({ ...f, voice: { ...next.settings.voice, key: '' } }))
+    setVoiceRev(n => n + 1)
+  }
   const v = form.voice
   const hint = VOICE_HINT[v.provider]
   const save = async patch => {
@@ -381,7 +389,7 @@ function Settings() {
 
       <div className="lv-section">
         <h3>这台电脑</h3>
-        <div style={{ padding: '8px 0 12px' }}><Doctor /></div>
+        <div style={{ padding: '8px 0 12px' }}><Doctor key={voiceRev} onVoiceChange={syncVoice} /></div>
       </div>
 
       <div className="lv-section">
@@ -397,10 +405,10 @@ function Settings() {
 
       <div className="lv-section">
         <h3>配音</h3>
-        <div className="lv-subtle">推荐「本机模型」：在这台电脑上离线生成、带语气，不用 key。也可以填你自己的配音服务 key；不想要口播就选「不配音」，只出字幕。</div>
+        <div className="lv-subtle">推荐「离线配音」：在这台电脑上生成，不联网、不用 key。也可以填你自己的配音服务 key；不想要口播就选「不配音」，只出字幕。</div>
         <div className="lv-srow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
           <div className="lv-chips">{VOICES.map(([k, l]) => <button key={k} type="button" className={v.provider === k ? 'on' : ''} onClick={() => setForm(f => ({ ...f, voice: { ...f.voice, provider: k } }))}>{l}</button>)}</div>
-          {v.provider === 'local' ? <LocalVoicePanel /> : null}
+          {v.provider === 'local' ? <LocalVoicePanel onChange={syncVoice} /> : null}
           {hint.url ? <div className="lv-field"><label>接口地址（留空用默认）</label><input className="lv-input lv-mono" placeholder={hint.url} value={v.url || ''} onChange={e => setForm(f => ({ ...f, voice: { ...f.voice, url: e.target.value } }))} /></div> : null}
           <div style={{ display: 'grid', gridTemplateColumns: hint.model ? '1fr 1fr' : '1fr', gap: 10 }}>
             {hint.voice ? <div className="lv-field"><label>音色</label><input className="lv-input" placeholder={hint.voice} value={v.voice || ''} onChange={e => setForm(f => ({ ...f, voice: { ...f.voice, voice: e.target.value } }))} /></div> : null}
@@ -449,15 +457,19 @@ function Settings() {
 const LOCAL_STEP = { uv: '准备下载工具', packages: '安装运行环境', model: '下载模型', test: '测速' }
 
 /**
- * 本机配音：显示这台电脑的配置、能跑哪些模型；下载并测速；装好的显示配 1 分钟口播要多久。
- * 开拍时按口播长度自动挑一个 3 分钟内能配完的，都来不及就用系统语音。
+ * 本机配音：显示这台电脑的配置，每个模型按配置标推荐 / 流畅 / 吃力 / 跑不动；
+ * 用户自己选下载哪个、用哪个、用哪个声音。开拍时先用选的那个，3 分钟内配不完才换更快的。
  */
-function LocalVoicePanel() {
+function LocalVoicePanel({ onChange }) {
   const [st, err, reload] = useLive('local-voice', () => false)
   const [busy, setBusy] = React.useState(null)
   const [fail, setFail] = React.useState(null)
+  const [preview, setPreview] = React.useState(null)
   const running = st?.setup?.running
+  const wasRunning = React.useRef(false)
   React.useEffect(() => {
+    if (wasRunning.current && !running) onChange?.()
+    wasRunning.current = running
     if (!running) return undefined
     const t = setInterval(reload, 1000)
     return () => clearInterval(t)
@@ -465,11 +477,12 @@ function LocalVoicePanel() {
   if (err) return <div className="lv-err">{err.message}</div>
   if (!st) return <div className="lv-subtle lv-shimmer">正在看这台电脑的配置…</div>
   const hw = st.hardware
-  const setup = async id => {
-    setBusy(id)
+  const act = async (key, path, body, after) => {
+    setBusy(key)
     setFail(null)
     try {
-      await api('local-voice/setup', { model: id })
+      const r = await api(path, body)
+      after?.(r)
       reload()
     } catch (e) {
       setFail(e.message)
@@ -477,13 +490,15 @@ function LocalVoicePanel() {
       setBusy(null)
     }
   }
+  const listen = (m, lang) => act(`pv-${m.id}-${lang}`, 'local-voice/preview', { model: m.id, lang, voice: m.chosenVoices[lang] },
+    r => setPreview({ key: `${m.id}-${lang}-${Date.now()}`, url: fileUrl(r.url) }))
   const s = st.setup
   // 配置低于门槛：直接说明用系统语音，不列模型、不给下载
   if (!st.minimum.ok) {
     return (
       <div className="lv-local">
         <div className="lv-banner" style={{ marginBottom: 0 }}>
-          <span className="lv-grow">这台电脑配置偏低（{st.minimum.reason}），本机模型跑不动，配音用系统自带语音。本机模型最低要 {st.minimum.spec.ramGB}GB 内存、{st.minimum.spec.cores} 核 CPU、{st.minimum.spec.freeDiskGB}GB 磁盘剩余。</span>
+          <span className="lv-grow">这台电脑配置偏低（{st.minimum.reason}），离线配音跑不动，配音用系统自带语音。离线配音最低要 {st.minimum.spec.ramGB}GB 内存、{st.minimum.spec.cores} 核 CPU、{st.minimum.spec.freeDiskGB}GB 磁盘剩余。</span>
         </div>
       </div>
     )
@@ -492,18 +507,20 @@ function LocalVoicePanel() {
     <div className="lv-local">
       <div className="lv-subtle">
         这台电脑：{hw.chip || hw.platform} · {hw.ramGB}GB 内存{hw.gpu ? ` · ${hw.gpu.name} ${hw.gpu.vramGB}GB 显存` : ''}{hw.freeDiskGB !== null ? ` · 磁盘剩余 ${hw.freeDiskGB}GB` : ''}。
-        每部片子开拍前，按口播长度挑一个 {Math.round(st.budgetSeconds / 60)} 分钟内能配完的模型，越好越优先；都来不及就先用系统语音。
+        下面按这台电脑的配置标了推荐、吃力、跑不动，装哪个、用哪个你自己定。用的那个配一部片子要超过 {Math.round(st.budgetSeconds / 60)} 分钟时，这部片子会换成更快的模型，都来不及就用系统语音。
       </div>
       <div className="lv-local-list">
         {st.models.map(m => {
           const doing = running && s.model === m.id
+          const using = st.usingLocal && st.active === m.id
           return (
-            <div key={m.id} className={`lv-local-row ${m.ok ? '' : 'off'}`}>
+            <div key={m.id} className={`lv-local-row ${m.grade === 'unable' ? 'off' : ''}`}>
               <div className="l">
-                <b>{m.name}{st.recommended === m.id ? <span className="lv-badge info" style={{ marginLeft: 8 }}>推荐</span> : null}</b>
+                <b className="lv-row" style={{ gap: 8 }}>{m.name}<GradeBadge m={m} st={st} />{using ? <Badge tone="ok">使用中</Badge> : null}</b>
                 <span className="lv-subtle">{m.note}</span>
+                {m.gradeReason ? <span className="lv-subtle">{m.gradeReason}</span> : null}
                 {m.installed ? <span className="lv-subtle">已装好 · 配 1 分钟口播约 {m.installed.oneMinute} 秒 · {m.installed.maxMinutes >= 1 ? `最长能配约 ${m.installed.maxMinutes} 分钟` : '这台电脑上偏慢'}</span> : null}
-                {!m.ok ? <span className="lv-subtle">{m.reason}</span> : null}
+                {using ? <VoicePicker m={m} busy={busy} onPick={voices => act('voice', 'local-voice/use', { model: m.id, voices }, () => onChange?.())} onListen={lang => listen(m, lang)} /> : null}
                 {doing ? (
                   <div className="lv-col" style={{ marginTop: 6 }}>
                     <span className="lv-subtle">{LOCAL_STEP[s.step] || '准备中'}…{s.step === 'model' ? ` ${Math.round((s.progress || 0) * 100)}%` : ''}</span>
@@ -512,13 +529,43 @@ function LocalVoicePanel() {
                 ) : null}
                 {!running && s.model === m.id && s.error ? <span className="lv-err">{s.error}</span> : null}
               </div>
-              {m.ok && !m.installed ? <Button size="sm" kind={st.recommended === m.id ? 'pri' : ''} busy={busy === m.id || doing} disabled={running} onClick={() => setup(m.id)}>下载并测速（约 {m.downloadGB}GB）</Button> : null}
-              {m.ok && m.installed ? <Button size="sm" kind="ghost" busy={busy === m.id || doing} disabled={running} onClick={() => setup(m.id)}>重新测速</Button> : null}
+              <div className="lv-row" style={{ gap: 6, flexShrink: 0 }}>
+                {m.grade !== 'unable' && !m.installed ? <Button size="sm" kind={st.recommended === m.id ? 'pri' : ''} busy={busy === m.id || doing} disabled={running} onClick={() => act(m.id, 'local-voice/setup', { model: m.id })}>下载（约 {m.downloadGB}GB）</Button> : null}
+                {m.installed && !using ? <Button size="sm" kind="pri" busy={busy === `use-${m.id}`} disabled={running} onClick={() => act(`use-${m.id}`, 'local-voice/use', { model: m.id }, () => { onChange?.(); toast({ text: `配音换成 ${m.name}` }) })}>用这个</Button> : null}
+                {m.installed ? <Button size="sm" kind="ghost" busy={doing} disabled={running} onClick={() => act(m.id, 'local-voice/setup', { model: m.id })}>重新测速</Button> : null}
+              </div>
             </div>
           )
         })}
       </div>
+      {preview ? <audio key={preview.key} src={preview.url} controls autoPlay style={{ height: 30 }} /> : null}
       {fail ? <div className="lv-err">{fail}</div> : null}
+    </div>
+  )
+}
+
+/** 按这台电脑的配置给的评级：推荐（最合适的那个）/ 流畅 / 吃力 / 跑不动 */
+function GradeBadge({ m, st }) {
+  if (m.grade === 'unable') return <Badge tone="err">跑不动</Badge>
+  if (m.grade === 'heavy') return <Badge tone="warn">吃力</Badge>
+  return st.recommended === m.id ? <Badge tone="info">推荐</Badge> : <Badge tone="ok">流畅</Badge>
+}
+
+/** 正在用的模型：选中文、英文各用哪个声音，选完马上能试听 */
+function VoicePicker({ m, busy, onPick, onListen }) {
+  const langs = [['zh', '中文'], ['en', '英文']].filter(([l]) => (m.voices[l] || []).length > 1)
+  if (!langs.length) return null
+  return (
+    <div className="lv-row" style={{ gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
+      {langs.map(([l, label]) => (
+        <div key={l} className="lv-row" style={{ gap: 6 }}>
+          <span className="lv-subtle">{label}</span>
+          <select className="lv-select" style={{ width: "auto" }} value={m.chosenVoices[l]} disabled={busy === 'voice'} onChange={e => onPick({ [l]: e.target.value })}>
+            {m.voices[l].map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+          <Button size="sm" kind="ghost" busy={busy === `pv-${m.id}-${l}`} onClick={() => onListen(l)}>试听</Button>
+        </div>
+      ))}
     </div>
   )
 }

@@ -2,7 +2,8 @@
 # 由插件后端（src/host/localvoice.js）启动和管理，用户不直接运行。
 #
 #   python worker.py <模型 id>
-#   请求：{"id": 1, "text": "...", "lang": "zh"|"en", "out": "/path/x.wav", "instruct": "..."}
+#   请求：{"id": 1, "text": "...", "lang": "zh"|"en", "out": "/path/x.wav", "instruct": "...", "voice": "zm_yunjian"}
+#   voice 是用户在设置里选的声音，不给就用默认
 #   回复：{"id": 1, "ok": true, "seconds": 12.3, "gen": 4.5} 或 {"id": 1, "ok": false, "error": "..."}
 #   启动完成先回一行 {"ready": true, "load": 秒数}
 #
@@ -38,25 +39,25 @@ def join_audio(results):
 
 
 def load():
-    """返回 speak(text, lang, instruct) -> (音频, 采样率)"""
+    """返回 speak(text, lang, instruct, voice) -> (音频, 采样率)"""
     if MODEL.startswith("mlx-"):
         from mlx_audio.tts.utils import load_model
 
         if MODEL == "mlx-qwen3-1.7b":
             m = load_model("mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit")
-            return lambda text, lang, inst: join_audio(m.generate_custom_voice(
-                text=text, speaker="Vivian" if lang == "zh" else "Ryan",
+            return lambda text, lang, inst, voice: join_audio(m.generate_custom_voice(
+                text=text, speaker=voice or ("Vivian" if lang == "zh" else "Ryan"),
                 language="Chinese" if lang == "zh" else "English", instruct=inst or STYLE[lang]))
         if MODEL == "mlx-ming3-0.5b":
             from mlx_audio.tts.models.bailingmm.bailingmm import ming3_instruction
 
             m = load_model("mlx-community/Ming-3.0-tts-0.5B-bf16")
-            return lambda text, lang, inst: join_audio(m.generate(
+            return lambda text, lang, inst, voice: join_audio(m.generate(
                 text=text, instruct=ming3_instruction(style=inst or STYLE["zh"]), use_zero_spk_emb=True))
         if MODEL == "mlx-kokoro":
             m = load_model("mlx-community/Kokoro-82M-bf16")
-            return lambda text, lang, inst: join_audio(m.generate(
-                text=text, voice="zf_xiaobei" if lang == "zh" else "af_heart", lang_code="z" if lang == "zh" else "a"))
+            return lambda text, lang, inst, voice: join_audio(m.generate(
+                text=text, voice=voice or ("zm_yunjian" if lang == "zh" else "af_heart"), lang_code="z" if lang == "zh" else "a"))
 
     import torch
 
@@ -68,9 +69,9 @@ def load():
         m = Qwen3TTSModel.from_pretrained(repo, device_map=f"{device}:0" if device == "cuda" else device,
                                           dtype=torch.bfloat16 if device == "cuda" else torch.float32)
 
-        def speak_qwen(text, lang, inst):
+        def speak_qwen(text, lang, inst, voice):
             wavs, sr = m.generate_custom_voice(text=text, language="Chinese" if lang == "zh" else "English",
-                                               speaker="Vivian" if lang == "zh" else "Ryan",
+                                               speaker=voice or ("Vivian" if lang == "zh" else "Ryan"),
                                                instruct=(inst or STYLE[lang]) if MODEL.endswith("1.7b") else "")
             return np.asarray(wavs[0], dtype=np.float32), sr
 
@@ -80,12 +81,12 @@ def load():
 
         pipes = {}
 
-        def speak_kokoro(text, lang, inst):
+        def speak_kokoro(text, lang, inst, voice):
             code = "z" if lang == "zh" else "a"
             if code not in pipes:
                 pipes[code] = KPipeline(lang_code=code, repo_id="hexgrad/Kokoro-82M", device=device)
             chunks = [np.asarray(audio, dtype=np.float32) for _, _, audio in
-                      pipes[code](text, voice="zf_xiaobei" if lang == "zh" else "af_heart")]
+                      pipes[code](text, voice=voice or ("zm_yunjian" if lang == "zh" else "af_heart"))]
             return np.concatenate(chunks), 24000
 
         return speak_kokoro
@@ -104,7 +105,7 @@ def main():
         rid = req.get("id")
         try:
             t = time.time()
-            audio, sr = speak(req["text"], req.get("lang", "zh"), req.get("instruct"))
+            audio, sr = speak(req["text"], req.get("lang", "zh"), req.get("instruct"), req.get("voice"))
             sf.write(req["out"], audio, sr)
             reply({"id": rid, "ok": True, "seconds": round(len(audio) / sr, 3), "gen": round(time.time() - t, 3)})
         except Exception as e:  # 一段失败不影响后面的请求

@@ -10,9 +10,9 @@ import { pauseProduction, startProduction, isRunning } from './produce.js'
 import { reviseFilm } from './edit.js'
 import { openInJianying, startExport } from './export.js'
 import { jianyingStatus } from './jianying.js'
-import { localVoiceStatus, startSetup as startLocalVoiceSetup } from './localvoice.js'
+import { localVoiceStatus, speakLocal, startSetup as startLocalVoiceSetup, useModel as useLocalVoice } from './localvoice.js'
 import { saveDistilled, startDistill } from './distill.js'
-import { runtimeStatus, setupProgress, setupRuntime } from './runtime.js'
+import { mediaSeconds, runtimeStatus, setupProgress, setupRuntime } from './runtime.js'
 import { publicSettings, readSettings, updateSettings } from './settings.js'
 import { listModels, modelInfo } from './llm.js'
 import { loginState, logout, startLogin, siteUrl } from './site.js'
@@ -226,6 +226,15 @@ export async function route(req, res) {
     return json(res, 200, { seconds: sec, url: `tmp/${file.split(/[\\/]/).pop()}` })
   }
   if (path === 'local-voice/setup') return json(res, 200, startLocalVoiceSetup(String(body.model || '')))
+  if (path === 'local-voice/use') return json(res, 200, useLocalVoice(String(body.model || ''), body.voices || {}))
+  if (path === 'local-voice/preview') {
+    // 试听某个装好的模型、某个声音（设置页选声音时用）
+    const file = join(ensureDir(tmpDir()), `voice-local-${Date.now()}.wav`)
+    const lang = body.lang === 'en' ? 'en' : 'zh'
+    const text = lang === 'en' ? 'Hi, this is a lovideo narration preview.' : '你好，这是 lovideo 的离线配音试听。'
+    await speakLocal(String(body.model || ''), { text, lang, out: file, voice: body.voice })
+    return json(res, 200, { seconds: await mediaSeconds(file), url: `tmp/${file.split(/[\\/]/).pop()}` })
+  }
   return json(res, 404, { error: '接口不存在' })
 }
 
