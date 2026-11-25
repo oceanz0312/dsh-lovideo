@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { dataDir, defaultExportDir, ensureDir } from './paths.js'
 import { readJson, writeJson } from './json-file.js'
 
-export const VOICE_PROVIDERS = ['system', 'doubao', 'openai', 'elevenlabs', 'none']
+export const VOICE_PROVIDERS = ['local', 'system', 'doubao', 'openai', 'elevenlabs', 'none']
 export const MUSIC_PROVIDERS = ['none', 'elevenlabs', 'file']
 
 const DEFAULTS = {
@@ -17,6 +17,8 @@ const DEFAULTS = {
   model: null,
   site: 'https://lovideo.ai',
   account: null,
+  // 本机配音模型：装好并测过速的模型 { id: { rtf, load, backend, at } }
+  local: { models: {} },
 }
 
 const file = () => join(ensureDir(dataDir()), 'settings.json')
@@ -28,6 +30,7 @@ export function readSettings() {
     ...saved,
     voice: { ...DEFAULTS.voice, ...(saved.voice || {}) },
     music: { ...DEFAULTS.music, ...(saved.music || {}) },
+    local: { models: {}, ...(saved.local || {}) },
   }
 }
 

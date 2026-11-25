@@ -1,7 +1,7 @@
 // 侧栏「lovideo 视频」：作品、官方风格、我的风格、设置。随时点开看，和对话里的卡片读同一份数据。
 import * as React from 'react'
 import { api, fileUrl, loginUrl, openExternal, useLive } from './api.js'
-import { Badge, Button, ConfirmDialog, LinkButton, Mark, Media, Player, StatusBadge, Styles, fmtSec } from './ui.jsx'
+import { Badge, Bar, Button, ConfirmDialog, LinkButton, Mark, Media, Player, StatusBadge, Styles, fmtSec } from './ui.jsx'
 import { Doctor, WorkActions, WorkBody, coverOf } from './cards.jsx'
 import { host, openSession, startDirector } from './host.js'
 import { toast } from './toast.jsx'
@@ -31,6 +31,12 @@ const PAGE_CSS = `
 .lv-chips{display:flex;flex-wrap:wrap;gap:6px}
 .lv-chips button{transition:border-color var(--lv-dur) var(--lv-ease),color var(--lv-dur) var(--lv-ease),background-color var(--lv-dur) var(--lv-ease);height:28px;padding:0 12px;border-radius:999px;border:1px solid var(--dsw-alias-border-l4);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;cursor:pointer}
 .lv-chips button.on{border-color:var(--dsw-alias-label-primary);color:var(--dsw-alias-label-primary);font-weight:500;background:var(--dsw-alias-interactive-bg-hover)}
+.lv-local{display:flex;flex-direction:column;gap:10px}
+.lv-local-list{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:10px}
+.lv-local-row{display:flex;align-items:center;gap:14px;padding:12px 14px;border-top:1px solid var(--dsw-alias-border-l2)}
+.lv-local-row:first-child{border-top:0}
+.lv-local-row>.l{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.lv-local-row.off{opacity:.6}
 .lv-banner{animation:lv-in var(--lv-slow) var(--lv-ease-out);display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--dsw-alias-card-fill);margin-bottom:16px}
 `
 
@@ -291,8 +297,9 @@ function MinePanel({ s, onClose, reload }) {
 
 /* ---------- 设置 ---------- */
 
-const VOICES = [['system', '系统自带语音'], ['doubao', '豆包语音'], ['openai', 'OpenAI 兼容'], ['elevenlabs', 'ElevenLabs'], ['none', '不配音']]
+const VOICES = [['local', '本机模型'], ['system', '系统自带语音'], ['doubao', '豆包语音'], ['openai', 'OpenAI 兼容'], ['elevenlabs', 'ElevenLabs'], ['none', '不配音']]
 const VOICE_HINT = {
+  local: { url: null, voice: null, model: null },
   system: { url: null, voice: '留空自动选（中文用系统的中文声音）', model: null },
   doubao: { url: 'https://openspeech.bytedance.com/api/v3/tts/unidirectional', voice: '资源/音色，例如 seed-tts-2.0/zh_female_vv_uranus_bigtts', model: null },
   openai: { url: 'https://api.openai.com/v1', voice: '音色，例如 alloy', model: '模型，例如 gpt-4o-mini-tts' },
@@ -380,15 +387,16 @@ function Settings() {
 
       <div className="lv-section">
         <h3>配音</h3>
-        <div className="lv-subtle">电脑上没有好用的配音服务时，填你自己的 key；不想要口播就选「不配音」，只出字幕。</div>
+        <div className="lv-subtle">推荐「本机模型」：在这台电脑上离线生成、带语气，不用 key。也可以填你自己的配音服务 key；不想要口播就选「不配音」，只出字幕。</div>
         <div className="lv-srow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
           <div className="lv-chips">{VOICES.map(([k, l]) => <button key={k} type="button" className={v.provider === k ? 'on' : ''} onClick={() => setForm(f => ({ ...f, voice: { ...f.voice, provider: k } }))}>{l}</button>)}</div>
+          {v.provider === 'local' ? <LocalVoicePanel /> : null}
           {hint.url ? <div className="lv-field"><label>接口地址（留空用默认）</label><input className="lv-input lv-mono" placeholder={hint.url} value={v.url || ''} onChange={e => setForm(f => ({ ...f, voice: { ...f.voice, url: e.target.value } }))} /></div> : null}
           <div style={{ display: 'grid', gridTemplateColumns: hint.model ? '1fr 1fr' : '1fr', gap: 10 }}>
             {hint.voice ? <div className="lv-field"><label>音色</label><input className="lv-input" placeholder={hint.voice} value={v.voice || ''} onChange={e => setForm(f => ({ ...f, voice: { ...f.voice, voice: e.target.value } }))} /></div> : null}
             {hint.model ? <div className="lv-field"><label>模型</label><input className="lv-input" placeholder={hint.model} value={v.model || ''} onChange={e => setForm(f => ({ ...f, voice: { ...f.voice, model: e.target.value } }))} /></div> : null}
           </div>
-          {v.provider !== 'system' && v.provider !== 'none' ? (
+          {!['system', 'none', 'local'].includes(v.provider) ? (
             <div className="lv-field"><label>密钥 {st.settings.voice.hasKey && st.settings.voice.provider === v.provider ? `（已保存 ${st.settings.voice.key}，留空不改）` : ''}</label>
               <input className="lv-input" type="password" autoComplete="off" placeholder="填你自己的 key" value={v.key} onChange={e => setForm(f => ({ ...f, voice: { ...f.voice, key: e.target.value } }))} /></div>
           ) : null}
@@ -424,6 +432,73 @@ function Settings() {
       <ConfirmDialog open={askLogout} title="退出 lovideo 账号？" confirmText="退出" danger busy={loggingOut} onConfirm={logout} onCancel={() => setAskLogout(false)}>
         <p>退出后不能再用官方风格开新片，要用时重新登录就行。这台电脑上的作品、你自己的风格和已经下载的风格都会保留。</p>
       </ConfirmDialog>
+    </div>
+  )
+}
+
+const LOCAL_STEP = { uv: '准备下载工具', packages: '安装运行环境', model: '下载模型', test: '测速' }
+
+/**
+ * 本机配音：显示这台电脑的配置、能跑哪些模型；下载并测速；装好的显示配 1 分钟口播要多久。
+ * 开拍时按口播长度自动挑一个 3 分钟内能配完的，都来不及就用系统语音。
+ */
+function LocalVoicePanel() {
+  const [st, err, reload] = useLive('local-voice', () => false)
+  const [busy, setBusy] = React.useState(null)
+  const [fail, setFail] = React.useState(null)
+  const running = st?.setup?.running
+  React.useEffect(() => {
+    if (!running) return undefined
+    const t = setInterval(reload, 1000)
+    return () => clearInterval(t)
+  }, [running, reload])
+  if (err) return <div className="lv-err">{err.message}</div>
+  if (!st) return <div className="lv-subtle lv-shimmer">正在看这台电脑的配置…</div>
+  const hw = st.hardware
+  const setup = async id => {
+    setBusy(id)
+    setFail(null)
+    try {
+      await api('local-voice/setup', { model: id })
+      reload()
+    } catch (e) {
+      setFail(e.message)
+    } finally {
+      setBusy(null)
+    }
+  }
+  const s = st.setup
+  return (
+    <div className="lv-local">
+      <div className="lv-subtle">
+        这台电脑：{hw.chip || hw.platform} · {hw.ramGB}GB 内存{hw.gpu ? ` · ${hw.gpu.name} ${hw.gpu.vramGB}GB 显存` : ''}{hw.freeDiskGB !== null ? ` · 磁盘剩余 ${hw.freeDiskGB}GB` : ''}。
+        每部片子开拍前，按口播长度挑一个 {Math.round(st.budgetSeconds / 60)} 分钟内能配完的模型，越好越优先；都来不及就先用系统语音。
+      </div>
+      <div className="lv-local-list">
+        {st.models.map(m => {
+          const doing = running && s.model === m.id
+          return (
+            <div key={m.id} className={`lv-local-row ${m.ok ? '' : 'off'}`}>
+              <div className="l">
+                <b>{m.name}{st.recommended === m.id ? <span className="lv-badge info" style={{ marginLeft: 8 }}>推荐</span> : null}</b>
+                <span className="lv-subtle">{m.note}</span>
+                {m.installed ? <span className="lv-subtle">已装好 · 配 1 分钟口播约 {m.installed.oneMinute} 秒 · {m.installed.maxMinutes >= 1 ? `最长能配约 ${m.installed.maxMinutes} 分钟` : '这台电脑上偏慢'}</span> : null}
+                {!m.ok ? <span className="lv-subtle">{m.reason}</span> : null}
+                {doing ? (
+                  <div className="lv-col" style={{ marginTop: 6 }}>
+                    <span className="lv-subtle">{LOCAL_STEP[s.step] || '准备中'}…{s.step === 'model' ? ` ${Math.round((s.progress || 0) * 100)}%` : ''}</span>
+                    {s.step === 'model' ? <Bar value={s.progress} /> : null}
+                  </div>
+                ) : null}
+                {!running && s.model === m.id && s.error ? <span className="lv-err">{s.error}</span> : null}
+              </div>
+              {m.ok && !m.installed ? <Button size="sm" kind={st.recommended === m.id ? 'pri' : ''} busy={busy === m.id || doing} disabled={running} onClick={() => setup(m.id)}>下载并测速（约 {m.downloadGB}GB）</Button> : null}
+              {m.ok && m.installed ? <Button size="sm" kind="ghost" busy={busy === m.id || doing} disabled={running} onClick={() => setup(m.id)}>重新测速</Button> : null}
+            </div>
+          )
+        })}
+      </div>
+      {fail ? <div className="lv-err">{fail}</div> : null}
     </div>
   )
 }

@@ -142,7 +142,7 @@ export function Doctor() {
         extra={pending ? <div className="lv-code" style={{ marginTop: 8 }}>{pending.userCode}</div> : st.login.error ? <div className="lv-err">{st.login.error}</div> : null}
         action={st.login.account ? null : pending ? <LinkButton size="sm" href={loginUrl(pending.url)}>重新打开</LinkButton> : <Button size="sm" kind={env.ready ? 'pri' : ''} busy={busy === 'login'} onClick={() => act('login', login)}>登录</Button>} />
       <Row ok title="配音"
-        desc={st.settings.voice.provider === 'system' ? '系统自带语音（可以在设置里换成自己的配音服务）' : st.settings.voice.provider === 'none' ? '不配音，只出字幕' : `${st.settings.voice.provider}${st.settings.voice.hasKey ? '' : '（还没填 key）'}`}
+        desc={st.settings.voice.provider === 'local' ? '本机模型（按口播长度自动挑 3 分钟内能配完的）' : st.settings.voice.provider === 'system' ? '系统自带语音（可以在设置里换成本机模型，更有语气）' : st.settings.voice.provider === 'none' ? '不配音，只出字幕' : `${st.settings.voice.provider}${st.settings.voice.hasKey ? '' : '（还没填 key）'}`}
         action={<Button size="sm" kind="ghost" onClick={() => openManager('settings')}>设置</Button>} />
       {err ? <div className="lv-err">{err}</div> : null}
     </div>
@@ -330,6 +330,7 @@ export function WorkBody({ w }) {
           })}
         </div>
       ) : null}
+      {job.voiceNote ? <div className="lv-subtle">{job.voiceNote}</div> : null}
       {job.error ? <div className="lv-err">{job.error}</div> : null}
       {w.status === 'producing' ? <div className="lv-subtle">做好一段显示一段。关掉 DeepSeek Harness 会自动暂停，下次打开接着做。</div> : null}
     </div>

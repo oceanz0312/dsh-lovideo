@@ -10,6 +10,7 @@ import { pauseProduction, startProduction, isRunning } from './produce.js'
 import { reviseFilm } from './edit.js'
 import { openInJianying, startExport } from './export.js'
 import { jianyingStatus } from './jianying.js'
+import { localVoiceStatus, startSetup as startLocalVoiceSetup } from './localvoice.js'
 import { saveDistilled, startDistill } from './distill.js'
 import { runtimeStatus, setupProgress, setupRuntime } from './runtime.js'
 import { publicSettings, readSettings, updateSettings } from './settings.js'
@@ -153,6 +154,8 @@ export async function route(req, res) {
     }
     // 「在剪映中打开」之前的检查：装没装、草稿目录、能不能写、是不是正开着
     if (path === 'jianying/status') return json(res, 200, jianyingStatus())
+    // 本机配音：电脑配置、能跑哪些模型、装好的测速结果、下载进度
+    if (path === 'local-voice') return json(res, 200, localVoiceStatus())
     if (path === 'events') return sse(req, res)
     return json(res, 404, { error: '接口不存在' })
   }
@@ -222,6 +225,7 @@ export async function route(req, res) {
     const sec = await speak(body.text || '你好，这是 lovideo 的配音试听。', file, readSettings().voice)
     return json(res, 200, { seconds: sec, url: `tmp/${file.split(/[\\/]/).pop()}` })
   }
+  if (path === 'local-voice/setup') return json(res, 200, startLocalVoiceSetup(String(body.model || '')))
   return json(res, 404, { error: '接口不存在' })
 }
 

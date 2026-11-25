@@ -13,6 +13,7 @@ import { BASE, route } from './routes.js'
 import { events, listWorks } from './works.js'
 import { markInterrupted, pauseAllProductions } from './produce.js'
 import { closeBrowser } from './render.js'
+import { stopAll as stopLocalVoice } from './localvoice.js'
 import { readFrontmatter } from './styles.js'
 
 export const name = 'dsh-lovideo'
@@ -76,6 +77,7 @@ export function apply(ctx) {
     // 热重载时旧代码不能在后台接着做：先暂停，新代码起来后可以「继续」
     pauseAllProductions()
     closeBrowser()
+    stopLocalVoice()
   })
 
   ctx.effect(() => ctx.webServer.register({

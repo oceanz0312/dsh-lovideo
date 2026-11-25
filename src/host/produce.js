@@ -16,6 +16,7 @@ import { speak } from './tts.js'
 import { callModel, extractFiles } from './llm.js'
 import { fill, parseRenderCommand, renderCommand, renderPage, startSite } from './render.js'
 import { ensureFonts, findPython, fontsDir, mediaSeconds, run, runtimeStatus } from './runtime.js'
+import { chooseModel, estimateSeconds } from './localvoice.js'
 import { assembleFilm, buildTimeline } from './assemble.js'
 
 export const ASPECTS = { '16:9': { width: 1920, height: 1080 }, '9:16': { width: 1080, height: 1920 } }
@@ -136,6 +137,7 @@ async function run_(id, ctl) {
     // 1. 配音（只在新开拍时做；继续时沿用）
     if (!work.job.segments.length) {
       await setJob(id, { state: 'voicing' })
+      const voiceSettings = await pickVoice(settings, work, id)
       const segs = []
       let start = 0
       const carry = new Map((work.job.carry || []).map(c => [c.id, c]))
@@ -154,7 +156,7 @@ async function run_(id, ctl) {
           voiceSec = old.voice.seconds
           voiceFile = old.voice.file
         } else if (wantVoice) {
-          voiceSec = await speak(text, join(workDir(id), voiceFile), settings.voice, signal)
+          voiceSec = await speak(text, join(workDir(id), voiceFile), voiceSettings, signal)
         }
         const voice = voiceSec ? { file: voiceFile, seconds: voiceSec } : null
         const planned = Math.max(3, Number(scene.seconds) || 6)
@@ -245,6 +247,26 @@ async function run_(id, ctl) {
     }).catch(() => {})
     if (!aborted) notify({ kind: 'film-failed', tone: 'warning', text: `《${getWork(id)?.title || '作品'}》没做成，可以重试`, workId: id, sessionId: getWork(id)?.sessionId ?? null })
   }
+}
+
+/**
+ * 本机配音：按这部片子的口播长度，在装好的模型里挑一个 3 分钟内能配完的（越好越优先）。
+ * 都来不及、或者还没装好时，这部片子先用系统语音，原因写在 job.voiceNote 里给卡片显示。
+ */
+async function pickVoice(settings, work, id) {
+  const v = settings.voice
+  if (v.provider !== 'local') return v
+  const sec = estimateSeconds(work.plan.scenes.map(narrationText))
+  const choice = chooseModel(settings.local.models, sec)
+  if (choice) {
+    await setJob(id, { voiceModel: choice.id, voiceNote: null })
+    return { ...v, localModel: choice.id }
+  }
+  const note = Object.keys(settings.local.models).length
+    ? `本机配音模型配这部片子（约 ${Math.round(sec)} 秒口播）预计要超过 3 分钟，这次先用系统语音`
+    : '还没有装好本机配音模型，这次先用系统语音'
+  await setJob(id, { voiceModel: null, voiceNote: note })
+  return { ...v, provider: 'system' }
 }
 
 /** 一镜的内容指纹：标题、画面、口播都没变才算同一镜 */

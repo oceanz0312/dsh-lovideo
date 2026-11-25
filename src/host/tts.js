@@ -6,6 +6,8 @@ import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { ensureDir } from './paths.js'
 import { ffmpeg, mediaSeconds, run, which } from './runtime.js'
+import { chooseModel, estimateSeconds, speakLocal } from './localvoice.js'
+import { readSettings } from './settings.js'
 
 const RATE = 24000
 
@@ -167,8 +169,16 @@ export async function speak(text, out, voiceSettings, signal) {
   if (!t || voiceSettings.provider === 'none') return 0
   ensureDir(dirname(out))
   const p = voiceSettings.provider
-  if (p !== 'system' && !voiceSettings.key) throw new Error('配音服务还没填 key，请在 lovideo 设置里填写，或换成系统自带语音')
-  if (p === 'system') await systemSay(t, out, { voice: voiceSettings.voice, signal })
+  if (!['system', 'local'].includes(p) && !voiceSettings.key) throw new Error('配音服务还没填 key，请在 lovideo 设置里填写，或换成系统自带语音')
+  if (p === 'local') {
+    // 开拍时已经按口播长度挑好模型；单独试听时挑装好的里面最好的
+    const model = voiceSettings.localModel || chooseModel(readSettings().local.models, estimateSeconds([t]))?.id
+    if (!model) throw new Error('还没有装好本机配音模型，请在 lovideo 设置的「配音」里下载')
+    const raw = `${out}.local.wav`
+    await speakLocal(model, { text: t, lang: isZh(t) ? 'zh' : 'en', out: raw, instruct: voiceSettings.instruct })
+    await normalize(raw, out, signal)
+    rmSync(raw, { force: true })
+  } else if (p === 'system') await systemSay(t, out, { voice: voiceSettings.voice, signal })
   else if (p === 'doubao') await doubao(t, out, voiceSettings, signal)
   else if (p === 'openai') await openaiTts(t, out, voiceSettings, signal)
   else if (p === 'elevenlabs') await eleven(t, out, voiceSettings, signal)
