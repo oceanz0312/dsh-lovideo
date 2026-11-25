@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "lovideo video",
+    "description": "Turn one sentence into a video in any style. The director runs on the model you picked in DeepSeek Harness and the frames render on your own computer. Includes a works library, 100+ platform styles (free with a lovideo account), distilling your own style from a reference video, and export to MP4 or a CapCut/Jianying draft. Missing render components (a browser, ffmpeg) are downloaded on first use after you confirm.",
+    "detail": "docs/DETAIL.md"
+  }
+}

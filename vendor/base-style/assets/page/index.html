@@ -1,0 +1,12 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>lovideo base style</title>
+<style>html,body{margin:0;background:#000;overflow:hidden}canvas{display:block}</style>
+<script src="/lovideo.js"></script></head>
+<body><canvas id="out" width="1920" height="1080"></canvas>
+<script type="module">
+// 本页画一个段：?seg=<段 id>&seconds=<段长>&w=<宽>&h=<高>，段工程在 /p/<id>/scene.js
+const seg = new URLSearchParams(location.search).get("seg") || "";
+if (!/^[A-Za-z0-9_-]+$/.test(seg)) window.BOOT_ERROR = "the page needs ?seg=<segment id>";
+else import(`/p/${seg}/scene.js`).catch(e => { window.BOOT_ERROR = `/p/${seg}/scene.js: ${e.message}`; });
+</script>
+</body></html>

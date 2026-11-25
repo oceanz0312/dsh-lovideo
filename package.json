@@ -1,0 +1,74 @@
+{
+  "name": "dsh-lovideo",
+  "version": "0.1.0",
+  "description": "lovideo 视频插件：在 DeepSeek Harness 里一句话做出任意风格的视频。导演用你选的模型，画面在你自己的电脑上渲染。",
+  "homepage": "https://lovideo.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oceanz0312/dsh-lovideo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/oceanz0312/dsh-lovideo/issues"
+  },
+  "type": "module",
+  "main": "src/host/index.js",
+  "icon": "./icon.svg",
+  "exports": {
+    ".": "./src/host/index.js",
+    "./client": "./dist/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "src/host",
+    "dist",
+    "skills",
+    "vendor",
+    "locale/*.json",
+    "docs",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-tool"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=22.19.0",
+    "dsh": ">=0.2.2-rc.3 <0.3.0"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "video",
+    "lovideo"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "test": "node --test test/*.test.mjs",
+    "sync-vendor": "node scripts/sync-vendor.mjs",
+    "prepack": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "@puppeteer/browsers": "^2.10.0",
+    "puppeteer-core": "^24.20.0",
+    "tar": "^7.4.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.10",
+    "react": "18.3.1"
+  },
+  "license": "UNLICENSED"
+}

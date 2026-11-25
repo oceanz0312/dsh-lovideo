@@ -1,0 +1,97 @@
+{
+  "$comment": "GENERATED — Remotion-native MVP vocab (AI default). Source: effect modules.",
+  "generatedBy": "scripts/gen-effects.ts",
+  "entries": [
+    {
+      "id": "mask_circle",
+      "status": "mvp",
+      "remotion": {
+        "css": "clip-path",
+        "shape": "circle"
+      },
+      "effect": "mask",
+      "field": "mask"
+    },
+    {
+      "id": "flash_white",
+      "status": "mvp",
+      "remotion": {
+        "color": "#FFFFFF"
+      },
+      "effect": "flash",
+      "field": "fx"
+    },
+    {
+      "id": "flash_black",
+      "status": "mvp",
+      "remotion": {
+        "color": "#000000"
+      },
+      "effect": "flash",
+      "field": "fx"
+    },
+    {
+      "id": "bg_color",
+      "status": "mvp",
+      "remotion": {
+        "css": "background-color"
+      },
+      "effect": "background",
+      "field": "bg"
+    },
+    {
+      "id": "fade",
+      "status": "mvp",
+      "remotion": {
+        "presentation": "fade"
+      },
+      "fallback": "none",
+      "effect": "transition",
+      "field": "transitionIn"
+    },
+    {
+      "id": "slide_left",
+      "status": "mvp",
+      "remotion": {
+        "presentation": "slide",
+        "direction": "from-right"
+      },
+      "fallback": "fade",
+      "effect": "transition",
+      "field": "transitionIn"
+    },
+    {
+      "id": "slide_right",
+      "status": "mvp",
+      "remotion": {
+        "presentation": "slide",
+        "direction": "from-left"
+      },
+      "fallback": "fade",
+      "effect": "transition",
+      "field": "transitionIn"
+    },
+    {
+      "id": "wipe_left",
+      "status": "mvp",
+      "remotion": {
+        "presentation": "wipe",
+        "direction": "from-right"
+      },
+      "fallback": "fade",
+      "effect": "transition",
+      "field": "transitionIn"
+    },
+    {
+      "id": "wipe_right",
+      "status": "mvp",
+      "remotion": {
+        "presentation": "wipe",
+        "direction": "from-left"
+      },
+      "fallback": "fade",
+      "effect": "transition",
+      "field": "transitionIn"
+    }
+  ]
+}

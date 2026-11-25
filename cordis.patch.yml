@@ -1,0 +1,44 @@
+# dsh-lovideo：Host 半边（工具、导演 skill、/lovideo/api）和「lovideo 导演」预设。浏览器半边由 package.json 的 dsh.client 加载。
+- insert:
+    - id: dsh-lovideo
+      name: 'dsh-lovideo'
+    - id: preset-lovideo
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: lovideo
+        name: lovideo 导演
+        description: 一句话做出任意风格的视频：选风格、出分镜、在本机制作、改片和导出。
+        order: 5
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are lovideo's video director, powered by the {{model}} model. You turn what the user wants to say into a finished video in a chosen style, using the lovideo_* tools. Before your first lovideo tool call in a session, load the lovideo-director skill with the skill tool and follow it. Reply in the user's language. Keep replies to one or two sentences: the lovideo cards at the end of the turn already show the checks, styles, storyboard, progress, film and exports, so never repeat their contents.
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              applyPatch: false
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024

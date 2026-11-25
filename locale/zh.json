@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "lovideo 视频",
+    "description": "一句话做出任意风格的视频。导演用你在 DeepSeek Harness 里选的模型，画面在你自己的电脑上渲染；带作品管理、100 多种平台风格（登录 lovideo 即可免费使用），也能把喜欢的视频蒸馏成自己的风格，导出 MP4 或剪映工程。首次使用会下载缺少的渲染组件（浏览器、ffmpeg），会先问你。",
+    "detail": "docs/DETAIL.md"
+  }
+}

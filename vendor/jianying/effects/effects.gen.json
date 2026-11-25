@@ -1,0 +1,754 @@
+{
+  "$comment": "GENERATED — do not edit. Effect registry + adapter.py sources.",
+  "generatedBy": "scripts/gen-effects.ts",
+  "registry": [
+    {
+      "id": "speed",
+      "target": ["visual", "audio"],
+      "field": "speed",
+      "status": "experimental",
+      "gate": "CHECKLIST #2",
+      "aliases": {},
+      "variants": [],
+      "examples": [2, 0.5]
+    },
+    {
+      "id": "transform",
+      "target": ["visual", "text"],
+      "field": "transform",
+      "status": "mvp",
+      "gate": null,
+      "aliases": {},
+      "variants": [],
+      "examples": [
+        {
+          "scale": 0.9,
+          "rot": 5,
+          "flipH": true
+        },
+        {
+          "x": 0.55,
+          "y": 0.6,
+          "scale": 0.3,
+          "opacity": 0.8
+        }
+      ]
+    },
+    {
+      "id": "keyframes",
+      "target": ["visual", "text"],
+      "field": "keyframes",
+      "status": "mvp",
+      "gate": null,
+      "aliases": {},
+      "variants": [],
+      "examples": [
+        [
+          {
+            "prop": "opacity",
+            "t": 0,
+            "v": 0
+          },
+          {
+            "prop": "opacity",
+            "t": 0.4,
+            "v": 1
+          }
+        ]
+      ]
+    },
+    {
+      "id": "boil",
+      "target": ["visual", "text"],
+      "field": "boil",
+      "status": "extended",
+      "gate": null,
+      "aliases": {},
+      "variants": [],
+      "examples": [
+        {
+          "states": 3,
+          "stepFrames": 12.25,
+          "seed": 7,
+          "shiftPx": 8,
+          "rotateDeg": 1.5,
+          "offsetFrames": 0
+        },
+        {
+          "states": 2,
+          "stepFrames": 6,
+          "seed": 42,
+          "shiftPx": 17,
+          "rotateDeg": 0,
+          "offsetFrames": 9
+        }
+      ]
+    },
+    {
+      "id": "mask",
+      "target": ["visual"],
+      "field": "mask",
+      "status": "mvp",
+      "gate": null,
+      "aliases": {},
+      "variants": [
+        {
+          "id": "mask_circle",
+          "status": "mvp",
+          "remotion": {
+            "css": "clip-path",
+            "shape": "circle"
+          }
+        },
+        {
+          "id": "mask_linear",
+          "status": "extended",
+          "remotion": null,
+          "fallback": "mask_circle"
+        },
+        {
+          "id": "mask_mirror",
+          "status": "extended",
+          "remotion": null,
+          "fallback": "mask_circle"
+        },
+        {
+          "id": "mask_rect",
+          "status": "extended",
+          "remotion": null,
+          "fallback": "mask_circle"
+        },
+        {
+          "id": "mask_heart",
+          "status": "extended",
+          "remotion": null,
+          "fallback": "mask_circle"
+        },
+        {
+          "id": "mask_star",
+          "status": "extended",
+          "remotion": null,
+          "fallback": "mask_circle"
+        }
+      ],
+      "examples": [
+        {
+          "type": "mask_circle",
+          "size": 0.7,
+          "feather": 20
+        },
+        {
+          "type": "mask_star"
+        }
+      ]
+    },
+    {
+      "id": "filter",
+      "target": ["visual", "track"],
+      "field": "filter",
+      "status": "extended",
+      "gate": null,
+      "aliases": {},
+      "variants": [
+        {
+          "id": "flt_abg",
+          "status": "extended",
+          "remotion": null,
+          "note": "剪映 LUT; Remotion only approximates (P5)"
+        },
+        {
+          "id": "flt_ditto",
+          "status": "extended",
+          "remotion": null,
+          "note": "剪映 LUT; Remotion only approximates (P5)"
+        }
+      ],
+      "examples": [
+        {
+          "id": "flt_abg",
+          "intensity": 80
+        }
+      ]
+    },
+    {
+      "id": "scene_fx",
+      "target": ["visual", "track"],
+      "field": "fx",
+      "status": "extended",
+      "gate": null,
+      "aliases": {},
+      "variants": [
+        {
+          "id": "fx_ccd_flash",
+          "status": "extended",
+          "remotion": null
+        },
+        {
+          "id": "fx_dv_ui",
+          "status": "extended",
+          "remotion": null
+        }
+      ],
+      "examples": [["fx_dv_ui"]]
+    },
+    {
+      "id": "flash",
+      "target": ["track"],
+      "field": "fx",
+      "status": "mvp",
+      "gate": null,
+      "aliases": {},
+      "variants": [
+        {
+          "id": "flash_white",
+          "status": "mvp",
+          "remotion": {
+            "color": "#FFFFFF"
+          }
+        },
+        {
+          "id": "flash_black",
+          "status": "mvp",
+          "remotion": {
+            "color": "#000000"
+          }
+        }
+      ],
+      "examples": [
+        {
+          "effect": "flash_white",
+          "start": 1,
+          "dur": 0.3
+        },
+        {
+          "effect": "flash_black",
+          "start": 2,
+          "dur": 0.5,
+          "peak": 0.5,
+          "max": 0.8
+        }
+      ]
+    },
+    {
+      "id": "paper",
+      "target": ["track"],
+      "field": "fx",
+      "status": "experimental",
+      "gate": "P4 §5 paper texture 剪映真机",
+      "aliases": {},
+      "variants": [
+        {
+          "id": "paper_cream",
+          "status": "experimental",
+          "remotion": {
+            "base": "#F3EAD8",
+            "grain": 0.1,
+            "blend": "multiply"
+          }
+        },
+        {
+          "id": "paper_kraft",
+          "status": "experimental",
+          "remotion": {
+            "base": "#D9C3A0",
+            "grain": 0.14,
+            "blend": "multiply"
+          }
+        },
+        {
+          "id": "paper_newsprint",
+          "status": "experimental",
+          "remotion": {
+            "base": "#E6E4DE",
+            "grain": 0.12,
+            "blend": "multiply"
+          }
+        }
+      ],
+      "examples": [
+        {
+          "effect": "paper_cream",
+          "start": 0,
+          "dur": 2
+        },
+        {
+          "effect": "paper_kraft",
+          "start": 0,
+          "dur": 2,
+          "opacity": 0.5,
+          "seed": 3
+        }
+      ]
+    },
+    {
+      "id": "background",
+      "target": ["visual"],
+      "field": "bg",
+      "status": "mvp",
+      "gate": null,
+      "aliases": {},
+      "variants": [
+        {
+          "id": "bg_color",
+          "status": "mvp",
+          "remotion": {
+            "css": "background-color"
+          }
+        },
+        {
+          "id": "bg_blur",
+          "status": "extended",
+          "remotion": null,
+          "note": "approximation only (P4)"
+        }
+      ],
+      "examples": [
+        {
+          "type": "color",
+          "value": "#101010FF"
+        },
+        {
+          "type": "blur",
+          "value": 0.375
+        }
+      ]
+    },
+    {
+      "id": "blend",
+      "target": ["visual"],
+      "field": "blend",
+      "status": "experimental",
+      "gate": "CHECKLIST #16",
+      "aliases": {},
+      "variants": [
+        {
+          "id": "blend_multiply",
+          "status": "experimental",
+          "remotion": {
+            "css": "mix-blend-mode",
+            "value": "multiply"
+          }
+        },
+        {
+          "id": "blend_color_dodge",
+          "status": "experimental",
+          "remotion": {
+            "css": "mix-blend-mode",
+            "value": "color-dodge"
+          }
+        },
+        {
+          "id": "blend_color_burn",
+          "status": "experimental",
+          "remotion": {
+            "css": "mix-blend-mode",
+            "value": "color-burn"
+          }
+        },
+        {
+          "id": "blend_linear_burn",
+          "status": "experimental",
+          "remotion": null
+        },
+        {
+          "id": "blend_soft_light",
+          "status": "experimental",
+          "remotion": {
+            "css": "mix-blend-mode",
+            "value": "soft-light"
+          }
+        },
+        {
+          "id": "blend_hard_light",
+          "status": "experimental",
+          "remotion": {
+            "css": "mix-blend-mode",
+            "value": "hard-light"
+          }
+        },
+        {
+          "id": "blend_screen",
+          "status": "experimental",
+          "remotion": {
+            "css": "mix-blend-mode",
+            "value": "screen"
+          }
+        },
+        {
+          "id": "blend_overlay",
+          "status": "experimental",
+          "remotion": {
+            "css": "mix-blend-mode",
+            "value": "overlay"
+          }
+        },
+        {
+          "id": "blend_lighten",
+          "status": "experimental",
+          "remotion": {
+            "css": "mix-blend-mode",
+            "value": "lighten"
+          }
+        },
+        {
+          "id": "blend_darken",
+          "status": "experimental",
+          "remotion": {
+            "css": "mix-blend-mode",
+            "value": "darken"
+          }
+        }
+      ],
+      "examples": ["blend_screen"]
+    },
+    {
+      "id": "clip_anim",
+      "target": ["visual"],
+      "field": "anim",
+      "status": "extended",
+      "gate": null,
+      "aliases": {},
+      "variants": [
+        {
+          "id": "in_zoom_punch",
+          "status": "extended",
+          "remotion": null,
+          "note": "MVP uses keyframes instead"
+        },
+        {
+          "id": "out_slide_up",
+          "status": "extended",
+          "remotion": null
+        },
+        {
+          "id": "combo_split3",
+          "status": "extended",
+          "remotion": null
+        }
+      ],
+      "examples": [
+        {
+          "in": "in_zoom_punch"
+        },
+        {
+          "combo": "combo_split3"
+        }
+      ]
+    },
+    {
+      "id": "transition",
+      "target": ["transition"],
+      "field": "transitionIn",
+      "status": "mvp",
+      "gate": null,
+      "aliases": {
+        "slide": "slide_left",
+        "wipe": "wipe_left",
+        "none": null
+      },
+      "variants": [
+        {
+          "id": "fade",
+          "status": "mvp",
+          "remotion": {
+            "presentation": "fade"
+          },
+          "fallback": "none"
+        },
+        {
+          "id": "slide_left",
+          "status": "mvp",
+          "remotion": {
+            "presentation": "slide",
+            "direction": "from-right"
+          },
+          "fallback": "fade"
+        },
+        {
+          "id": "slide_right",
+          "status": "mvp",
+          "remotion": {
+            "presentation": "slide",
+            "direction": "from-left"
+          },
+          "fallback": "fade"
+        },
+        {
+          "id": "wipe_left",
+          "status": "mvp",
+          "remotion": {
+            "presentation": "wipe",
+            "direction": "from-right"
+          },
+          "fallback": "fade"
+        },
+        {
+          "id": "wipe_right",
+          "status": "mvp",
+          "remotion": {
+            "presentation": "wipe",
+            "direction": "from-left"
+          },
+          "fallback": "fade"
+        },
+        {
+          "id": "tr_slide_up",
+          "status": "extended",
+          "remotion": {
+            "presentation": "slide",
+            "direction": "from-bottom"
+          },
+          "fallback": "fade"
+        },
+        {
+          "id": "tr_spin",
+          "status": "extended",
+          "remotion": null,
+          "fallback": "fade"
+        },
+        {
+          "id": "tr_cloud",
+          "status": "extended",
+          "remotion": null,
+          "fallback": "fade"
+        },
+        {
+          "id": "tr_flash_white",
+          "status": "extended",
+          "remotion": null,
+          "fallback": "fade"
+        }
+      ],
+      "examples": ["fade", "slide", "tr_cloud"]
+    },
+    {
+      "id": "text_anim",
+      "target": ["text"],
+      "field": "anim",
+      "status": "experimental",
+      "gate": "CHECKLIST #24",
+      "aliases": {},
+      "variants": [
+        {
+          "id": "tin_karaoke",
+          "status": "experimental",
+          "remotion": null
+        },
+        {
+          "id": "tin_typewriter",
+          "status": "experimental",
+          "remotion": null
+        },
+        {
+          "id": "tin_fade_in",
+          "status": "experimental",
+          "remotion": null
+        },
+        {
+          "id": "tout_wipe_up",
+          "status": "experimental",
+          "remotion": null
+        },
+        {
+          "id": "tout_fade_out",
+          "status": "experimental",
+          "remotion": null
+        },
+        {
+          "id": "tloop_bounce",
+          "status": "experimental",
+          "remotion": null
+        }
+      ],
+      "examples": [
+        {
+          "in": "tin_karaoke",
+          "inDur": 0.8,
+          "out": "tout_wipe_up",
+          "outDur": 0.6
+        }
+      ]
+    },
+    {
+      "id": "ransom",
+      "target": ["text"],
+      "field": "ransom",
+      "status": "extended",
+      "gate": null,
+      "aliases": {},
+      "variants": [],
+      "examples": [
+        {
+          "letters": [
+            {
+              "char": "L",
+              "color": "#1F1F1F",
+              "bg": "#E8C547",
+              "rot": -6
+            },
+            {
+              "char": "O",
+              "color": "#FFFFFF",
+              "bg": "#B5452F",
+              "rot": 8,
+              "font": "bebas"
+            },
+            {
+              "char": "V",
+              "color": "#1F1F1F",
+              "rot": -11
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bubble",
+      "target": ["text"],
+      "field": "bubble",
+      "status": "extended",
+      "gate": null,
+      "aliases": {},
+      "variants": [
+        {
+          "id": "bubble_demo",
+          "status": "extended",
+          "remotion": null,
+          "note": "pyJianYingDraft demo ID (R3)"
+        }
+      ],
+      "examples": ["bubble_demo"]
+    },
+    {
+      "id": "flower",
+      "target": ["text"],
+      "field": "flower",
+      "status": "extended",
+      "gate": null,
+      "aliases": {},
+      "variants": [
+        {
+          "id": "flower_demo",
+          "status": "extended",
+          "remotion": null,
+          "note": "pyJianYingDraft demo ID (R3)"
+        }
+      ],
+      "examples": ["flower_demo"]
+    },
+    {
+      "id": "audio_fade",
+      "target": ["audio"],
+      "field": "fadeIn",
+      "status": "mvp",
+      "gate": null,
+      "aliases": {},
+      "variants": [],
+      "examples": [0.8]
+    },
+    {
+      "id": "volume_keys",
+      "target": ["audio"],
+      "field": "volumeKeys",
+      "status": "mvp",
+      "gate": null,
+      "aliases": {},
+      "variants": [],
+      "examples": [
+        [
+          {
+            "t": 0,
+            "v": 0.8
+          },
+          {
+            "t": 2.5,
+            "v": 0.3
+          }
+        ]
+      ]
+    },
+    {
+      "id": "audio_scene",
+      "target": ["audio"],
+      "field": "sceneEffect",
+      "status": "experimental",
+      "gate": "CHECKLIST #21",
+      "aliases": {},
+      "variants": [
+        {
+          "id": "afx_echo",
+          "status": "experimental",
+          "remotion": null
+        },
+        {
+          "id": "afx_megaphone",
+          "status": "experimental",
+          "remotion": null
+        },
+        {
+          "id": "afx_underwater",
+          "status": "experimental",
+          "remotion": null
+        },
+        {
+          "id": "afx_lofi",
+          "status": "experimental",
+          "remotion": null
+        }
+      ],
+      "examples": ["afx_echo"]
+    }
+  ],
+  "python": {
+    "speed": "JIANYING = {}\n\n\ndef pre(ctx, value, clip):\n    # source duration = target duration * speed; pyJianYingDraft derives speed from the ratio\n    return {\"speed\": float(value)}\n",
+    "transform": "JIANYING = {}\n\n\ndef pre(ctx, tf, clip):\n    scale = float(tf.get(\"scale\", 1.0))\n    return {\"clip_settings\": ctx.jy.ClipSettings(\n        alpha=float(tf.get(\"opacity\", 1.0)), flip_horizontal=bool(tf.get(\"flipH\", False)),\n        flip_vertical=bool(tf.get(\"flipV\", False)), rotation=float(tf.get(\"rot\", 0.0)),\n        scale_x=scale, scale_y=scale, transform_x=float(tf.get(\"x\", 0.0)),\n        transform_y=float(tf.get(\"y\", 0.0)))}\n",
+    "keyframes": "JIANYING = {}\nPROPS = {\"x\": \"position_x\", \"y\": \"position_y\", \"scale\": \"uniform_scale\", \"rot\": \"rotation\",\n         \"opacity\": \"alpha\"}\n\n\ndef apply(ctx, seg, kfs, clip):\n    for k in kfs or []:\n        prop = PROPS.get(k.get(\"prop\", \"\"))\n        if prop:\n            seg.add_keyframe(ctx.jy.KeyframeProperty[prop], ctx.us(k[\"t\"]), float(k[\"v\"]))\n",
+    "boil": "\"\"\"boil -> 剪映: no native boil, so the same seeded states become stepped keyframes\n(hold, then jump every stepFrames) on position_x / position_y / rotation. Reported as\ndegraded: it reads as boil but is a keyframe approximation (needs a real-device check).\"\"\"\nimport math\n\nJIANYING = {}\nDEFAULTS = {\"states\": 3, \"stepFrames\": 12, \"shiftPx\": 8, \"rotateDeg\": 1.5, \"offsetFrames\": 0}\nMAX_STEPS = 400\n\n\ndef _imul(a, b):\n    return (a * b) & 0xFFFFFFFF\n\n\ndef mulberry32(seed):\n    a = seed & 0xFFFFFFFF\n\n    def nxt():\n        nonlocal a\n        a = (a + 0x6D2B79F5) & 0xFFFFFFFF\n        t = a\n        t = _imul(t ^ (t >> 15), t | 1)\n        t ^= (t + _imul(t ^ (t >> 7), t | 61)) & 0xFFFFFFFF\n        return ((t ^ (t >> 14)) & 0xFFFFFFFF) / 4294967296\n\n    return nxt\n\n\ndef _r2(v):\n    # JS Math.round(v * 100) / 100 (round half up, not banker's rounding)\n    return math.floor(v * 100 + 0.5) / 100\n\n\ndef states(value):\n    v = {**DEFAULTS, **(value or {})}\n    rnd = mulberry32(int(v.get(\"seed\", 0)))\n    out = []\n    for _ in range(int(v[\"states\"])):\n        x = _r2((rnd() * 2 - 1) * float(v[\"shiftPx\"]))\n        y = _r2((rnd() * 2 - 1) * float(v[\"shiftPx\"]))\n        rot = _r2((rnd() * 2 - 1) * float(v[\"rotateDeg\"]))\n        out.append({\"x\": x, \"y\": y, \"rot\": rot})\n    return out\n\n\ndef schedule(value, dur, fps):\n    \"\"\"[(t_sec, state_index)] where the state changes, same clock as the Remotion\n    'steps' descriptor: state = floor((t*fps + offsetFrames) / stepFrames) % states.\"\"\"\n    v = {**DEFAULTS, **(value or {})}\n    step, off, n = float(v[\"stepFrames\"]), float(v[\"offsetFrames\"]), int(v[\"states\"])\n    k = math.floor(off / step)\n    out = [(0.0, k % n)]\n    while len(out) < MAX_STEPS:\n        k += 1\n        t = (k * step - off) / fps\n        if t >= dur:\n            break\n        out.append((t, k % n))\n    return out\n\n\ndef apply(ctx, seg, value, clip):\n    st = states(value)\n    fps = float(ctx.script.fps)\n    sched = schedule(value, float(clip.get(\"dur\", 1)), fps)\n    tf = clip.get(\"transform\") or {}\n    taken = {k.get(\"prop\") for k in clip.get(\"keyframes\") or []}\n    w, h = float(ctx.script.width), float(ctx.script.height)\n    props = [(\"position_x\", \"x\", float(tf.get(\"x\", 0)), lambda px: px / (w / 2)),\n             (\"position_y\", \"y\", float(tf.get(\"y\", 0)), lambda px: -px / (h / 2)),\n             (\"rotation\", \"rot\", float(tf.get(\"rot\", 0)), lambda d: d)]\n    kp = ctx.jy.KeyframeProperty\n    for name, key, base, conv in props:\n        if key in taken:\n            ctx.report.degraded.append(f\"{ctx.where}: boil {key} skipped (clip has {key} keyframes)\")\n            continue\n        prev = None\n        for t, i in sched:\n            if prev is not None:  # hold the previous state until just before the jump\n                seg.add_keyframe(kp[name], ctx.us(max(0.0, t - 0.001)), base + conv(st[prev][key]))\n            seg.add_keyframe(kp[name], ctx.us(t), base + conv(st[i][key]))\n            prev = i\n    ctx.report.degraded.append(\n        f\"{ctx.where}: boil -> stepped position/rotation keyframes (剪映 has no boil; approx)\")\n",
+    "mask": "JIANYING = {\n    \"mask_circle\": {\"enum\": \"MaskType\", \"name\": \"圆形\", \"v4_confirmed\": True},\n    \"mask_linear\": {\"enum\": \"MaskType\", \"name\": \"线性\", \"v4_confirmed\": False},\n    \"mask_mirror\": {\"enum\": \"MaskType\", \"name\": \"镜面\", \"v4_confirmed\": False},\n    \"mask_rect\": {\"enum\": \"MaskType\", \"name\": \"矩形\", \"v4_confirmed\": False},\n    \"mask_heart\": {\"enum\": \"MaskType\", \"name\": \"爱心\", \"v4_confirmed\": False},\n    \"mask_star\": {\"enum\": \"MaskType\", \"name\": \"星形\", \"v4_confirmed\": False},\n}\n\n\ndef apply(ctx, seg, m, clip):\n    r = ctx.resolve(m.get(\"type\"))\n    if r:\n        seg.add_mask(ctx.enum(r), center_x=float(m.get(\"cx\", 0)), center_y=float(m.get(\"cy\", 0)),\n                     size=float(m.get(\"size\", 0.5)), rotation=float(m.get(\"rot\", 0)),\n                     feather=float(m.get(\"feather\", 0)), invert=bool(m.get(\"invert\", False)))\n",
+    "filter": "JIANYING = {\n    \"flt_abg\": {\"enum\": \"FilterType\", \"name\": \"ABG\", \"v4_confirmed\": True},\n    \"flt_ditto\": {\"enum\": \"FilterType\", \"name\": \"Ditto\", \"v4_confirmed\": True},\n}\n\n\ndef apply(ctx, seg, f, clip):\n    r = ctx.resolve(f.get(\"id\"))\n    if r:\n        seg.add_filter(ctx.enum(r), float(f.get(\"intensity\", 100)))\n\n\ndef apply_track(ctx, clip):\n    \"\"\"core track type 'filter': clip = {start, dur, filter, intensity}\"\"\"\n    r = ctx.resolve(clip.get(\"filter\"))\n    if r:\n        ctx.ensure_track(\"filter\")\n        ctx.script.add_filter(ctx.enum(r), ctx.timerange(clip), ctx.track_name,\n                              intensity=float(clip.get(\"intensity\", 100)))\n",
+    "scene_fx": "JIANYING = {\n    \"fx_ccd_flash\": {\"enum\": \"VideoSceneEffectType\", \"name\": \"CCD闪光\", \"v4_confirmed\": True},\n    \"fx_dv_ui\": {\"enum\": \"VideoSceneEffectType\", \"name\": \"DV界面\", \"v4_confirmed\": True},\n}\n\n\ndef apply(ctx, seg, value, clip):\n    for vid in [value] if isinstance(value, str) else value or []:\n        r = ctx.resolve(vid)\n        if r:\n            seg.add_effect(ctx.enum(r))\n\n\ndef apply_track(ctx, clip):\n    \"\"\"core track type 'fx': clip = {start, dur, effect}\"\"\"\n    r = ctx.resolve(clip.get(\"effect\"))\n    if r:\n        ctx.ensure_track(\"effect\")\n        ctx.script.add_effect(ctx.enum(r), ctx.timerange(clip), ctx.track_name)\n",
+    "flash": "\"\"\"flash_white / flash_black on an fx track -> 剪映: solid PNG on its own video track + alpha keyframes.\n\nNo proprietary resource id is involved (only VideoMaterial + KeyframeProperty.alpha, both\nalready proven by the MVP transform/keyframes path), so it imports stably and stays editable.\n\"\"\"\nimport os\nimport struct\nimport tempfile\nimport zlib\n\nJIANYING = {\n    \"flash_white\": {\"api\": \"solid_keyframes\", \"color\": (255, 255, 255), \"v4_confirmed\": False},\n    \"flash_black\": {\"api\": \"solid_keyframes\", \"color\": (0, 0, 0), \"v4_confirmed\": False},\n}\n\n\ndef _solid_png(rgb, w=64, h=64):\n    path = os.path.join(tempfile.gettempdir(), \"lovideo_solid_%02x%02x%02x.png\" % tuple(rgb))\n    if not os.path.exists(path):\n        row = b\"\\x00\" + bytes(rgb) * w\n        raw = zlib.compress(row * h)\n        def chunk(t, d):\n            return struct.pack(\">I\", len(d)) + t + d + struct.pack(\">I\", zlib.crc32(t + d) & 0xFFFFFFFF)\n        data = (b\"\\x89PNG\\r\\n\\x1a\\n\" + chunk(b\"IHDR\", struct.pack(\">IIBBBBB\", w, h, 8, 2, 0, 0, 0))\n                + chunk(b\"IDAT\", raw) + chunk(b\"IEND\", b\"\"))\n        with open(path, \"wb\") as f:\n            f.write(data)\n    return path\n\n\ndef curve(dur, peak=0.35, mx=1.0):\n    return [(0.0, 0.0), (min(dur, dur * peak), mx), (dur, 0.0)]\n\n\n\ndef apply_track(ctx, clip):\n    r = ctx.resolve(clip.get(\"effect\"))\n    if not r:\n        return\n    from pyJianYingDraft.time_util import Timerange\n    jy = ctx.jy\n    base = ctx.track_name\n    ctx.track_name = f\"{base}_solid\"  # own video track; never shares a name with an effect track\n    ctx.ensure_track(\"video\")\n    dur = float(clip.get(\"dur\", 0.3))\n    seg = jy.VideoSegment(jy.VideoMaterial(_solid_png(r[\"color\"])), ctx.timerange(clip))\n    for t, v in curve(dur, float(clip.get(\"peak\", 0.35)), float(clip.get(\"max\", 1.0))):\n        seg.add_keyframe(jy.KeyframeProperty.alpha, ctx.us(t), float(v))\n    ctx.script.add_segment(seg, ctx.track_name)\n    ctx.track_name = base\n",
+    "paper": "\"\"\"paper_* on an fx track -> 剪映: generated paper PNG (base color + seeded grain) on its\nown video track, 正片叠底 (multiply) + alpha. Procedural, so no texture asset licence.\"\"\"\nimport os\nimport struct\nimport tempfile\nimport zlib\n\n_P = {\"paper_cream\": ((0xF3, 0xEA, 0xD8), 0.10), \"paper_kraft\": ((0xD9, 0xC3, 0xA0), 0.14),\n      \"paper_newsprint\": ((0xE6, 0xE4, 0xDE), 0.12)}\nJIANYING = {k: {\"api\": \"texture_multiply\", \"base\": b, \"grain\": g, \"v4_confirmed\": False}\n            for k, (b, g) in _P.items()}\n\n\ndef texture_png(base, grain, seed, w, h):\n    path = os.path.join(tempfile.gettempdir(),\n                        \"lovideo_paper_%02x%02x%02x_%d_%d_%dx%d.png\" % (*base, int(grain * 100), seed, w, h))\n    if os.path.exists(path):\n        return path\n    x = (seed * 2654435761 + 1) & 0xFFFFFFFF\n    rows = []\n    for _ in range(h):\n        row = bytearray(b\"\\x00\")\n        for _ in range(w):\n            x = (1103515245 * x + 12345) & 0x7FFFFFFF\n            k = 1.0 - grain * ((x >> 8) & 0xFF) / 255.0\n            row += bytes(max(0, min(255, int(c * k))) for c in base)\n        rows.append(bytes(row))\n\n    def chunk(t, d):\n        return struct.pack(\">I\", len(d)) + t + d + struct.pack(\">I\", zlib.crc32(t + d) & 0xFFFFFFFF)\n\n    data = (b\"\\x89PNG\\r\\n\\x1a\\n\" + chunk(b\"IHDR\", struct.pack(\">IIBBBBB\", w, h, 8, 2, 0, 0, 0))\n            + chunk(b\"IDAT\", zlib.compress(b\"\".join(rows))) + chunk(b\"IEND\", b\"\"))\n    with open(path, \"wb\") as f:\n        f.write(data)\n    return path\n\n\ndef apply_track(ctx, clip):\n    r = ctx.resolve(clip.get(\"effect\"))\n    if not r:\n        return\n    jy = ctx.jy\n    w = max(64, int(ctx.script.width) // 4)\n    h = max(64, int(ctx.script.height) // 4)\n    png = texture_png(r[\"base\"], r[\"grain\"], int(clip.get(\"seed\", 1)), w, h)\n    base = ctx.track_name\n    ctx.track_name = f\"{base}_paper\"\n    ctx.ensure_track(\"video\")\n    seg = jy.VideoSegment(jy.VideoMaterial(png), ctx.timerange(clip),\n                          clip_settings=jy.ClipSettings(alpha=float(clip.get(\"opacity\", 0.35))))\n    seg.set_mix_mode(jy.MixModeType[\"正片叠底\"])\n    ctx.script.add_segment(seg, ctx.track_name)\n    ctx.track_name = base\n",
+    "background": "JIANYING = {\n    \"bg_color\": {\"api\": \"add_background_filling\", \"type\": \"color\", \"v4_confirmed\": False},\n    \"bg_blur\": {\"api\": \"add_background_filling\", \"type\": \"blur\", \"v4_confirmed\": True},\n}\n\n\ndef apply(ctx, seg, bg, clip):\n    if bg.get(\"type\") == \"blur\":\n        if ctx.resolve(\"bg_blur\"):\n            seg.add_background_filling(\"blur\", float(bg.get(\"value\") or 0.0625))\n    elif ctx.resolve(\"bg_color\"):\n        seg.add_background_filling(\"color\", color=str(bg.get(\"value\") or \"#000000FF\"))\n",
+    "blend": "_N = {\"multiply\": \"正片叠底\", \"color_dodge\": \"颜色减淡\", \"color_burn\": \"颜色加深\",\n      \"linear_burn\": \"线性加深\", \"soft_light\": \"柔光\", \"hard_light\": \"强光\", \"screen\": \"滤色\",\n      \"overlay\": \"叠加\", \"lighten\": \"变亮\", \"darken\": \"变暗\"}\nJIANYING = {f\"blend_{k}\": {\"enum\": \"MixModeType\", \"name\": v, \"v4_confirmed\": k == \"screen\"}\n            for k, v in _N.items()}\n\n\ndef apply(ctx, seg, value, clip):\n    r = ctx.resolve(value)\n    if r:\n        seg.set_mix_mode(ctx.enum(r))\n",
+    "clip_anim": "JIANYING = {\n    \"in_zoom_punch\": {\"enum\": \"IntroType\", \"name\": \"动感放大\", \"v4_confirmed\": True},\n    \"out_slide_up\": {\"enum\": \"OutroType\", \"name\": \"向上滑动\", \"v4_confirmed\": True},\n    \"combo_split3\": {\"enum\": \"GroupAnimationType\", \"name\": \"三分割\", \"v4_confirmed\": True},\n}\n\n\ndef apply(ctx, seg, anim, clip):\n    for key, dkey in ((\"in\", \"inDur\"), (\"out\", \"outDur\"), (\"combo\", None)):\n        if anim.get(key):\n            r = ctx.resolve(anim[key])\n            if r:\n                seg.add_animation(ctx.enum(r), ctx.us(anim[dkey]) if dkey and anim.get(dkey) else None)\n",
+    "transition": "JIANYING = {\n    \"fade\": {\"enum\": \"TransitionType\", \"name\": \"叠化\", \"v4_confirmed\": False},\n    \"slide_left\": {\"enum\": \"TransitionType\", \"name\": \"左移\", \"v4_confirmed\": False},\n    \"slide_right\": {\"enum\": \"TransitionType\", \"name\": \"右移\", \"v4_confirmed\": False},\n    \"wipe_left\": {\"enum\": \"TransitionType\", \"name\": \"向左擦除\", \"v4_confirmed\": False},\n    \"wipe_right\": {\"enum\": \"TransitionType\", \"name\": \"向右擦除\", \"v4_confirmed\": False},\n    \"tr_slide_up\": {\"enum\": \"TransitionType\", \"name\": \"上移\", \"v4_confirmed\": True},\n    \"tr_spin\": {\"enum\": \"TransitionType\", \"name\": \"中心旋转\", \"v4_confirmed\": True},\n    \"tr_cloud\": {\"enum\": \"TransitionType\", \"name\": \"云朵\", \"v4_confirmed\": True},\n    \"tr_flash_white\": {\"enum\": \"TransitionType\", \"name\": \"闪白\", \"v4_confirmed\": False},\n}\n\n\ndef apply(ctx, seg, value, clip):\n    # 剪映 stores a transition on the OUTGOING segment.\n    if ctx.prev is None:\n        return\n    r = ctx.resolve(value)\n    if r:\n        d = clip.get(\"transitionDur\")\n        ctx.prev.add_transition(ctx.enum(r), duration=ctx.us(d) if d else None)\n",
+    "text_anim": "JIANYING = {\n    \"tin_karaoke\": {\"enum\": \"TextIntro\", \"name\": \"卡拉OK\", \"v4_confirmed\": True},\n    \"tin_typewriter\": {\"enum\": \"TextIntro\", \"name\": \"打字机_I\", \"v4_confirmed\": False},\n    \"tin_fade_in\": {\"enum\": \"TextIntro\", \"name\": \"渐显\", \"v4_confirmed\": False},\n    \"tout_wipe_up\": {\"enum\": \"TextOutro\", \"name\": \"向上擦除\", \"v4_confirmed\": True},\n    \"tout_fade_out\": {\"enum\": \"TextOutro\", \"name\": \"渐隐\", \"v4_confirmed\": False},\n    \"tloop_bounce\": {\"enum\": \"TextLoopAnim\", \"name\": \"跳动\", \"v4_confirmed\": False},\n}\n\n\ndef apply(ctx, seg, anim, clip):\n    for key, dkey in ((\"in\", \"inDur\"), (\"out\", \"outDur\"), (\"loop\", None)):\n        if anim.get(key):\n            r = ctx.resolve(anim[key])\n            if r:\n                seg.add_animation(ctx.enum(r), ctx.us(anim[dkey]) if dkey and anim.get(dkey) else None)\n",
+    "ransom": "\"\"\"ransom -> 剪映: the core text segment keeps the whole title (editable); this hook\nrewrites its rich-text content into one style range per letter with that letter's color.\nPer-letter blocks / tilt / fonts are not expressible per range -> reported as degraded.\"\"\"\nimport json\n\nJIANYING = {}\n\n\ndef _rgb(c):\n    return [int(c[i:i + 2], 16) / 255 for i in (1, 3, 5)]\n\n\ndef apply(ctx, seg, value, clip):\n    letters = (value or {}).get(\"letters\") or []\n    if \"\".join(str(x.get(\"char\", \"\")) for x in letters) != getattr(seg, \"text\", None):\n        ctx.report.degraded.append(f\"{ctx.where}: ransom letters != text -> plain text\")\n        return\n    orig = seg.export_material\n\n    def export_material():\n        mat = orig()\n        content = json.loads(mat[\"content\"])\n        tmpl = content[\"styles\"][0]\n        styles, pos = [], 0\n        for x in letters:\n            n = len(x[\"char\"])\n            st = json.loads(json.dumps(tmpl))\n            st[\"range\"] = [pos, pos + n]\n            st[\"fill\"][\"content\"][\"solid\"][\"color\"] = _rgb(x[\"color\"])\n            styles.append(st)\n            pos += n\n        content[\"styles\"] = styles\n        mat[\"content\"] = json.dumps(content, ensure_ascii=False)\n        return mat\n\n    seg.export_material = export_material\n    ctx.report.degraded.append(\n        f\"{ctx.where}: ransom -> per-letter colors only (blocks/tilt/fonts dropped in 剪映)\")\n",
+    "bubble": "JIANYING = {\"bubble_demo\": {\"effect_id\": \"361595\", \"resource_id\": \"6742029398926430728\", \"v4_confirmed\": True}}\n\n\ndef apply(ctx, seg, value, clip):\n    r = ctx.resolve(value)\n    if r:\n        seg.add_bubble(r[\"effect_id\"], r[\"resource_id\"])\n",
+    "flower": "JIANYING = {\"flower_demo\": {\"effect_id\": \"7296357486490144036\", \"v4_confirmed\": True}}\n\n\ndef apply(ctx, seg, value, clip):\n    r = ctx.resolve(value)\n    if r:\n        seg.add_effect(r[\"effect_id\"])\n",
+    "audio_fade": "JIANYING = {}\n# Core calls apply() when fadeIn is present; fadeOut-only clips are handled by ALSO_FIELDS.\nALSO_FIELDS = (\"fadeOut\",)\n\n\ndef apply(ctx, seg, value, clip):\n    fi, fo = float(clip.get(\"fadeIn\") or 0), float(clip.get(\"fadeOut\") or 0)\n    if fi or fo:\n        seg.add_fade(ctx.us(fi), ctx.us(fo))\n",
+    "volume_keys": "JIANYING = {}\n\n\ndef apply(ctx, seg, keys, clip):\n    for k in keys or []:\n        seg.add_keyframe(ctx.us(k[\"t\"]), float(k[\"v\"]))\n",
+    "audio_scene": "JIANYING = {\n    \"afx_echo\": {\"enum\": \"AudioSceneEffectType\", \"name\": \"回音\", \"v4_confirmed\": True},\n    \"afx_megaphone\": {\"enum\": \"AudioSceneEffectType\", \"name\": \"扩音器\", \"v4_confirmed\": False},\n    \"afx_underwater\": {\"enum\": \"AudioSceneEffectType\", \"name\": \"水下\", \"v4_confirmed\": False},\n    \"afx_lofi\": {\"enum\": \"AudioSceneEffectType\", \"name\": \"低保真\", \"v4_confirmed\": False},\n}\n\n\ndef apply(ctx, seg, value, clip):\n    r = ctx.resolve(value)\n    if r:\n        seg.add_effect(ctx.enum(r))\n"
+  },
+  "fonts": {
+    "abril": {
+      "family": "Abril Fatface",
+      "jianying": null
+    },
+    "alfa_slab": {
+      "family": "Alfa Slab One",
+      "jianying": null
+    },
+    "bebas": {
+      "family": "Bebas Neue",
+      "jianying": null
+    },
+    "caveat_brush": {
+      "family": "Caveat Brush",
+      "jianying": "Caveat_Bold"
+    },
+    "permanent_marker": {
+      "family": "Permanent Marker",
+      "jianying": "Marker"
+    },
+    "zcool_kuaile": {
+      "family": "ZCOOL KuaiLe",
+      "jianying": "快乐体"
+    },
+    "lxgw_wenkai": {
+      "family": "LXGW WenKai TC",
+      "jianying": null
+    }
+  }
+}

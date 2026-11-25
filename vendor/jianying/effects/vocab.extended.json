@@ -1,0 +1,357 @@
+{
+  "$comment": "GENERATED — Phase 2 / experimental vocab (NOT used by AI by default).",
+  "generatedBy": "scripts/gen-effects.ts",
+  "entries": [
+    {
+      "id": "mask_linear",
+      "status": "extended",
+      "remotion": null,
+      "fallback": "mask_circle",
+      "effect": "mask",
+      "field": "mask"
+    },
+    {
+      "id": "mask_mirror",
+      "status": "extended",
+      "remotion": null,
+      "fallback": "mask_circle",
+      "effect": "mask",
+      "field": "mask"
+    },
+    {
+      "id": "mask_rect",
+      "status": "extended",
+      "remotion": null,
+      "fallback": "mask_circle",
+      "effect": "mask",
+      "field": "mask"
+    },
+    {
+      "id": "mask_heart",
+      "status": "extended",
+      "remotion": null,
+      "fallback": "mask_circle",
+      "effect": "mask",
+      "field": "mask"
+    },
+    {
+      "id": "mask_star",
+      "status": "extended",
+      "remotion": null,
+      "fallback": "mask_circle",
+      "effect": "mask",
+      "field": "mask"
+    },
+    {
+      "id": "flt_abg",
+      "status": "extended",
+      "remotion": null,
+      "note": "剪映 LUT; Remotion only approximates (P5)",
+      "effect": "filter",
+      "field": "filter"
+    },
+    {
+      "id": "flt_ditto",
+      "status": "extended",
+      "remotion": null,
+      "note": "剪映 LUT; Remotion only approximates (P5)",
+      "effect": "filter",
+      "field": "filter"
+    },
+    {
+      "id": "fx_ccd_flash",
+      "status": "extended",
+      "remotion": null,
+      "effect": "scene_fx",
+      "field": "fx"
+    },
+    {
+      "id": "fx_dv_ui",
+      "status": "extended",
+      "remotion": null,
+      "effect": "scene_fx",
+      "field": "fx"
+    },
+    {
+      "id": "paper_cream",
+      "status": "experimental",
+      "remotion": {
+        "base": "#F3EAD8",
+        "grain": 0.1,
+        "blend": "multiply"
+      },
+      "effect": "paper",
+      "field": "fx"
+    },
+    {
+      "id": "paper_kraft",
+      "status": "experimental",
+      "remotion": {
+        "base": "#D9C3A0",
+        "grain": 0.14,
+        "blend": "multiply"
+      },
+      "effect": "paper",
+      "field": "fx"
+    },
+    {
+      "id": "paper_newsprint",
+      "status": "experimental",
+      "remotion": {
+        "base": "#E6E4DE",
+        "grain": 0.12,
+        "blend": "multiply"
+      },
+      "effect": "paper",
+      "field": "fx"
+    },
+    {
+      "id": "bg_blur",
+      "status": "extended",
+      "remotion": null,
+      "note": "approximation only (P4)",
+      "effect": "background",
+      "field": "bg"
+    },
+    {
+      "id": "blend_multiply",
+      "status": "experimental",
+      "remotion": {
+        "css": "mix-blend-mode",
+        "value": "multiply"
+      },
+      "effect": "blend",
+      "field": "blend"
+    },
+    {
+      "id": "blend_color_dodge",
+      "status": "experimental",
+      "remotion": {
+        "css": "mix-blend-mode",
+        "value": "color-dodge"
+      },
+      "effect": "blend",
+      "field": "blend"
+    },
+    {
+      "id": "blend_color_burn",
+      "status": "experimental",
+      "remotion": {
+        "css": "mix-blend-mode",
+        "value": "color-burn"
+      },
+      "effect": "blend",
+      "field": "blend"
+    },
+    {
+      "id": "blend_linear_burn",
+      "status": "experimental",
+      "remotion": null,
+      "effect": "blend",
+      "field": "blend"
+    },
+    {
+      "id": "blend_soft_light",
+      "status": "experimental",
+      "remotion": {
+        "css": "mix-blend-mode",
+        "value": "soft-light"
+      },
+      "effect": "blend",
+      "field": "blend"
+    },
+    {
+      "id": "blend_hard_light",
+      "status": "experimental",
+      "remotion": {
+        "css": "mix-blend-mode",
+        "value": "hard-light"
+      },
+      "effect": "blend",
+      "field": "blend"
+    },
+    {
+      "id": "blend_screen",
+      "status": "experimental",
+      "remotion": {
+        "css": "mix-blend-mode",
+        "value": "screen"
+      },
+      "effect": "blend",
+      "field": "blend"
+    },
+    {
+      "id": "blend_overlay",
+      "status": "experimental",
+      "remotion": {
+        "css": "mix-blend-mode",
+        "value": "overlay"
+      },
+      "effect": "blend",
+      "field": "blend"
+    },
+    {
+      "id": "blend_lighten",
+      "status": "experimental",
+      "remotion": {
+        "css": "mix-blend-mode",
+        "value": "lighten"
+      },
+      "effect": "blend",
+      "field": "blend"
+    },
+    {
+      "id": "blend_darken",
+      "status": "experimental",
+      "remotion": {
+        "css": "mix-blend-mode",
+        "value": "darken"
+      },
+      "effect": "blend",
+      "field": "blend"
+    },
+    {
+      "id": "in_zoom_punch",
+      "status": "extended",
+      "remotion": null,
+      "note": "MVP uses keyframes instead",
+      "effect": "clip_anim",
+      "field": "anim"
+    },
+    {
+      "id": "out_slide_up",
+      "status": "extended",
+      "remotion": null,
+      "effect": "clip_anim",
+      "field": "anim"
+    },
+    {
+      "id": "combo_split3",
+      "status": "extended",
+      "remotion": null,
+      "effect": "clip_anim",
+      "field": "anim"
+    },
+    {
+      "id": "tr_slide_up",
+      "status": "extended",
+      "remotion": {
+        "presentation": "slide",
+        "direction": "from-bottom"
+      },
+      "fallback": "fade",
+      "effect": "transition",
+      "field": "transitionIn"
+    },
+    {
+      "id": "tr_spin",
+      "status": "extended",
+      "remotion": null,
+      "fallback": "fade",
+      "effect": "transition",
+      "field": "transitionIn"
+    },
+    {
+      "id": "tr_cloud",
+      "status": "extended",
+      "remotion": null,
+      "fallback": "fade",
+      "effect": "transition",
+      "field": "transitionIn"
+    },
+    {
+      "id": "tr_flash_white",
+      "status": "extended",
+      "remotion": null,
+      "fallback": "fade",
+      "effect": "transition",
+      "field": "transitionIn"
+    },
+    {
+      "id": "tin_karaoke",
+      "status": "experimental",
+      "remotion": null,
+      "effect": "text_anim",
+      "field": "anim"
+    },
+    {
+      "id": "tin_typewriter",
+      "status": "experimental",
+      "remotion": null,
+      "effect": "text_anim",
+      "field": "anim"
+    },
+    {
+      "id": "tin_fade_in",
+      "status": "experimental",
+      "remotion": null,
+      "effect": "text_anim",
+      "field": "anim"
+    },
+    {
+      "id": "tout_wipe_up",
+      "status": "experimental",
+      "remotion": null,
+      "effect": "text_anim",
+      "field": "anim"
+    },
+    {
+      "id": "tout_fade_out",
+      "status": "experimental",
+      "remotion": null,
+      "effect": "text_anim",
+      "field": "anim"
+    },
+    {
+      "id": "tloop_bounce",
+      "status": "experimental",
+      "remotion": null,
+      "effect": "text_anim",
+      "field": "anim"
+    },
+    {
+      "id": "bubble_demo",
+      "status": "extended",
+      "remotion": null,
+      "note": "pyJianYingDraft demo ID (R3)",
+      "effect": "bubble",
+      "field": "bubble"
+    },
+    {
+      "id": "flower_demo",
+      "status": "extended",
+      "remotion": null,
+      "note": "pyJianYingDraft demo ID (R3)",
+      "effect": "flower",
+      "field": "flower"
+    },
+    {
+      "id": "afx_echo",
+      "status": "experimental",
+      "remotion": null,
+      "effect": "audio_scene",
+      "field": "sceneEffect"
+    },
+    {
+      "id": "afx_megaphone",
+      "status": "experimental",
+      "remotion": null,
+      "effect": "audio_scene",
+      "field": "sceneEffect"
+    },
+    {
+      "id": "afx_underwater",
+      "status": "experimental",
+      "remotion": null,
+      "effect": "audio_scene",
+      "field": "sceneEffect"
+    },
+    {
+      "id": "afx_lofi",
+      "status": "experimental",
+      "remotion": null,
+      "effect": "audio_scene",
+      "field": "sceneEffect"
+    }
+  ]
+}
