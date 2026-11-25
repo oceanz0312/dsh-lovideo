@@ -22,6 +22,7 @@ export const CSS = `
 .lv-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 12px;border-radius:999px;border:1px solid var(--dsw-alias-border-l4);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .15s}
 .lv-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .lv-btn:disabled{opacity:.45;cursor:default}
+a.lv-btn{text-decoration:none}
 .lv-btn.pri{background:var(--dsw-alias-button-primary-fill);border-color:transparent;color:var(--dsw-alias-label-primary-inverted)}
 .lv-btn.pri:hover{background:var(--dsw-alias-button-primary-hover)}
 .lv-btn.ghost{border-color:transparent}
@@ -104,6 +105,15 @@ export function Bar({ value }) {
 
 export function Spin() {
   return <span className="lv-spin" aria-hidden />
+}
+
+/** 长得像按钮的外部链接：点击本身就是用户操作，桌面版和网页版都会交给系统浏览器 */
+export function LinkButton({ kind, size, href, children }) {
+  return (
+    <a className={`lv-btn ${kind || ''} ${size || ''}`} href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  )
 }
 
 export function Button({ kind, size, busy, children, ...rest }) {

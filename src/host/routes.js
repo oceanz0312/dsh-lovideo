@@ -2,7 +2,7 @@
 // DSH 的 web 服务不替插件鉴权，每个请求都先走 connection.requestRejection；写操作再拒绝跨站请求。
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { execFile } from 'node:child_process'
-import { extname, join, resolve } from 'node:path'
+import { dirname, extname, join, resolve } from 'node:path'
 import { assertId, isInside } from './paths.js'
 import { deleteWork, events, getWork, listWorks, requireWork, updateWork, workDir } from './works.js'
 import { listStyles, mineDir, removeMine, installPlatformStyle, platformCatalog } from './styles.js'
@@ -97,10 +97,17 @@ export function view(w) {
   }
 }
 
+/**
+ * 在系统文件管理器里显示：文件就选中它所在的位置，文件夹就打开它。
+ * macOS 用 open -R；Windows 用 explorer /select,（直接 explorer 文件会用默认程序打开它）；
+ * Linux 没有通用的「选中」，打开所在文件夹。
+ */
 function reveal(path) {
-  const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open'
-  const args = process.platform === 'darwin' && existsSync(path) && statSync(path).isFile() ? ['-R', path] : [path]
-  execFile(cmd, args, () => {})
+  const isFile = existsSync(path) && statSync(path).isFile()
+  if (process.platform === 'darwin') execFile('open', isFile ? ['-R', path] : [path], () => {})
+  // explorer 只认 /select,"路径" 这种写法（引号在逗号后面），所以自己拼参数、不让 Node 再加引号；Windows 路径里不会有双引号
+  else if (process.platform === 'win32') execFile('explorer.exe', [isFile ? `/select,"${path}"` : `"${path}"`], { windowsVerbatimArguments: true }, () => {})
+  else execFile('xdg-open', [isFile ? dirname(path) : path], () => {})
 }
 
 function state() {
@@ -203,13 +210,6 @@ export async function route(req, res) {
     const file = join(ensureDir(tmpDir()), `voice-test-${Date.now()}.wav`)
     const sec = await speak(body.text || '你好，这是 lovideo 的配音试听。', file, readSettings().voice)
     return json(res, 200, { seconds: sec, url: `tmp/${file.split(/[\\/]/).pop()}` })
-  }
-  if (path === 'open-url') {
-    const u = String(body.url || '')
-    if (!/^https:\/\//.test(u)) return json(res, 400, { error: '只能打开 https 网址' })
-    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open'
-    execFile(cmd, [u], () => {})
-    return json(res, 200, { ok: true })
   }
   return json(res, 404, { error: '接口不存在' })
 }

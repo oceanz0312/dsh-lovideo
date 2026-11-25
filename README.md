@@ -41,4 +41,5 @@ npm test               # 集成测试，约 30 秒，需要本机有 Chrome 和 
 
 - 给导演发通知（`agent.followup`）时，消息必须带 `id` 和 `role: 'user'`。缺了这两个字段，会话历史会坏，DSH 会把这个会话从工作区里去掉。
 - 卡片挂在 `conversation.chat.turnTail` 上，所以工具行折叠起来以后卡片也看得见。工具行本身只显示一行（`tool.call.toolview`）。
+- 打开外部网址（比如登录页）一律在页面里用 `window.open` 或 `target="_blank"` 的链接：桌面版会交给系统默认浏览器，网页版开新标签。不要让插件后端去跑 `open` / `explorer`：Windows 的 `explorer` 收到带 `?`、`&` 的网址可能打开文件夹，网页版远程访问时还会在跑 DSH 的那台电脑上打开。
 - 客户端只用 DSH 的主题变量（`--dsw-alias-*`），不引用 DSH 的 UI 组件包。

@@ -1,8 +1,8 @@
 // 对话里的 lovideo 卡片：按工具名注册到 tool.call.toolview。
 // 卡片只从工具结果里拿作品 id，内容实时读本机数据，所以和管理页、和后续的修改永远一致。
 import * as React from 'react'
-import { api, argsOf, fileUrl, pick, resultText, useLive } from './api.js'
-import { Badge, Bar, Button, Mark, Media, Player, SEG, STEP, Spin, StatusBadge, Styles, fmtSec } from './ui.jsx'
+import { api, argsOf, fileUrl, openExternal, pick, resultText, useLive } from './api.js'
+import { Badge, Bar, Button, LinkButton, Mark, Media, Player, SEG, STEP, Spin, StatusBadge, Styles, fmtSec } from './ui.jsx'
 import { openManager } from './host.js'
 
 /* ---------- 外框 ---------- */
@@ -70,7 +70,7 @@ export function Doctor() {
   const env = st.runtime
   const login = async () => {
     const r = await api('login', {})
-    if (r.pending?.url) await api('open-url', { url: r.pending.url })
+    if (r.pending?.url) openExternal(r.pending.url)
   }
   return (
     <div className="lv-doctor">
@@ -82,7 +82,7 @@ export function Doctor() {
       <Row ok={Boolean(st.login.account)} title="lovideo 账号"
         desc={st.login.account ? `已登录 ${st.login.account.email || ''} · 平台风格可用` : pending ? '已在浏览器打开 lovideo.ai，核对下面的代码后点「允许」' : '登录后可以用平台上的 100 多种风格，注册即免费'}
         extra={pending ? <div className="lv-code" style={{ marginTop: 8 }}>{pending.userCode}</div> : st.login.error ? <div className="lv-err">{st.login.error}</div> : null}
-        action={st.login.account ? null : <Button size="sm" kind={env.ready ? 'pri' : ''} busy={busy === 'login'} onClick={() => act('login', login)}>{pending ? '重新打开' : '登录'}</Button>} />
+        action={st.login.account ? null : pending ? <LinkButton size="sm" href={pending.url}>重新打开</LinkButton> : <Button size="sm" kind={env.ready ? 'pri' : ''} busy={busy === 'login'} onClick={() => act('login', login)}>登录</Button>} />
       <Row ok title="配音"
         desc={st.settings.voice.provider === 'system' ? '系统自带语音（可以在设置里换成自己的配音服务）' : st.settings.voice.provider === 'none' ? '不配音，只出字幕' : `${st.settings.voice.provider}${st.settings.voice.hasKey ? '' : '（还没填 key）'}`}
         action={<Button size="sm" kind="ghost" onClick={() => openManager('settings')}>设置</Button>} />

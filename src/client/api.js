@@ -21,6 +21,16 @@ export async function api(path, body) {
 
 export const fileUrl = rel => (rel ? API + rel : null)
 
+/**
+ * 用系统浏览器打开外部网址。交给页面的 window.open：桌面版 DeepSeek Harness 会转给
+ * Electron 的 shell.openExternal（macOS、Windows 都打开默认浏览器），网页版在用户自己的浏览器里开新标签。
+ * 不要让插件后端去跑 open / explorer：Windows 的 explorer 收到带 ? & 的网址可能打开文件夹，
+ * 网页版远程访问时还会在跑 DSH 的那台电脑上打开。
+ */
+export function openExternal(url) {
+  if (/^https:\/\//.test(url || '')) window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 /* ---------- 变化推送：一个 EventSource 全页面共用 ---------- */
 
 const listeners = new Set()
