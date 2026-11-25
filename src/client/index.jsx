@@ -4,6 +4,7 @@ import { TOOL_VIEWS } from './cards.jsx'
 import { KIND, ToolRow, TurnCards, cardDefinition } from './turn-cards.jsx'
 import { ManagePage } from './manage.jsx'
 import { PANEL, host } from './host.js'
+import { ToastOverlay } from './toast.jsx'
 
 function Icon({ size = 18 }) {
   return (
@@ -33,6 +34,8 @@ export function apply(ctx) {
   ctx.slots.inject('sidebar.panellist', () =>
     ctx.slots.register({ name: 'sidebar.panellist', id: PANEL, order: 7, label: () => LABEL[lang()] }, Icon))
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL }, ManagePage))
+  // 全局提示条：登录成功、成片做好、导出完成等，在哪个页面都能看到
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'dsh-lovideo.toast' }, ToastOverlay))
   // 过程区里的工具行只占一行；完整卡片挂在本轮末尾（不会被折叠）
   for (const tool of Object.keys(TOOL_VIEWS)) {
     ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: tool }, ToolRow))

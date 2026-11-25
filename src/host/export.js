@@ -5,7 +5,8 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, writ
 import { join } from 'node:path'
 import { PLUGIN_ROOT, defaultExportDir, ensureDir, runtimeDir, tmpDir } from './paths.js'
 import { readSettings } from './settings.js'
-import { requireWork, updateWork, workDir } from './works.js'
+import { notify } from './notices.js'
+import { getWork, requireWork, updateWork, workDir } from './works.js'
 import { ffmpeg, findPythonForNative, mediaSeconds, run } from './runtime.js'
 import { getBrowser } from './render.js'
 import { importDraft, isRunning as jianyingIsRunning, jianyingStatus, launch as launchJianying, quit as quitJianying } from './jianying.js'
@@ -199,8 +200,12 @@ export async function startExport(id, opts = {}) {
         w.exports = [...(w.exports || []), ...w.exporting.results.map(r => ({ ...r, at: new Date().toISOString() }))].slice(-20)
         return w
       })
+      const w = requireWork(id)
+      const last = w.exporting.results.at(-1)
+      notify({ kind: 'export-done', tone: 'success', text: `《${w.title}》已导出${format === 'mp4' ? ' MP4' : format === 'jianying' ? '剪映工程' : ' MP4 和剪映工程'}`, workId: id, path: last?.path })
     } catch (err) {
       await updateWork(id, w => ((w.exporting = { ...w.exporting, state: 'failed', error: err.message }), w)).catch(() => {})
+      if (err.name !== 'AbortError') notify({ kind: 'export-failed', tone: 'warning', text: `《${getWork(id)?.title || '作品'}》导出没成功：${err.message}`.slice(0, 160), workId: id })
     } finally {
       running.delete(id)
     }

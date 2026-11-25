@@ -4,6 +4,7 @@ import { api, fileUrl, loginUrl, openExternal, useLive } from './api.js'
 import { Badge, Button, ConfirmDialog, LinkButton, Mark, Media, Player, StatusBadge, Styles, fmtSec } from './ui.jsx'
 import { Doctor, WorkActions, WorkBody, coverOf } from './cards.jsx'
 import { host, openSession, startDirector } from './host.js'
+import { toast } from './toast.jsx'
 
 const PAGE_CSS = `
 .lv-page{height:100%;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base)}
@@ -109,6 +110,7 @@ function WorkPanel({ id, onClose }) {
   if (!w) return <div className="lv-side lv-subtle lv-shimmer">读取中…</div>
   const del = async () => {
     await api(`works/${id}/delete`, {})
+    toast({ text: `已删除《${w.title}》` })
     onClose()
   }
   return (
@@ -275,11 +277,11 @@ function MinePanel({ s, onClose, reload }) {
           {s.description ? <div className="lv-muted">{s.description}</div> : null}
           {s.distill?.error ? <div className="lv-err">{s.distill.error}</div> : null}
           {samples[1] ? <video src={file(samples[1].file)} poster={file(samples[1].poster)} controls muted loop style={{ width: 120, borderRadius: 8, background: '#000' }} /> : null}
-          {s.draft && s.distill?.state === 'done' ? <Button kind="pri" onClick={() => api(`styles/mine/${s.slug}/save`, {}).then(reload)}>保存为我的风格</Button> : null}
+          {s.draft && s.distill?.state === 'done' ? <Button kind="pri" onClick={() => api(`styles/mine/${s.slug}/save`, {}).then(() => { toast({ text: `「${s.name}」已保存到我的风格` }); reload() }, e => toast({ text: e.message, tone: 'warning' }))}>保存为我的风格</Button> : null}
           {!s.draft ? <Button kind="pri" size="lg" onClick={() => startDirector(`用我的风格「${s.name}」（${s.slug}）做一个视频：`)}>用它开拍</Button> : null}
           <div className="lv-row">
             <span className="lv-grow" />
-            {confirm ? <><Button size="sm" onClick={() => setConfirm(false)}>取消</Button><Button size="sm" kind="pri" onClick={() => api(`styles/mine/${s.slug}/delete`, {}).then(() => { onClose(); reload() })}>删除</Button></> : <Button size="sm" kind="ghost" onClick={() => setConfirm(true)}>删除</Button>}
+            {confirm ? <><Button size="sm" onClick={() => setConfirm(false)}>取消</Button><Button size="sm" kind="pri" onClick={() => api(`styles/mine/${s.slug}/delete`, {}).then(() => { toast({ text: `已删除风格「${s.name}」` }); onClose(); reload() }, e => toast({ text: e.message, tone: 'warning' }))}>删除</Button></> : <Button size="sm" kind="ghost" onClick={() => setConfirm(true)}>删除</Button>}
           </div>
         </div>
       </div>
@@ -311,6 +313,7 @@ function Settings() {
     try {
       await api('logout', {})
       setAskLogout(false)
+      toast({ text: '已退出 lovideo' })
       reload()
     } finally {
       setLoggingOut(false)
@@ -328,7 +331,7 @@ function Settings() {
     try {
       const next = await api('settings', patch)
       setSt(next)
-      setMsg({ ok: true, text: '已保存' })
+      toast({ text: '设置已保存' })
       setForm(f => ({ ...f, voice: { ...next.settings.voice, key: '' } }))
     } catch (e) {
       setMsg({ ok: false, text: e.message })

@@ -1,6 +1,7 @@
 // lovideo.ai 账号和接口。登录走设备码：插件用系统浏览器打开网站，用户在网站上登录并确认同一串代码，
 // 插件轮询拿到令牌，存在本机设置里（0600）。之后用 Bearer 调接口：平台风格列表、下载风格包、网站上的作品。
 import { EventEmitter } from 'node:events'
+import { notify } from './notices.js'
 import { readSettings, setAccount } from './settings.js'
 
 /** 网站确认登录成功时发 'login'（带邮箱）：等着登录的导演据此自动继续 */
@@ -85,6 +86,7 @@ async function poll(p) {
     if (Date.now() > p.expiresAt) {
       p.state = 'failed'
       p.error = '代码已过期，请重新登录'
+      notify({ kind: 'login-failed', tone: 'warning', text: `lovideo 登录没有完成：${p.error}` })
       return
     }
     try {
@@ -101,12 +103,14 @@ async function poll(p) {
         setAccount({ token: body.access_token, email: me?.user?.email ?? null, name: me?.user?.name ?? null, at: new Date().toISOString() })
         p.state = 'done'
         loginEvents.emit('login', { email: me?.user?.email ?? null })
+        notify({ kind: 'login', tone: 'success', text: me?.user?.email ? `已登录 lovideo：${me.user.email}，平台风格都能用了` : '已登录 lovideo，平台风格都能用了' })
         return
       }
       if (body.error === 'slow_down') p.interval += 5
       else if (body.error && body.error !== 'authorization_pending') {
         p.state = 'failed'
         p.error = body.error === 'access_denied' ? '你在网站上拒绝了登录' : body.error_description || body.error
+        notify({ kind: 'login-failed', tone: 'warning', text: `lovideo 登录没有完成：${p.error}` })
         return
       }
     } catch {

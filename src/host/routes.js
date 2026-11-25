@@ -17,6 +17,7 @@ import { listModels, modelInfo } from './llm.js'
 import { loginState, logout, startLogin, siteUrl } from './site.js'
 import { speak } from './tts.js'
 import { tmpDir, ensureDir } from './paths.js'
+import { notices, notify } from './notices.js'
 
 export const BASE = '/lovideo/api'
 const MAX_JSON = 2_000_000
@@ -202,7 +203,12 @@ export async function route(req, res) {
   }
   if (path === 'distill') return json(res, 200, await startDistill(body))
   if (path === 'runtime/setup') {
-    setupRuntime()
+    // 下载完（或失败）时给页面一条提示；正在准备时重复点不会重复提示
+    if (!setupProgress().running) {
+      setupRuntime().then(p => notify(p.error
+        ? { kind: 'runtime-failed', tone: 'warning', text: `渲染环境没准备好：${p.error}`.slice(0, 160) }
+        : { kind: 'runtime-ready', tone: 'success', text: '渲染环境准备好了，可以开拍' }), () => {})
+    }
     return json(res, 200, state())
   }
   if (path === 'login') return json(res, 200, await startLogin())
@@ -224,10 +230,13 @@ function sse(req, res) {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
   res.write(': ok\n\n')
   const onChange = ({ id, work }) => res.write(`data: ${JSON.stringify({ id, status: work?.status ?? null, progress: work?.job?.progress ?? null })}\n\n`)
+  const onNotice = notice => res.write(`data: ${JSON.stringify({ type: 'notice', ...notice })}\n\n`)
   events.on('change', onChange)
+  notices.on('notice', onNotice)
   const ping = setInterval(() => res.write(': ping\n\n'), 20_000)
   req.on('close', () => {
     clearInterval(ping)
     events.off('change', onChange)
+    notices.off('notice', onNotice)
   })
 }

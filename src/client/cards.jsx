@@ -4,6 +4,7 @@ import * as React from 'react'
 import { api, argsOf, fileUrl, loginUrl, openExternal, pick, resultText, useLive } from './api.js'
 import { Badge, Bar, Button, Dialog, LinkButton, Mark, Media, Player, SEG, STEP, SpeedButton, Spin, StatusBadge, Styles, fmtSec, usePlaybackRate } from './ui.jsx'
 import { openManager } from './host.js'
+import { toast } from './toast.jsx'
 
 /* ---------- 外框 ---------- */
 
@@ -558,7 +559,10 @@ export function DistillCard(props) {
     setBusy(true)
     try {
       await api(`styles/mine/${slug}/save`, {})
+      toast({ text: `「${s.name}」已保存到我的风格` })
       reload()
+    } catch (e) {
+      toast({ text: e.message, tone: 'warning' })
     } finally {
       setBusy(false)
     }
