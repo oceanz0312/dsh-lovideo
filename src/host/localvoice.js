@@ -4,7 +4,7 @@
 // 后端两种：Apple 芯片的 Mac 用 mlx-audio；Windows、Linux、Intel Mac 用 PyTorch（有 NVIDIA 显卡用显卡，没有就用 CPU）。
 // Python 环境用 uv 单独装一份 3.12（DSH 自带的 Python 加载不了这类原生库，macOS 系统 Python 又太旧），放在插件目录里。
 import { spawn, spawnSync } from 'node:child_process'
-import { chmodSync, createWriteStream, existsSync, readdirSync, renameSync, rmSync, statSync, statfsSync } from 'node:fs'
+import { chmodSync, copyFileSync, createWriteStream, existsSync, readFileSync, readdirSync, renameSync, rmSync, statSync, statfsSync } from 'node:fs'
 import { cpus, platform as osPlatform, totalmem } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
@@ -242,6 +242,18 @@ const PYTHON_MIRROR = 'https://registry.npmmirror.com/-/binary/python-build-stan
 const HF_MIRROR = 'https://hf-mirror.com'
 
 const ttsDir = () => ensureDir(join(runtimeDir(), 'tts'))
+
+/**
+ * worker.py 拷到数据目录再运行：插件可能装在「文稿」「桌面」这类受系统隐私保护的目录里，
+ * macOS 不让我们装的 Python 直接读那里的文件（报 Operation not permitted）。内容变了才重新拷。
+ */
+function workerScript() {
+  const src = join(PLUGIN_ROOT, 'vendor', 'tts', 'worker.py')
+  const dst = join(ttsDir(), 'worker.py')
+  const code = readFileSync(src)
+  if (!existsSync(dst) || !readFileSync(dst).equals(code)) copyFileSync(src, dst)
+  return dst
+}
 const envDir = backend => join(ttsDir(), `env-${backend}`)
 const envPython = backend => (WIN ? join(envDir(backend), 'Scripts', 'python.exe') : join(envDir(backend), 'bin', 'python'))
 const hfHome = () => ensureDir(join(ttsDir(), 'hf'))
@@ -461,7 +473,7 @@ export function worker(modelId) {
   if (!b) throw new Error(`离线配音模型不可用：${modelId}`)
   const cur = workers.get(modelId)
   if (cur) return cur.ready
-  const child = spawn(envPython(hw.backend), [join(PLUGIN_ROOT, 'vendor', 'tts', 'worker.py'), b.worker], {
+  const child = spawn(envPython(hw.backend), [workerScript(), b.worker], {
     env: pyEnv(hw.backend), windowsHide: true,
   })
   const pending = new Map()
@@ -512,7 +524,7 @@ export function worker(modelId) {
     child.on('close', code => {
       workers.delete(modelId)
       clearTimeout(idle)
-      const e = new Error(`离线配音进程退出（${code}）：${err.trim().split('\n').slice(-2).join(' ').slice(0, 300)}`)
+      const e = new Error(`离线配音没能启动：${err.trim().split('\n').pop().slice(0, 160)}`)
       reject(e)
       for (const p of pending.values()) p.fail(e)
       pending.clear()

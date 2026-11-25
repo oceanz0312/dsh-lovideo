@@ -420,7 +420,7 @@ function Settings() {
           ) : null}
           <div className="lv-row">
             <Button kind="pri" busy={busy === 'save'} onClick={() => save({ voice: v })}>保存</Button>
-            {v.provider !== 'none' ? <Button busy={busy === 'test'} onClick={test}>试听</Button> : null}
+            {!['none', 'local'].includes(v.provider) ? <Button busy={busy === 'test'} onClick={test}>试听</Button> : null}
             {msg ? <span className={msg.ok ? 'lv-subtle' : 'lv-err'}>{msg.text}</span> : null}
             {msg?.audio ? <audio src={msg.audio} controls autoPlay style={{ height: 30 }} /> : null}
           </div>
@@ -505,10 +505,7 @@ function LocalVoicePanel({ onChange }) {
   }
   return (
     <div className="lv-local">
-      <div className="lv-subtle">
-        这台电脑：{hw.chip || hw.platform} · {hw.ramGB}GB 内存{hw.gpu ? ` · ${hw.gpu.name} ${hw.gpu.vramGB}GB 显存` : ''}{hw.freeDiskGB !== null ? ` · 磁盘剩余 ${hw.freeDiskGB}GB` : ''}。
-        下面按这台电脑的配置标了推荐、吃力、跑不动，装哪个、用哪个你自己定。用的那个配一部片子要超过 {Math.round(st.budgetSeconds / 60)} 分钟时，这部片子会换成更快的模型，都来不及就用系统语音。
-      </div>
+      <div className="lv-subtle">这台电脑：{hw.chip || hw.platform} · {hw.ramGB}GB 内存{hw.gpu ? ` · ${hw.gpu.name} ${hw.gpu.vramGB}GB 显存` : ''}</div>
       <div className="lv-local-list">
         {st.models.map(m => {
           const doing = running && s.model === m.id
