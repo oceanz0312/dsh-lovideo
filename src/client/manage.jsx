@@ -37,6 +37,11 @@ const PAGE_CSS = `
 .lv-local-row:first-child{border-top:0}
 .lv-local-row>.l{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .lv-local-row.off{opacity:.6}
+.lv-listen{position:relative;overflow:hidden;min-width:64px;justify-content:center}
+.lv-listen svg{width:10px;height:10px;flex:none}
+.lv-wave{display:inline-flex;align-items:center;gap:2px;height:12px;flex:none}
+.lv-wave i{display:block;width:2px;height:3px;border-radius:1px;background:currentColor;transition:height 80ms linear}
+@media (prefers-reduced-motion:reduce){.lv-wave i{transition:none}}
 .lv-banner{animation:lv-in var(--lv-slow) var(--lv-ease-out);display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--dsw-alias-card-fill);margin-bottom:16px}
 `
 
@@ -365,12 +370,11 @@ function Settings() {
     }
   }
   const test = async () => {
-    setBusy('test')
     setMsg(null)
     try {
       await api('settings', { voice: v })
       const r = await api('settings/test-voice', { text: '你好，这是 lovideo 的配音试听。' })
-      setMsg({ ok: true, text: `试听 ${r.seconds.toFixed(1)} 秒`, audio: fileUrl(r.url) })
+      return fileUrl(r.url)
     } catch (e) {
       setMsg({ ok: false, text: e.message })
     } finally {
@@ -420,9 +424,8 @@ function Settings() {
           ) : null}
           <div className="lv-row">
             <Button kind="pri" busy={busy === 'save'} onClick={() => save({ voice: v })}>保存</Button>
-            {!['none', 'local'].includes(v.provider) ? <Button busy={busy === 'test'} onClick={test}>试听</Button> : null}
+            {!['none', 'local'].includes(v.provider) ? <ListenButton load={test} /> : null}
             {msg ? <span className={msg.ok ? 'lv-subtle' : 'lv-err'}>{msg.text}</span> : null}
-            {msg?.audio ? <audio src={msg.audio} controls autoPlay style={{ height: 30 }} /> : null}
           </div>
         </div>
       </div>
@@ -464,7 +467,6 @@ function LocalVoicePanel({ onChange }) {
   const [st, err, reload] = useLive('local-voice', () => false)
   const [busy, setBusy] = React.useState(null)
   const [fail, setFail] = React.useState(null)
-  const [preview, setPreview] = React.useState(null)
   const running = st?.setup?.running
   const wasRunning = React.useRef(false)
   React.useEffect(() => {
@@ -486,12 +488,19 @@ function LocalVoicePanel({ onChange }) {
       reload()
     } catch (e) {
       setFail(e.message)
-    } finally {
-      setBusy(null)
+      return null
     }
   }
-  const listen = (m, lang) => act(`pv-${m.id}-${lang}`, 'local-voice/preview', { model: m.id, lang, voice: m.chosenVoices[lang] },
-    r => setPreview({ key: `${m.id}-${lang}-${Date.now()}`, url: fileUrl(r.url) }))
+  const listen = async (m, lang) => {
+    setFail(null)
+    try {
+      const r = await api('local-voice/preview', { model: m.id, lang, voice: m.chosenVoices[lang] })
+      return fileUrl(r.url)
+    } catch (e) {
+      setFail(e.message)
+      return null
+    }
+  }
   const s = st.setup
   // 配置低于门槛：直接说明用系统语音，不列模型、不给下载
   if (!st.minimum.ok) {
@@ -535,7 +544,6 @@ function LocalVoicePanel({ onChange }) {
           )
         })}
       </div>
-      {preview ? <audio key={preview.key} src={preview.url} controls autoPlay style={{ height: 30 }} /> : null}
       {fail ? <div className="lv-err">{fail}</div> : null}
     </div>
   )
@@ -560,7 +568,7 @@ function VoicePicker({ m, busy, onPick, onListen }) {
           <select className="lv-select" style={{ width: "auto" }} value={m.chosenVoices[l]} disabled={busy === 'voice'} onChange={e => onPick({ [l]: e.target.value })}>
             {m.voices[l].map(([id, name]) => <option key={id} value={id}>{name}</option>)}
           </select>
-          <Button size="sm" kind="ghost" busy={busy === `pv-${m.id}-${l}`} onClick={() => onListen(l)}>试听</Button>
+          <ListenButton size="sm" kind="ghost" load={() => onListen(l)} />
         </div>
       ))}
     </div>
@@ -568,3 +576,94 @@ function VoicePicker({ m, busy, onPick, onListen }) {
 }
 
 export { Player }
+// 同一时间只放一段试听：点另一个试听时，前一个停下
+let stopCurrent = null
+
+/**
+ * 试听按钮：点一下生成并播放，再点停止；播放时图标换成跳动的声纹。不用浏览器自带的播放条。
+ * load 返回音频地址，失败返回 null（错误由调用方显示）。
+ */
+function ListenButton({ load, size, kind }) {
+  const [state, setState] = React.useState('idle')
+  const audio = React.useRef(null)
+  const stop = React.useCallback(() => {
+    audio.current?.pause()
+    audio.current = null
+    setState('idle')
+  }, [])
+  React.useEffect(() => () => audio.current?.pause(), [])
+  const click = async () => {
+    if (state === 'playing') return stop()
+    stopCurrent?.()
+    setState('loading')
+    const url = await load()
+    if (!url) return setState('idle')
+    const a = new Audio(url)
+    audio.current = a
+    stopCurrent = stop
+    a.onended = stop
+    a.onerror = stop
+    setState('playing')
+    a.play().catch(stop)
+  }
+  return (
+    <Button className={`lv-btn lv-listen ${kind || ''} ${size || ''}`} busy={state === 'loading'} onClick={click}>
+      {state === 'playing' ? <Wave audio={audio.current} /> : state === 'idle' ? <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 1.3v7.4L8.7 5z" fill="currentColor" /></svg> : null}
+      {state === 'playing' ? '停止' : '试听'}
+    </Button>
+  )
+}
+
+// 整页共用一个 AudioContext（浏览器对个数有限制）；同一个 audio 元素只能接一次
+let audioCtx = null
+const sources = new WeakMap()
+
+/** 声纹：几根竖条跟着正在放的声音实时跳动；读不到音量时退回固定的起伏动画 */
+function Wave({ audio }) {
+  const bars = React.useRef([])
+  React.useEffect(() => {
+    if (!audio) return undefined
+    let analyser = null
+    try {
+      audioCtx ||= new (window.AudioContext || window.webkitAudioContext)()
+      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {})
+      let src = sources.get(audio)
+      if (!src) {
+        src = audioCtx.createMediaElementSource(audio)
+        sources.set(audio, src)
+      }
+      analyser = audioCtx.createAnalyser()
+      analyser.fftSize = 64
+      analyser.smoothingTimeConstant = 0.6
+      src.connect(analyser)
+      analyser.connect(audioCtx.destination)
+    } catch {
+      analyser = null
+    }
+    const data = new Uint8Array(32)
+    // 人声能量集中在低频：最强的频段放中间，两边放弱一些的，看起来像声纹而不是一条斜坡
+    const bins = [5, 2, 1, 3, 7]
+    let raf = 0
+    const t0 = performance.now()
+    const tick = now => {
+      if (analyser) analyser.getByteFrequencyData(data)
+      bars.current.forEach((el, i) => {
+        if (!el) return
+        const v = analyser ? data[bins[i]] / 255 : 0.5 + 0.5 * Math.sin((now - t0) / 140 + i * 1.3)
+        el.style.height = `${3 + Math.round(v * 9)}px`
+      })
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+      try {
+        analyser?.disconnect()
+        // 断开分析器后要把声音重新接到扬声器，否则下次播放没声
+        sources.get(audio)?.connect(audioCtx.destination)
+      } catch { /* 已断开 */ }
+    }
+  }, [audio])
+  return <span className="lv-wave" aria-hidden="true">{[0, 1, 2, 3, 4].map(i => <i key={i} ref={el => { bars.current[i] = el }} />)}</span>
+}
+
