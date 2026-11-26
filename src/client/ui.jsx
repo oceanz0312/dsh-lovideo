@@ -187,6 +187,8 @@ a.lv-btn{text-decoration:none}
 .lvc-chip:hover,.lvc-chip.on{background:var(--dsw-alias-interactive-bg-hover)}
 .lvc-chip:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 .lvc-style{padding-left:4px}
+.lvc-style .lvc-spark{width:22px;height:22px;padding:3px;border-radius:6px;display:block;flex:none;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
+.lvc-link .lvc-spark{width:14px;height:14px}
 .lvc-style img,.lvc-ph{width:28px;height:22px;border-radius:6px;object-fit:cover;display:block;background:var(--dsw-alias-interactive-bg-hover)}
 .lvc-name{max-width:9em;overflow:hidden;text-overflow:ellipsis}
 .lvc-dot{color:var(--dsw-alias-label-tertiary)}

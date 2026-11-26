@@ -45,12 +45,16 @@ const allStyles = r => [...(r?.mine || []).filter(s => !s.draft), ...(r?.platfor
 
 /* ---------- 每个会话一份开局条件：先改界面，停 300ms 再存，免得拖动时一直发请求 ---------- */
 
+const ASPECT_LIST = ['16:9', '9:16']
+// 「导演推荐」：没指定风格，横竖都能选
+const AUTO = { slug: null, name: '导演推荐', cover: null, aspects: ASPECT_LIST }
+
 const stores = new Map()
 
 function storeFor(sessionId) {
   let st = stores.get(sessionId)
   if (st) return st
-  let state = { ready: false, slug: null, name: '', cover: null, aspects: ['16:9'], aspect: '16:9', duration: 30 }
+  let state = { ready: false, ...AUTO, aspect: '16:9', duration: 30 }
   const subs = new Set()
   let timer = null
   let started = false
@@ -76,7 +80,10 @@ function storeFor(sessionId) {
       subs.add(fn)
       return () => subs.delete(fn)
     },
-    /** 打开时：这个会话存过就用存的，没有就用上次的选择，再没有用第一个官方风格 */
+    /**
+     * 打开时：这个会话存过就用存的；新会话的风格是「导演推荐」（不沿用上次的风格，免得导演以为用户选好了），
+     * 画幅和片长沿用上次的；从管理页带着风格来的用那个风格
+     */
     start() {
       if (started) return
       started = true
@@ -85,10 +92,9 @@ function storeFor(sessionId) {
         const want = c.brief || c.defaults || {}
         const forced = preferred && list.find(x => x.slug === preferred)
         preferred = null
-        const s = forced || list.find(x => x.slug === want.slug) || r.platform?.[0] || list[0]
-        if (!s) return
+        const s = forced || (c.brief?.slug ? list.find(x => x.slug === c.brief.slug) : null)
         const duration = Number.isInteger(want.duration) ? Math.min(MAX, Math.max(MIN, want.duration)) : 30
-        state = { ...state, ...pick(s, { aspect: want.aspect }), duration, ready: true }
+        state = { ...state, ...(s ? pick(s, { aspect: want.aspect }) : { ...AUTO, aspect: ASPECT_LIST.includes(want.aspect) ? want.aspect : '16:9' }), duration, ready: true }
         emit()
         if (!c.brief || forced) save()
       }, () => {
@@ -97,6 +103,12 @@ function storeFor(sessionId) {
     },
     setStyle(s) {
       state = { ...state, ...pick(s) }
+      emit()
+      save()
+    },
+    /** 不指定风格，交给导演按内容推荐 */
+    auto() {
+      state = { ...state, ...AUTO }
       emit()
       save()
     },
@@ -253,7 +265,7 @@ export function StyleChip(props) {
       {dock && hasPortal() ? portal(<Library {...props} />, dock) : null}
       <button ref={anchor} type="button" className={`lvc-chip lvc-style ${open ? 'on' : ''}`} aria-haspopup="dialog" aria-expanded={open}
         title="风格和画幅" onClick={() => toggle(panel)}>
-        {c.cover ? <img src={c.cover} alt="" /> : <i className="lvc-ph" />}
+        {c.cover ? <img src={c.cover} alt="" /> : c.slug ? <i className="lvc-ph" /> : <Sparkle />}
         <span className="lvc-name">{c.name}</span>
         <span className="lvc-dot">·</span>
         <span className="lvc-mono lvc-asp">{c.aspect}</span>
@@ -275,14 +287,20 @@ function AspectPanel({ sessionId }) {
           </button>
         ))}
       </div>
-      <div className="lv-subtle" style={{ marginTop: 8, fontSize: 12 }}>{c.aspects.length > 1 ? `「${c.name}」横竖两版都能做` : `「${c.name}」只能做横版`}</div>
+      <div className="lv-subtle" style={{ marginTop: 8, fontSize: 12 }}>{!c.slug ? '导演会按你说的内容推荐几个风格，在对话里点一个就行' : c.aspects.length > 1 ? `「${c.name}」横竖两版都能做` : `「${c.name}」只能做横版`}</div>
       <button type="button" className="lvc-link" onClick={() => {
         setPop(null)
         showTab(sessionId, 'all')
       }}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
-        换风格：在下方挑一个
+        {c.slug ? '换风格：在下方挑一个' : '自己挑风格：在下方点一个'}
       </button>
+      {c.slug ? (
+        <button type="button" className="lvc-link" onClick={() => {
+          setPop(null)
+          st.auto()
+        }}><Sparkle />不指定风格，让导演按内容推荐</button>
+      ) : null}
     </div>
   )
 }
@@ -352,6 +370,11 @@ function DurationPanel({ sessionId }) {
       <p className="lv-subtle">可以拖动，也可以直接输入 {MIN} 到 {MAX} 之间的秒数。时长仅供参考：实际长短取决于内容是否丰富，导演不会为了凑时长拼凑没有意义的内容。</p>
     </div>
   )
+}
+
+/** 「导演推荐」的小图标 */
+function Sparkle() {
+  return <svg className="lvc-spark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.6L19.5 10.5 13.9 12.4 12 18l-1.9-5.6L4.5 10.5l5.6-1.9z" /><path d="M19 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z" /></svg>
 }
 
 function Chevron() {

@@ -286,11 +286,11 @@ const styles = tool({
     const recommend = args.recommend || []
     if (recommend.length) {
       // 没看过全部风格就推荐，等于瞎猜：先让它看
-      if (sessionKey && !seenStyles.has(sessionKey)) throw new Error('先不带 recommend 调用一次 lovideo_styles，看完全部风格的总览图和介绍，再按内容推荐')
+      if (sessionKey && !seenStyles.has(sessionKey)) throw fixable('先不带 recommend 调用一次 lovideo_styles，看完全部风格的总览图和介绍，再按内容推荐')
       const unknown = recommend.filter(r => !all.some(s => s.slug === r))
-      if (unknown.length) throw new Error(`没有这些风格：${unknown.join('、')}`)
+      if (unknown.length) throw fixable(`没有这些风格：${unknown.join('、')}，从 lovideo_styles 给的列表里挑`)
       const why = args.why || []
-      if (why.length !== recommend.length || why.some(w => !String(w).trim())) throw new Error('why 要和 recommend 一一对应，每个风格写一句为什么适合')
+      if (why.length !== recommend.length || why.some(w => !String(w).trim())) throw fixable('why 要和 recommend 一一对应，每个风格写一句为什么适合')
       const names = recommend.map((slug, i) => `「${all.find(s => s.slug === slug).name}」（${why[i]}）`)
       return { text: `${session}已在卡片上推荐：${names.join('、')}。请用户在卡片上点一个，然后停下等。`, recommend, why }
     }

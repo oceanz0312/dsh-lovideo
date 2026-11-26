@@ -22,6 +22,16 @@ test('开局条件：风格要存在，画幅不支持就换成这个风格的�
   assert.throws(() => normalizeBrief({ slug: 'watercolor', aspect: '16:9', duration: 301 }, STYLES), /10 到 300/)
 })
 
+test('不指定风格：交给导演推荐，导演收到的说明里要它先看全部风格', async () => {
+  assert.deepEqual(normalizeBrief({ slug: null, aspect: '9:16', duration: 60 }, STYLES), { slug: null, name: null, aspect: '9:16', duration: 60 })
+  const { ctx, handlers } = fakeCtx()
+  installBriefContext(ctx)
+  setBrief('session-auto', { slug: null, name: null, aspect: '16:9', duration: 60 })
+  const user = { id: 'u0', role: 'user', content: [{ type: 'text', text: '讲讲月亮' }], source: { kind: 'user' } }
+  const r = await handlers['agent/pre-step']({ agent: { id: 'session-auto' }, messages: [user], step: 1 }, async () => ({ kind: 'enter', messages: [user] }))
+  assert.match(r.messages[1].content[0].text, /没有指定风格.*16:9.*60 秒.*lovideo_styles/)
+})
+
 test('存开局条件：按会话存，同时记成下次的默认值；传 null 清掉', () => {
   setBrief('session-a', { slug: 'watercolor', name: '水彩笔刷', aspect: '9:16', duration: 45 })
   assert.equal(getBrief('session-a').duration, 45)
