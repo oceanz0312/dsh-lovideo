@@ -94,9 +94,11 @@ export async function startProduction(id, opts = {}) {
   await updateWork(id, w => {
     w.status = 'producing'
     if (fresh) {
-      // 新一版分镜：上一版做好的镜头先记下来，内容没变的直接沿用，只重做改了的
-      const carry = previousSegments(w)
-      w.job = { state: 'voicing', planRevision: w.plan.revision, startedAt: new Date().toISOString(), error: null, segments: [], carry, progress: 0, modelCalls: 0 }
+      // 新一版分镜：上一版做好的镜头先记下来，内容没变的直接沿用，只重做改了的。
+      // 换了风格或画幅，上一版的镜头一个都不能用
+      const look = lookOf(w)
+      const carry = w.job?.look === look ? previousSegments(w) : []
+      w.job = { state: 'voicing', planRevision: w.plan.revision, look, startedAt: new Date().toISOString(), error: null, segments: [], carry, progress: 0, modelCalls: 0 }
       w.film = null
       w.timeline = null
     } else {
@@ -178,6 +180,9 @@ async function run_(id, ctl) {
         segs.push({ id: scene.id, idx: i + 1, title: scene.title, sig, narration: text, planned, frames: minFrames, start, voice, state: 'wait', attempts: 0, rendered: 0, changed: Boolean(old) })
         start += minFrames
       }
+      // 要重画的段从干净的目录开始：上一版（可能是别的风格）留下的代码和草稿备份不能再用，
+      // 否则准备脚本不重写草稿、兜底时退回的也是旧草稿，模型写坏的文件一直留着
+      for (const sg of segs) if (sg.state !== 'done') rmSync(join(workDir(id), 'proj', sg.id), { recursive: true, force: true })
       await setJob(id, { segments: segs, carry: undefined, fps, width: size.width, height: size.height })
       work = requireWork(id)
     }
@@ -332,6 +337,9 @@ async function makeMusic(id, settings, signal) {
 export function sceneSig(scene) {
   return JSON.stringify([scene.title || '', scene.description || '', narrationText(scene)])
 }
+
+/** 画面的「样子」：风格和画幅。换了其中一个，做好的镜头都要重画 */
+const lookOf = work => `${work.style?.slug || ''}|${work.aspect || ''}`
 
 /** 只看画面（标题和画面描述），口播不算 */
 function pictureSig(scene) {

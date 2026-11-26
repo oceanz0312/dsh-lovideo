@@ -268,7 +268,7 @@ function StylePanel({ s, onClose }) {
             {s.gpu ? <Badge>3D 绘制</Badge> : null}
             {s.source === 'mine' ? <Badge tone="info">我的风格</Badge> : s.installed ? <Badge tone="ok">已在本机</Badge> : null}
           </div>
-          <Button kind="pri" size="lg" onClick={() => startDirector(`用「${s.name}」风格（${s.slug}）做一个视频：`)}>用这个风格开拍</Button>
+          <Button kind="pri" size="lg" onClick={() => startDirector('我想做一个视频：', { style: s.slug })}>用这个风格开拍</Button>
           <span className="lv-subtle">会开一个「lovideo 导演」对话，把你想讲的说给导演就行。</span>
         </div>
       </div>
@@ -328,7 +328,7 @@ function MinePanel({ s, onClose, reload }) {
           {s.distill?.error ? <div className="lv-err">{s.distill.error}</div> : null}
           {samples[1] ? <video src={file(samples[1].file)} poster={file(samples[1].poster)} controls muted loop style={{ width: 120, borderRadius: 8, background: '#000' }} /> : null}
           {s.draft && s.distill?.state === 'done' ? <Button kind="pri" onClick={() => api(`styles/mine/${s.slug}/save`, {}).then(() => { toast({ text: `「${s.name}」已保存到我的风格` }); reload() }, e => toast({ text: e.message, tone: 'warning' }))}>保存为我的风格</Button> : null}
-          {!s.draft ? <Button kind="pri" size="lg" onClick={() => startDirector(`用我的风格「${s.name}」（${s.slug}）做一个视频：`)}>用它开拍</Button> : null}
+          {!s.draft ? <Button kind="pri" size="lg" onClick={() => startDirector('我想做一个视频：', { style: s.slug })}>用它开拍</Button> : null}
           <div className="lv-row">
             <span className="lv-grow" />
             {confirm ? <><Button size="sm" onClick={() => setConfirm(false)}>取消</Button><Button size="sm" kind="pri" onClick={() => api(`styles/mine/${s.slug}/delete`, {}).then(() => { toast({ text: `已删除风格「${s.name}」` }); onClose(); reload() }, e => toast({ text: e.message, tone: 'warning' }))}>删除</Button></> : <Button size="sm" kind="ghost" onClick={() => setConfirm(true)}>删除</Button>}

@@ -59,8 +59,26 @@ export function openManager(tab) {
   }
 }
 
-/** 开一个「lovideo 导演」会话，把草稿放进输入框（不直接发送） */
-export function startDirector(prompt) {
+/*
+ * 带着风格开会话：宿主的 startSession 不告诉我们开的是哪个会话（还可能复用一个空白会话），
+ * 所以先把风格记在这里，等那个会话输入框里的风格选项出现时领走（见 composer.jsx 的 takeStylePick）。
+ * 只等 20 秒：开会话失败时，不会让后面别的会话莫名其妙换了风格。
+ */
+let stylePick = null
+
+export function takeStylePick() {
+  const p = stylePick
+  stylePick = null
+  return p && Date.now() - p.at < 20_000 ? p.slug : null
+}
+
+/**
+ * 开一个「lovideo 导演」会话，把草稿放进输入框（不直接发送）。
+ * 传了 style 时，输入框里的风格选项换成这个风格：风格只认输入框里选的那一个，不写进草稿文字，
+ * 免得草稿说一个、输入框选另一个，导演不知道听谁的。
+ */
+export function startDirector(prompt, { style } = {}) {
+  stylePick = style ? { slug: style, at: Date.now() } : null
   try {
     svc('uiWorkspace')?.startSession(undefined, { agentPreset: 'lovideo', prompt, whenDraftExists: 'replace' })
   } catch (err) {

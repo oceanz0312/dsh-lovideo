@@ -8,7 +8,7 @@ import { api, fileUrl, useLive } from './api.js'
 import { Styles, fmtSec } from './ui.jsx'
 import { coverOf } from './cards.jsx'
 import { StyleTile, seedFavorites, useFavorites } from './tiles.jsx'
-import { openManager } from './host.js'
+import { openManager, takeStylePick } from './host.js'
 
 // 宿主页面里的 react-dom（和宿主共用同一个 React）；拿不到时风格墙就不画，输入框里的两个选项照常可用
 let portal = null
@@ -54,6 +54,8 @@ function storeFor(sessionId) {
   const subs = new Set()
   let timer = null
   let started = false
+  // 从管理页「用这个风格开拍」带进来的风格：比这个会话存过的、上次用的都优先
+  let preferred = null
   const emit = () => {
     for (const fn of subs) fn()
   }
@@ -81,12 +83,14 @@ function storeFor(sessionId) {
       Promise.all([api(`composer?session=${encodeURIComponent(sessionId)}`), loadStyles()]).then(([c, r]) => {
         const list = allStyles(r)
         const want = c.brief || c.defaults || {}
-        const s = list.find(x => x.slug === want.slug) || r.platform?.[0] || list[0]
+        const forced = preferred && list.find(x => x.slug === preferred)
+        preferred = null
+        const s = forced || list.find(x => x.slug === want.slug) || r.platform?.[0] || list[0]
         if (!s) return
         const duration = Number.isInteger(want.duration) ? Math.min(MAX, Math.max(MIN, want.duration)) : 30
         state = { ...state, ...pick(s, { aspect: want.aspect }), duration, ready: true }
         emit()
-        if (!c.brief) save()
+        if (!c.brief || forced) save()
       }, () => {
         started = false
       })
@@ -95,6 +99,17 @@ function storeFor(sessionId) {
       state = { ...state, ...pick(s) }
       emit()
       save()
+    },
+    /** 换成指定的风格（按 slug）：还在读取时记下，读完直接用它 */
+    prefer(slug) {
+      if (!state.ready) {
+        preferred = slug
+        return
+      }
+      loadStyles().then(r => {
+        const s = allStyles(r).find(x => x.slug === slug)
+        if (s) st.setStyle(s)
+      }, () => {})
     },
     set(patch) {
       state = { ...state, ...patch }
@@ -194,7 +209,12 @@ export function StyleChip(props) {
   const { anchor, open, toggle } = usePop(`style:${sessionId}`)
   const facts = props.useLvSession(f => f)
   React.useEffect(() => {
-    if (active) st.start()
+    if (active) {
+      // 从管理页带着风格开的会话：输入框换成那个风格
+      const slug = takeStylePick()
+      if (slug) st.prefer(slug)
+      st.start()
+    }
     // 在空白会话里切回别的模式：这个会话不再带开局条件
     else if (facts.blank && facts.preset && facts.preset !== LOVIDEO_PRESET) st.clear()
   }, [active, facts.blank, facts.preset, st])
