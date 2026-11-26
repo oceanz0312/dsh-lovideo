@@ -59,9 +59,11 @@ export async function callModel({ system, user, maxTokens = 16000, signal, onTex
   const llm = ctx?.get('llm')
   const info = modelInfo()
   if (!llm || !info) throw new Error('DeepSeek Harness 里还没有可用的模型')
-  // 写画面代码、写风格规则不需要长思考：用最低一档推理，免得思考把输出长度用光
+  // 推理档位按调用方要：DeepSeek 是 关闭/低/高/最高，最低一档等于不思考；写画面代码用中间档（见 produce.js）
   const call = await llm.prepareCall({ provider: info.provider, model: info.model, maxTokens }, signal, (controls, model) => {
-    const effort = light ? model?.reasoning?.efforts?.[0]?.id : undefined
+    // light: true 用最低一档；'mid' 用中间一档（重试复杂画面时多想一点，但不至于把输出长度全花在思考上）
+    const efforts = model?.reasoning?.efforts || []
+    const effort = light === true ? efforts[0]?.id : light === 'mid' ? efforts[Math.floor((efforts.length - 1) / 2)]?.id : undefined
     return effort === undefined ? controls : { ...controls, reasoningEffort: effort }
   })
   let text = ''

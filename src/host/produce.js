@@ -24,9 +24,9 @@ import { filmLang, voicePickOf, withMusicSource } from './filmsound.js'
 import { musicReady } from './localvoice.js'
 
 export const ASPECTS = { '16:9': { width: 1920, height: 1080 }, '9:16': { width: 1080, height: 1920 } }
-// 一镜最多让模型写几次；前两次用最低推理档（快），之后换正常推理档（写复杂的 3D 场景、改版面检查更准）
+// 一镜最多让模型写几次。推理用中间档：DeepSeek 的档位是 关闭/低/高/最高，最低一档等于不思考，
+// 写几百行 3D 代码时接口用错、坐标算错特别多（天宫空间站实测 4 镜第一次全挂）；默认的高档又会把输出上限全花在思考上
 const MAX_ATTEMPTS = 5
-const LIGHT_ATTEMPTS = 2
 const controllers = new Map()
 
 export const isRunning = id => controllers.has(id)
@@ -517,11 +517,16 @@ async function makeSegment({ id, seg, style, spec, size, fps, proj, site, signal
       ].filter(Boolean).join('\n\n')
       let text
       try {
-        ;({ text } = await callModel({ system: SYSTEM, user, maxTokens: 32000, signal, light: attempt <= LIGHT_ATTEMPTS }))
+        ;({ text } = await callModel({ system: SYSTEM, user, maxTokens: 64000, signal, light: 'mid' }))
       } catch (err) {
         if (signal.aborted) throw abortError()
         lastError = `模型调用失败：${err.message}`
-        await updateWork(id, w => ((w.job.modelCalls = (w.job.modelCalls || 0) + 1), w))
+        // 模型调用失败也记进尝试记录，排查时能看到每一次是怎么失败的
+        await updateWork(id, w => {
+          w.job.modelCalls = (w.job.modelCalls || 0) + 1
+          ;((w.job.segments.find(x => x.id === seg.id) || {}).history ||= []).push({ attempt, error: lastError.slice(0, 400) })
+          return w
+        })
         continue
       }
       await updateWork(id, w => ((w.job.modelCalls = (w.job.modelCalls || 0) + 1), w))
