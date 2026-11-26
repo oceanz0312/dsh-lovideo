@@ -191,10 +191,11 @@ a.lv-btn{text-decoration:none}
 .lvc-ticks span{position:absolute;transform:translateX(-50%)}
 .lvc-ticks span.on{color:var(--dsw-alias-label-primary);font-weight:600}
 .lvc-durpanel p{margin:12px 0 0;line-height:1.6;font-size:12.5px}
-[data-composer-dock]:has(.lvc-lib){align-self:stretch;flex-wrap:wrap}
-.lvc-lib{flex:1 1 100%;width:100%;margin-top:22px;text-align:left}
-/* 风格墙自己滚动：首页是上下居中的，墙太高会把输入框顶出屏幕 */
-.lvc-scroll{max-height:max(300px,calc(100vh - 430px));overflow:auto;overscroll-behavior:contain;padding:4px 4px 0;margin:0 -4px;scrollbar-gutter:stable}
+/* 首页是上下居中的：风格墙浮在输入框下面、不占高度，切到「lovideo 导演」时输入框和标题一动不动 */
+[data-composer-dock]:has(.lvc-lib){align-self:stretch;position:relative;height:0;margin:0;padding:0}
+.lvc-lib{position:absolute;left:0;right:0;top:0;padding-top:22px;text-align:left;animation:lv-fade var(--lv-slow) var(--lv-ease)}
+/* 风格墙自己滚动，高度铺到窗口底部（由 Library 按位置算好写进 --lvc-h） */
+.lvc-scroll{max-height:var(--lvc-h,320px);overflow:auto;overscroll-behavior:contain;padding:4px 4px 0;margin:0 -4px;scrollbar-gutter:stable}
 .lvc-lhead{display:flex;align-items:center;gap:4px;margin-bottom:14px}
 .lvc-tab{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 13px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13.5px;cursor:pointer}
 .lvc-tab:hover{background:var(--dsw-alias-interactive-bg-hover)}

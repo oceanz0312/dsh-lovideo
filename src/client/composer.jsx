@@ -355,6 +355,23 @@ export function Library(props) {
     })
     return () => tabSubs.delete(sessionId)
   }, [sessionId])
+  // 风格墙浮在输入框下面：滚动区的高度按它离窗口底部还有多远来定，窗口变了重新算
+  React.useLayoutEffect(() => {
+    const el = scroller.current
+    if (!el) return undefined
+    const fit = () => {
+      const top = el.getBoundingClientRect().top
+      el.style.setProperty('--lvc-h', `${Math.max(220, Math.round(window.innerHeight - top - 20))}px`)
+    }
+    fit()
+    window.addEventListener('resize', fit)
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(fit) : null
+    if (ro && root.current?.parentElement) ro.observe(root.current.parentElement.parentElement || root.current.parentElement)
+    return () => {
+      window.removeEventListener('resize', fit)
+      ro?.disconnect()
+    }
+  })
   const hit = text => !q.trim() || text.toLowerCase().includes(q.trim().toLowerCase())
   const platform = styles?.platform || []
   const mine = (styles?.mine || []).filter(s => !s.draft)
