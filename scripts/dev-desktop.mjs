@@ -108,19 +108,18 @@ function currentSpec() {
 }
 
 /**
- * 0.3.x 及以前包名叫 dsh-lovideo，0.4.0 起改成 @oceanz0312/dsh-lovideo。
- * profile 里留着旧名字的依赖或 bundle 时，DeepSeek Harness 会因为找不到旧包而整个配置加载失败，所以先清掉。
+ * 0.4.0–0.4.2 包名短暂叫过 @oceanz0312/dsh-lovideo，0.4.3 起改回 dsh-lovideo。
+ * profile 里留着别的名字的依赖或 bundle 时，DeepSeek Harness 会因为找不到那个包而整个配置加载失败，所以先清掉。
  */
-const LEGACY = 'dsh-lovideo'
+const OTHER_NAMES = ['dsh-lovideo', '@oceanz0312/dsh-lovideo'].filter(n => n !== PKG.name)
 function dropLegacy() {
-  if (PKG.name === LEGACY) return
   const m = JSON.parse(readFileSync(manifestFile, 'utf8'))
   const bundles = m.dsh?.profile?.bundles
-  if (Array.isArray(bundles) && bundles.includes(LEGACY)) {
-    m.dsh.profile.bundles = bundles.filter(b => b !== LEGACY)
+  if (Array.isArray(bundles) && bundles.some(b => OTHER_NAMES.includes(b))) {
+    m.dsh.profile.bundles = bundles.filter(b => !OTHER_NAMES.includes(b))
     writeFileSync(manifestFile, `${JSON.stringify(m, null, 2)}\n`)
   }
-  if (m.dependencies?.[LEGACY]) dshPlugin('remove', LEGACY)
+  for (const n of OTHER_NAMES) if (m.dependencies?.[n]) dshPlugin('remove', n)
 }
 
 /** pnpm 去掉 link 依赖时会顺手清掉被链接目录里的 node_modules，事后补回来 */

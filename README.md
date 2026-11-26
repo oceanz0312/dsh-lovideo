@@ -1,6 +1,5 @@
 # dsh-lovideo
 
-npm 包名 `@oceanz0312/dsh-lovideo`（挂在 npm 组织 oceanz0312 下；0.3.x 及以前叫 `dsh-lovideo`，已弃用）。
 
 lovideo 的 DeepSeek Harness 插件：在 DSH 的对话里用一句话做出任意风格的讲解视频。
 
@@ -53,9 +52,9 @@ npm run dev            # 开着：客户端改了自动重新打包
 
 ### 发版（GitHub 和 npm 同时发）
 
-两种装法：在 DeepSeek Harness「插件 → 添加插件」里填 `@oceanz0312/dsh-lovideo`（从 npm 装，插件页会提示新版本、可以一键更新），或填 `https://github.com/oceanz0312/dsh-lovideo`（从 GitHub 装，不会提示更新；要固定版本填 `github:oceanz0312/dsh-lovideo#v0.4.0`）。从 GitHub 安装不会构建界面，所以 `dist/client.js` 跟着仓库走。
+两种装法：在 DeepSeek Harness「插件 → 添加插件」里填 `dsh-lovideo`（从 npm 装，插件页会提示新版本、可以一键更新），或填 `https://github.com/oceanz0312/dsh-lovideo`（从 GitHub 装，不会提示更新；要固定版本填 `github:oceanz0312/dsh-lovideo#v0.4.3`）。从 GitHub 安装不会构建界面，所以 `dist/client.js` 跟着仓库走。
 
-npm 不用在本机发：`v<版本号>` 标签推到 GitHub 后，GitHub Actions（`.github/workflows/publish-npm.yml`）用 npm 的可信发布自动发同一个版本，不需要登录、不需要令牌。npm 网站上 `@oceanz0312/dsh-lovideo` 的设置里已经绑定了本仓库和这个流程文件；改文件名要去那里同步改。发完在仓库的 Actions 页能看到结果。
+npm 不用在本机发：每次推到 GitHub 的 main，GitHub Actions（`.github/workflows/publish-npm.yml`）看 `package.json` 的版本 npm 上有没有，没有就用 npm 的可信发布发出去（不需要登录、不需要令牌）；版本没变的推送什么都不发。npm 网站上 `dsh-lovideo` 的设置里已经绑定了本仓库和这个流程文件；改文件名要去那里同步改。发完在仓库的 Actions 页能看到结果。
 
 在开发模式下把改动在桌面版里走通之后再发：
 

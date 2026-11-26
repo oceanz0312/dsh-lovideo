@@ -1,7 +1,7 @@
 # dsh-lovideo：Host 半边（工具、导演 skill、/lovideo/api）和「lovideo 导演」预设。浏览器半边由 package.json 的 dsh.client 加载。
 - insert:
     - id: dsh-lovideo
-      name: '@oceanz0312/dsh-lovideo'
+      name: 'dsh-lovideo'
     - id: preset-lovideo
       name: '@deepseek-ai/dsh-agent-preset'
       config:
