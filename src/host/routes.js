@@ -13,10 +13,11 @@ import { pauseProduction, startProduction, isRunning } from './produce.js'
 import { reviseFilm, setSwitches } from './edit.js'
 import { openInJianying, startExport } from './export.js'
 import { jianyingStatus } from './jianying.js'
-import { localVoiceStatus, musicReady, speakLocal, startSetup as startLocalVoiceSetup, useModel as useLocalVoice, worker as localWorker } from './localvoice.js'
+import { localVoiceStatus, musicReady, speakLocal, startDefaultSetup, startSetup as startLocalVoiceSetup, useModel as useLocalVoice, worker as localWorker } from './localvoice.js'
+import { voiceCatalog } from './voicecatalog.js'
 import { saveDistilled, startDistill } from './distill.js'
 import { mediaSeconds, runtimeStatus, setupProgress, setupRuntime } from './runtime.js'
-import { publicSettings, readSettings, updateSettings } from './settings.js'
+import { MUSIC_PROVIDERS, VOICE_PROVIDERS, publicSettings, readSettings, updateSettings, voiceConfig } from './settings.js'
 import { listModels, modelInfo } from './llm.js'
 import { loginState, logout, startLogin, siteUrl } from './site.js'
 import { speak } from './tts.js'
@@ -136,14 +137,15 @@ function state() {
 }
 
 function musicSourceReady() {
-  const m = readSettings().music
+  const s = readSettings()
+  const m = s.music
   if (m.provider === 'none') return { ok: false, reason: '设置里选了不配乐', code: 'off' }
   if (m.provider === 'local') {
     const r = musicReady(60)
     return r.ok ? { ok: true, source: '离线配乐' } : { ok: false, reason: r.code === 'not-installed' ? '还没下载离线配乐' : r.reason, code: r.code }
   }
-  if (m.provider === 'volcengine' && !(m.key && m.secret)) return { ok: false, reason: '火山配乐还没填 key', code: 'no-key' }
-  if (m.provider === 'elevenlabs' && !m.key) return { ok: false, reason: 'ElevenLabs 还没填 key', code: 'no-key' }
+  if (m.provider === 'volcengine' && !(s.keys.volcAk && s.keys.volcSk)) return { ok: false, reason: '火山配乐还没填 Key', code: 'no-key' }
+  if (m.provider === 'elevenlabs' && !s.keys.elevenlabs) return { ok: false, reason: 'ElevenLabs 还没填 Key', code: 'no-key' }
   return { ok: true, source: m.provider === 'volcengine' ? '火山配乐' : 'ElevenLabs' }
 }
 
@@ -185,6 +187,8 @@ export async function route(req, res) {
     if (path === 'jianying/status') return json(res, 200, jianyingStatus())
     // 本机配音：电脑配置、能跑哪些模型、装好的测速结果、下载进度
     if (path === 'local-voice') return json(res, 200, localVoiceStatus(url.searchParams.get('kind') === 'music' ? 'music' : 'voice'))
+    // 配音服务能选的声音（豆包内置一批；ElevenLabs 填了 key 后读账号里的）
+    if (path === 'voice/catalog') return json(res, 200, { voices: await voiceCatalog(url.searchParams.get('provider') || '') })
     if (path === 'events') return sse(req, res)
     return json(res, 404, { error: '接口不存在' })
   }
@@ -295,15 +299,22 @@ export async function route(req, res) {
   }
   if (path === 'settings/test-voice') {
     const file = join(ensureDir(tmpDir()), `voice-test-${Date.now()}.wav`)
-    const sec = await speak(body.text || '你好，这是 lovideo 的配音试听。', file, readSettings().voice)
+    // 设置页可以试听还没切过去的服务、还没选定的声音：provider、voice 只用于这一次
+    const cur = readSettings()
+    const p = VOICE_PROVIDERS.includes(body.provider) ? body.provider : cur.voice.provider
+    const voices = typeof body.voice === 'string' ? { ...cur.voice.voices, [p]: body.voice.slice(0, 200) } : cur.voice.voices
+    const sec = await speak(String(body.text || '你好，这是 lovideo 的配音试听。').slice(0, 200), file, voiceConfig({ ...cur, voice: { ...cur.voice, provider: p, voices } }))
     return json(res, 200, { seconds: sec, url: `tmp/${file.split(/[\\/]/).pop()}` })
   }
   if (path === 'settings/test-music') {
     const file = join(ensureDir(tmpDir()), `music-test-${Date.now()}.wav`)
-    const r = await generateMusic({ brief: '轻快温暖的钢琴小品，适合科普讲解', mood: 'light warm piano, soft pads, curious, 90 bpm', seconds: 30, out: file })
+    const cur = readSettings()
+    const p = MUSIC_PROVIDERS.includes(body.provider) ? body.provider : cur.music.provider
+    const r = await generateMusic({ brief: '轻快温暖的钢琴小品，适合科普讲解', mood: 'light warm piano, soft pads, curious, 90 bpm', seconds: 30, out: file, settings: { ...cur, music: { ...cur.music, provider: p } } })
     return json(res, 200, { seconds: r.seconds, url: `tmp/${file.split(/[\\/]/).pop()}` })
   }
   if (path === 'local-voice/setup') return json(res, 200, startLocalVoiceSetup(String(body.model || '')))
+  if (path === 'local-voice/setup-defaults') return json(res, 200, startDefaultSetup())
   if (path === 'local-voice/use') return json(res, 200, useLocalVoice(String(body.model || ''), body.voices || {}))
   if (path === 'local-voice/preview') {
     // 试听某个装好的模型：配音念一句（选的声音），配乐做 15 秒

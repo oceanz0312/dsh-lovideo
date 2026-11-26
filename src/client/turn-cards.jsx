@@ -84,7 +84,7 @@ export function TurnCards({ turn, useCards }) {
 }
 
 const LABELS = {
-  lovideo_setup: '检查这台电脑', lovideo_styles: '挑风格', lovideo_plan: '出分镜', lovideo_produce: '开拍',
+  lovideo_setup: '检查这台电脑', lovideo_configure: '配置配音配乐', lovideo_styles: '挑风格', lovideo_plan: '出分镜', lovideo_produce: '开拍',
   lovideo_revise: '修改成片', lovideo_export: '导出', lovideo_works: '找作品', lovideo_distill: '蒸馏风格',
 }
 

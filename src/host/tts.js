@@ -8,6 +8,7 @@ import { ensureDir } from './paths.js'
 import { ffmpeg, mediaSeconds, run, which } from './runtime.js'
 import { activeModel, chooseModel, estimateSeconds, speakLocal } from './localvoice.js'
 import { readSettings } from './settings.js'
+import { ELEVEN_DEFAULT, doubaoVoiceFor } from './voicecatalog.js'
 
 const RATE = 24000
 
@@ -94,16 +95,22 @@ async function systemSay(text, out, opts) {
 /* ---------- 豆包语音（火山引擎，X-Api-Key） ---------- */
 
 async function doubao(text, out, s, signal) {
-  const [resource, speaker] = (s.voice || 'seed-tts-2.0/zh_female_vv_uranus_bigtts').includes('/')
-    ? s.voice.split('/')
-    : ['seed-tts-2.0', s.voice]
+  // 用户选的声音不会说这种语言时（中文声音念英文片），换成这种语言的默认声音
+  const chosen = doubaoVoiceFor(s.voice, isZh(text) ? 'zh' : 'en')
+  const [resource, speaker] = chosen.includes('/') ? chosen.split('/') : ['seed-tts-2.0', chosen]
   const res = await fetch(s.url || 'https://openspeech.bytedance.com/api/v3/tts/unidirectional', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'X-Api-Key': s.key, 'X-Api-Resource-Id': resource, 'X-Api-Request-Id': randomUUID() },
     body: JSON.stringify({ user: { uid: 'dsh-lovideo' }, req_params: { text, speaker, audio_params: { format: 'pcm', sample_rate: RATE } } }),
     signal: AbortSignal.any([signal, AbortSignal.timeout(20_000 + 100 * text.length)].filter(Boolean)),
   })
-  if (!res.ok) throw new Error(`豆包语音 HTTP ${res.status}：${(await res.text()).slice(0, 200)}`)
+  if (!res.ok) {
+    const body = (await res.text()).slice(0, 200)
+    // 原始报错里有请求号等一长串，界面上只说人话
+    if (res.status === 401 || /Invalid X-Api-Key/i.test(body)) throw new Error('豆包语音的 API Key 不对，请重新复制一遍')
+    if (res.status === 403) throw new Error('豆包语音还没开通「语音合成大模型」，或者没开通这个音色')
+    throw new Error(`豆包语音 HTTP ${res.status}：${body}`)
+  }
   const raw = await res.text()
   const parts = []
   // 返回的是一串拼在一起的 JSON 对象
@@ -149,14 +156,18 @@ async function openaiTts(text, out, s, signal) {
 /* ---------- ElevenLabs ---------- */
 
 async function eleven(text, out, s, signal) {
-  const voice = s.voice || '21m00Tcm4TlvDq8ikWAM'
+  const voice = s.voice || ELEVEN_DEFAULT.id
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}?output_format=pcm_24000`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'xi-api-key': s.key },
     body: JSON.stringify({ text, model_id: s.model || 'eleven_multilingual_v2' }),
     signal,
   })
-  if (!res.ok) throw new Error(`ElevenLabs HTTP ${res.status}：${(await res.text()).slice(0, 200)}`)
+  if (!res.ok) {
+    const body = (await res.text()).slice(0, 200)
+    if (res.status === 401) throw new Error(/permission/i.test(body) ? 'ElevenLabs 的 Key 没勾上 Text to Speech 权限，请重新建一个 Key' : 'ElevenLabs 的 Key 不对，请重新复制一遍')
+    throw new Error(`ElevenLabs HTTP ${res.status}：${body}`)
+  }
   writeFileSync(out, pcmToWav(Buffer.from(await res.arrayBuffer())))
 }
 

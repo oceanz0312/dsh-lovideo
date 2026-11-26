@@ -12,7 +12,12 @@ import { reviseFilm, setSwitches } from './edit.js'
 import { openInJianying, startExport, waitExport } from './export.js'
 import { saveDistilled, startDistill } from './distill.js'
 import { runtimeStatus } from './runtime.js'
-import { readSettings } from './settings.js'
+import { MUSIC_PROVIDERS, VOICE_PROVIDERS, readSettings, updateSettings, voiceConfig } from './settings.js'
+import { speak } from './tts.js'
+import { generateMusic } from './music.js'
+import { voiceCatalog } from './voicecatalog.js'
+import { ensureDir, tmpDir } from './paths.js'
+import { join } from 'node:path'
 import { modelInfo } from './llm.js'
 
 const text = s => [{ type: 'text', text: s }]
@@ -161,11 +166,91 @@ const setup = tool({
       `模型：${m ? m.label : '没有可用模型'}`,
       `渲染环境：${env.ready ? '已就绪' : `缺 ${[!env.chrome.ok && '浏览器', !env.ffmpeg.ok && 'ffmpeg'].filter(Boolean).join('、')}，需要用户在卡片上点「准备」`}`,
       `lovideo 账号：${s.account ? '已登录（平台风格可用）' : '未登录（用平台风格要先登录，注册即免费；卡片上有登录按钮，用户登录后你会收到通知）'}`,
-      `配音：${{ local: '离线配音', system: '系统自带语音', none: '不配音（只出字幕）' }[s.voice.provider] || s.voice.provider}`,
-      `配乐来源：${{ local: '离线配乐（没下载时导演建议的配乐会跳过）', volcengine: '火山配乐', elevenlabs: 'ElevenLabs', none: '设置里关了配乐' }[s.music.provider] || s.music.provider}`,
+      `配音：${VOICE_NAMES[s.voice.provider] || s.voice.provider}`,
+      `配乐：${MUSIC_NAMES_T[s.music.provider] || s.music.provider}`,
+      '（用户想用豆包、ElevenLabs、火山等自己的服务时，按 lovideo-setup 向导帮他开通并用 lovideo_configure 填好）',
       `我的风格：${listMine().filter(x => !x.draft).length} 个`,
     ]
     return { text: lines.join('\n'), ready: env.ready && Boolean(m), login: Boolean(s.account) }
+  },
+})
+
+const VOICE_NAMES = { local: '离线配音', system: '系统自带语音', doubao: '豆包语音', elevenlabs: 'ElevenLabs', openai: 'OpenAI 兼容', none: '不配音（只出字幕）' }
+const MUSIC_NAMES_T = { local: '离线配乐（没下载时导演建议的配乐会跳过）', volcengine: '火山配乐', elevenlabs: 'ElevenLabs', none: '不配乐' }
+const KEY_ARG = { doubao: 'doubao', elevenlabs: 'elevenlabs', openai: 'openai', volcengine_ak: 'volcAk', volcengine_sk: 'volcSk' }
+
+const configure = tool({
+  name: 'lovideo_configure',
+  description: '修改 lovideo 的配音、配乐设置：用哪家服务、各家的 API Key、配音声音。改完默认自动试听一句配音，确认能用。按 lovideo-setup 向导替用户拿到 key 后用它填进插件；只改传了的项。结果里 key 只显示末 4 位。',
+  parameters: {
+    type: 'object', additionalProperties: false,
+    properties: {
+      voice_provider: { type: 'string', enum: VOICE_PROVIDERS, description: '配音用什么：local 离线配音、doubao 豆包语音、elevenlabs、system 系统自带语音、openai OpenAI 兼容、none 不配音' },
+      voice_id: { type: 'string', description: '配音声音的 ID（豆包形如 seed-tts-2.0/zh_female_vv_uranus_bigtts，ElevenLabs 是 voice_id）；不填用默认' },
+      music_provider: { type: 'string', enum: MUSIC_PROVIDERS, description: '配乐用什么：local 离线配乐、volcengine 火山配乐、elevenlabs、none' },
+      keys: {
+        type: 'object', additionalProperties: false, description: '要填的 key，只传要改的',
+        properties: {
+          doubao: { type: 'string', description: '豆包语音 API Key' },
+          elevenlabs: { type: 'string', description: 'ElevenLabs API Key（配音配乐共用）' },
+          openai: { type: 'string', description: 'OpenAI 兼容接口的 key' },
+          volcengine_ak: { type: 'string', description: '火山配乐 AccessKey ID' },
+          volcengine_sk: { type: 'string', description: '火山配乐 SecretAccessKey' },
+        },
+      },
+      openai_url: { type: 'string', description: 'OpenAI 兼容接口地址' },
+      openai_model: { type: 'string', description: 'OpenAI 兼容的配音模型' },
+      test_voice: { type: 'boolean', description: '改完试听一句配音，默认是' },
+      test_music: { type: 'boolean', description: '改完试做一首 30 秒配乐（会按配乐服务的价格计费），默认否' },
+    },
+  },
+  async run(args) {
+    const keys = {}
+    for (const [arg, name] of Object.entries(KEY_ARG)) if (typeof args.keys?.[arg] === 'string') keys[name] = args.keys[arg]
+    const target = args.voice_provider || readSettings().voice.provider
+    updateSettings({
+      voice: {
+        ...(args.voice_provider ? { provider: args.voice_provider } : {}),
+        ...(args.voice_id ? { voices: { [target]: args.voice_id } } : {}),
+        ...(args.openai_url !== undefined ? { openaiUrl: args.openai_url } : {}),
+        ...(args.openai_model !== undefined ? { openaiModel: args.openai_model } : {}),
+      },
+      ...(args.music_provider ? { music: { provider: args.music_provider } } : {}),
+      keys,
+    })
+    const s = readSettings()
+    const tail = k => (s.keys[k] ? `••••${s.keys[k].slice(-4)}` : '没填')
+    const lines = [
+      `配音：${VOICE_NAMES[s.voice.provider] || s.voice.provider}${s.voice.voices[s.voice.provider] ? `（声音 ${s.voice.voices[s.voice.provider]}）` : ''}`,
+      `配乐：${MUSIC_NAMES_T[s.music.provider] || s.music.provider}`,
+      `Key：豆包 ${tail('doubao')}，ElevenLabs ${tail('elevenlabs')}，火山配乐 ${tail('volcAk')} / ${tail('volcSk')}，OpenAI 兼容 ${tail('openai')}`,
+    ]
+    const tmp = ensureDir(tmpDir())
+    if (args.test_voice !== false && !['none', 'local'].includes(s.voice.provider)) {
+      try {
+        const sec = await speak('你好，这是 lovideo 的配音试听。', join(tmp, `configure-voice-${Date.now()}.wav`), voiceConfig(s))
+        lines.push(`配音试听：成功（${sec.toFixed(1)} 秒）`)
+      } catch (e) {
+        lines.push(`配音试听：失败，${e.message}`)
+      }
+    }
+    if (['doubao', 'elevenlabs'].includes(s.voice.provider)) {
+      try {
+        const list = await voiceCatalog(s.voice.provider)
+        lines.push(`可选声音（voice_id ｜ 名字）：\n${list.slice(0, 30).map(v => `- ${v.id} ｜ ${v.name}${v.gender ? ` ${v.gender}` : ''}${v.note ? ` · ${v.note}` : ''}`).join('\n')}`)
+      } catch (e) {
+        lines.push(`读取声音列表失败：${e.message}`)
+      }
+    }
+    if (args.test_music && s.music.provider !== 'none') {
+      try {
+        const r = await generateMusic({ brief: '轻快温暖的钢琴小品', mood: 'light warm piano, soft pads, curious, 90 bpm', seconds: 30, out: join(tmp, `configure-music-${Date.now()}.wav`), settings: s })
+        lines.push(`配乐试做：成功（${Math.round(r.seconds)} 秒）`)
+      } catch (e) {
+        lines.push(`配乐试做：失败，${e.message}`)
+      }
+    }
+    return { text: lines.join('\n') }
   },
 })
 
@@ -425,7 +510,7 @@ const distill = tool({
   },
 })
 
-export const TOOLS = [setup, styles, plan, produce, revise, exportTool, works, distill]
+export const TOOLS = [setup, configure, styles, plan, produce, revise, exportTool, works, distill]
 
 /** 作品从制作中变成完成或失败时，通知调用过工具的导演 */
 export function notifyDone(prev, work, ctx) {

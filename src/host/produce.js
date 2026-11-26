@@ -9,7 +9,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, normalize, relative } from 'node:path'
 import { PLUGIN_ROOT, ensureDir, isInside } from './paths.js'
-import { MAX_PARALLEL, readSettings } from './settings.js'
+import { MAX_PARALLEL, readSettings, voiceConfig } from './settings.js'
 import { notify } from './notices.js'
 import { getWork, requireWork, updateWork, workDir } from './works.js'
 import { resolveStyle } from './styles.js'
@@ -262,7 +262,7 @@ async function run_(id, ctl) {
  * 都来不及、或者还没装好时，这部片子先用系统语音。
  */
 async function pickVoice(settings, work, id) {
-  const v = settings.voice
+  const v = voiceConfig(settings)
   if (v.provider !== 'local') return v
   // 配置低于门槛（比如内存不够了、磁盘满了）：不用本机模型
   const min = meetsMinimum(hardware())

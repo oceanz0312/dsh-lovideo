@@ -1,11 +1,12 @@
 // 侧栏「lovideo 视频」：作品、官方风格、我的风格、设置。随时点开看，和对话里的卡片读同一份数据。
 import * as React from 'react'
 import { api, fileUrl, loginUrl, openExternal, useLive } from './api.js'
-import { Badge, Bar, Button, ConfirmDialog, LinkButton, Mark, Media, Player, StatusBadge, Styles, fmtSec } from './ui.jsx'
+import { Badge, Button, ConfirmDialog, LinkButton, Mark, Media, Player, StatusBadge, Styles, fmtSec } from './ui.jsx'
 import { Doctor, WorkActions, WorkBody, coverOf } from './cards.jsx'
 import { StyleTile, seedFavorites } from './tiles.jsx'
 import { host, openSession, startDirector, watchPanel } from './host.js'
 import { toast } from './toast.jsx'
+import { SoundSettings } from './sound-settings.jsx'
 
 const PAGE_CSS = `
 .lv-page{height:100%;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base)}
@@ -32,17 +33,6 @@ const PAGE_CSS = `
 .lv-chips{display:flex;flex-wrap:wrap;gap:6px}
 .lv-chips button{transition:border-color var(--lv-dur) var(--lv-ease),color var(--lv-dur) var(--lv-ease),background-color var(--lv-dur) var(--lv-ease);height:28px;padding:0 12px;border-radius:999px;border:1px solid var(--dsw-alias-border-l4);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;cursor:pointer}
 .lv-chips button.on{border-color:var(--dsw-alias-label-primary);color:var(--dsw-alias-label-primary);font-weight:500;background:var(--dsw-alias-interactive-bg-hover)}
-.lv-local{display:flex;flex-direction:column;gap:10px}
-.lv-local-list{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:10px}
-.lv-local-row{display:flex;align-items:center;gap:14px;padding:12px 14px;border-top:1px solid var(--dsw-alias-border-l2)}
-.lv-local-row:first-child{border-top:0}
-.lv-local-row>.l{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.lv-local-row.off{opacity:.6}
-.lv-listen{position:relative;overflow:hidden;min-width:64px;justify-content:center}
-.lv-listen svg{width:10px;height:10px;flex:none}
-.lv-wave{display:inline-flex;align-items:center;gap:2px;height:12px;flex:none}
-.lv-wave i{display:block;width:2px;height:3px;border-radius:1px;background:currentColor;transition:height 80ms linear}
-@media (prefers-reduced-motion:reduce){.lv-wave i{transition:none}}
 .lv-end{height:1px}
 .lv-banner{animation:lv-in var(--lv-slow) var(--lv-ease-out);display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--dsw-alias-card-fill);margin-bottom:16px}
 `
@@ -351,22 +341,10 @@ function MinePanel({ s, onClose, reload }) {
 
 /* ---------- 设置 ---------- */
 
-const VOICES = [['local', '离线配音'], ['system', '系统自带语音'], ['doubao', '豆包语音'], ['openai', 'OpenAI 兼容'], ['elevenlabs', 'ElevenLabs'], ['none', '不配音']]
-const VOICE_HINT = {
-  local: { url: null, voice: null, model: null },
-  system: { url: null, voice: '留空自动选（中文用系统的中文声音）', model: null },
-  doubao: { url: 'https://openspeech.bytedance.com/api/v3/tts/unidirectional', voice: '资源/音色，例如 seed-tts-2.0/zh_female_vv_uranus_bigtts', model: null },
-  openai: { url: 'https://api.openai.com/v1', voice: '音色，例如 alloy', model: '模型，例如 gpt-4o-mini-tts' },
-  elevenlabs: { url: null, voice: 'voice_id', model: '模型，例如 eleven_multilingual_v2' },
-  none: { url: null, voice: null, model: null },
-}
-
 function Settings() {
   const [st, , reload, setSt] = useLive('state', () => false)
   const [models] = useLive('models', () => false)
   const [form, setForm] = React.useState(null)
-  const [msg, setMsg] = React.useState(null)
-  const [busy, setBusy] = React.useState(null)
   const [askLogout, setAskLogout] = React.useState(false)
   const [loggingOut, setLoggingOut] = React.useState(false)
   const [voiceRev, setVoiceRev] = React.useState(0)
@@ -382,41 +360,20 @@ function Settings() {
     }
   }
   React.useEffect(() => {
-    if (st && !form) setForm({ voice: { ...st.settings.voice, key: '' }, exportDir: st.settings.exportDir, parallel: st.settings.parallel, model: st.settings.model })
+    if (st && !form) setForm({ exportDir: st.settings.exportDir, parallel: st.settings.parallel, model: st.settings.model })
   }, [st, form])
   if (!st || !form) return <div className="lv-subtle lv-shimmer">读取中…</div>
-  // 离线配音装好、换了模型时，配音会在后台切过去：重新读一次，免得表单还停在旧的服务商上
+  // 在「这台电脑」里一键下载完离线配音、配乐时，配音配乐会在后台切过去：重新读一次
   const syncVoice = async () => {
-    const next = await api('state')
-    setSt(next)
-    setForm(f => ({ ...f, voice: { ...next.settings.voice, key: '' } }))
+    setSt(await api('state'))
     setVoiceRev(n => n + 1)
   }
-  const v = form.voice
-  const hint = VOICE_HINT[v.provider]
   const save = async patch => {
-    setBusy('save')
-    setMsg(null)
     try {
-      const next = await api('settings', patch)
-      setSt(next)
+      setSt(await api('settings', patch))
       toast({ text: '设置已保存' })
-      setForm(f => ({ ...f, voice: { ...next.settings.voice, key: '' } }))
     } catch (e) {
-      setMsg({ ok: false, text: e.message })
-    } finally {
-      setBusy(null)
-    }
-  }
-  const test = async () => {
-    setMsg(null)
-    try {
-      await api('settings', { voice: v })
-      const r = await api('settings/test-voice', { text: '你好，这是 lovideo 的配音试听。' })
-      return fileUrl(r.url)
-    } catch (e) {
-      setMsg({ ok: false, text: e.message })
-      return null
+      toast({ text: e.message, tone: 'warning' })
     }
   }
   const pickModel = e => {
@@ -427,7 +384,7 @@ function Settings() {
   }
   return (
     <div style={{ maxWidth: 760 }}>
-      <div className="lv-head"><h1 className="lv-h1">设置</h1><span className="lv-subtle">电脑上有的用你自己的；key 只存在这台电脑上，不上传 lovideo，也不发给模型。</span></div>
+      <div className="lv-head"><h1 className="lv-h1">设置</h1><span className="lv-subtle">电脑上有的用你自己的；key 只存在这台电脑上，不上传 lovideo。</span></div>
 
       <div className="lv-section">
         <h3>lovideo 账号</h3>
@@ -440,7 +397,7 @@ function Settings() {
 
       <div className="lv-section">
         <h3>这台电脑</h3>
-        <div style={{ padding: '8px 0 12px' }}><Doctor key={voiceRev} onVoiceChange={syncVoice} /></div>
+        <div style={{ padding: '8px 0 12px' }}><Doctor onVoiceChange={syncVoice} /></div>
       </div>
 
       <div className="lv-section">
@@ -454,30 +411,7 @@ function Settings() {
         </div>
       </div>
 
-      <div className="lv-section">
-        <h3>配音</h3>
-        <div className="lv-subtle">推荐「离线配音」：在这台电脑上生成，不联网、不用 key。也可以填你自己的配音服务 key；不想要口播就选「不配音」，只出字幕。</div>
-        <div className="lv-srow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
-          <div className="lv-chips">{VOICES.map(([k, l]) => <button key={k} type="button" className={v.provider === k ? 'on' : ''} onClick={() => setForm(f => ({ ...f, voice: { ...f.voice, provider: k } }))}>{l}</button>)}</div>
-          {v.provider === 'local' ? <LocalVoicePanel onChange={syncVoice} /> : null}
-          {hint.url ? <div className="lv-field"><label>接口地址（留空用默认）</label><input className="lv-input lv-mono" placeholder={hint.url} value={v.url || ''} onChange={e => setForm(f => ({ ...f, voice: { ...f.voice, url: e.target.value } }))} /></div> : null}
-          <div style={{ display: 'grid', gridTemplateColumns: hint.model ? '1fr 1fr' : '1fr', gap: 10 }}>
-            {hint.voice ? <div className="lv-field"><label>音色</label><input className="lv-input" placeholder={hint.voice} value={v.voice || ''} onChange={e => setForm(f => ({ ...f, voice: { ...f.voice, voice: e.target.value } }))} /></div> : null}
-            {hint.model ? <div className="lv-field"><label>模型</label><input className="lv-input" placeholder={hint.model} value={v.model || ''} onChange={e => setForm(f => ({ ...f, voice: { ...f.voice, model: e.target.value } }))} /></div> : null}
-          </div>
-          {!['system', 'none', 'local'].includes(v.provider) ? (
-            <div className="lv-field"><label>密钥 {st.settings.voice.hasKey && st.settings.voice.provider === v.provider ? `（已保存 ${st.settings.voice.key}，留空不改）` : ''}</label>
-              <input className="lv-input" type="password" autoComplete="off" placeholder="填你自己的 key" value={v.key} onChange={e => setForm(f => ({ ...f, voice: { ...f.voice, key: e.target.value } }))} /></div>
-          ) : null}
-          <div className="lv-row">
-            <Button kind="pri" busy={busy === 'save'} onClick={() => save({ voice: v })}>保存</Button>
-            {!['none', 'local'].includes(v.provider) ? <ListenButton load={test} /> : null}
-            {msg ? <span className={msg.ok ? 'lv-subtle' : 'lv-err'}>{msg.text}</span> : null}
-          </div>
-        </div>
-      </div>
-
-      <MusicSettings st={st} onSaved={setSt} />
+      <SoundSettings key={voiceRev} st={st} onState={setSt} />
 
       <div className="lv-section">
         <h3>制作和导出</h3>
@@ -496,298 +430,6 @@ function Settings() {
       <ConfirmDialog open={askLogout} title="退出 lovideo 账号？" confirmText="退出" danger busy={loggingOut} onConfirm={logout} onCancel={() => setAskLogout(false)}>
         <p>退出后不能再用官方风格开新片，要用时重新登录就行。这台电脑上的作品、你自己的风格和已经下载的风格都会保留。</p>
       </ConfirmDialog>
-    </div>
-  )
-}
-
-const MUSICS = [['local', '离线配乐'], ['volcengine', '火山配乐'], ['elevenlabs', 'ElevenLabs'], ['none', '不配乐']]
-
-/**
- * 配乐的来源，和配音分开设。每部片子要不要配乐由导演建议、用户在分镜卡上定；这里只管「用什么做」。
- * 离线配乐在这台电脑上生成；火山（AccessKey + SecretKey）和 ElevenLabs 用你自己的 key。
- */
-function MusicSettings({ st, onSaved }) {
-  const [form, setForm] = React.useState(() => ({ provider: st.settings.music.provider, key: '', secret: '' }))
-  const [busy, setBusy] = React.useState(false)
-  const [msg, setMsg] = React.useState(null)
-  const cur = st.settings.music
-  const save = async (patch = form) => {
-    setBusy(true)
-    setMsg(null)
-    try {
-      const next = await api('settings', { music: patch })
-      onSaved(next)
-      setForm(f => ({ ...f, provider: next.settings.music.provider, key: '', secret: '' }))
-      toast({ text: '配乐设置已保存' })
-      return next
-    } catch (e) {
-      setMsg(e.message)
-      return null
-    } finally {
-      setBusy(false)
-    }
-  }
-  const pick = k => {
-    setForm(f => ({ ...f, provider: k }))
-    // 离线和不配乐不用填东西，点了就存
-    if (k === 'local' || k === 'none') save({ provider: k })
-  }
-  const test = async () => {
-    setMsg(null)
-    try {
-      if (form.provider !== cur.provider || form.key || form.secret) await api('settings', { music: form })
-      const r = await api('settings/test-music', {})
-      return fileUrl(r.url)
-    } catch (e) {
-      setMsg(e.message)
-      return null
-    }
-  }
-  const p = form.provider
-  const keyNote = (has, masked) => (has && cur.provider === p ? `（已保存 ${masked}，留空不改）` : '')
-  // 离线配乐装好、换模型时设置会在后台变：重新读一次
-  const sync = async () => onSaved(await api('state'))
-  return (
-    <div className="lv-section">
-      <h3>配乐</h3>
-      <div className="lv-subtle">每部片子要不要配乐，导演会建议，你在分镜卡上定；这里选用什么来做。推荐「离线配乐」：在这台电脑上几秒做好一首，不联网、不用 key。</div>
-      <div className="lv-srow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
-        <div className="lv-chips">{MUSICS.map(([k, l]) => <button key={k} type="button" className={p === k ? 'on' : ''} onClick={() => pick(k)}>{l}</button>)}</div>
-        {p === 'local' ? <LocalVoicePanel kind="music" onChange={sync} /> : null}
-        {p === 'volcengine' ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div className="lv-field"><label>AccessKey ID {keyNote(cur.hasKey, cur.key)}</label><input className="lv-input" type="password" autoComplete="off" placeholder="火山引擎 AccessKey ID" value={form.key} onChange={e => setForm(f => ({ ...f, key: e.target.value }))} /></div>
-            <div className="lv-field"><label>SecretKey {keyNote(cur.hasSecret, cur.secret)}</label><input className="lv-input" type="password" autoComplete="off" placeholder="火山引擎 SecretAccessKey" value={form.secret} onChange={e => setForm(f => ({ ...f, secret: e.target.value }))} /></div>
-          </div>
-        ) : null}
-        {p === 'elevenlabs' ? (
-          <div className="lv-field"><label>密钥 {keyNote(cur.hasKey, cur.key)}</label><input className="lv-input" type="password" autoComplete="off" placeholder="填你自己的 ElevenLabs key" value={form.key} onChange={e => setForm(f => ({ ...f, key: e.target.value }))} /></div>
-        ) : null}
-        {p === 'volcengine' || p === 'elevenlabs' ? (
-          <div className="lv-row">
-            <Button kind="pri" busy={busy} onClick={() => save()}>保存</Button>
-            <ListenButton load={test} />
-            {msg ? <span className="lv-err">{msg}</span> : null}
-          </div>
-        ) : msg ? <div className="lv-err">{msg}</div> : null}
-      </div>
-    </div>
-  )
-}
-
-const LOCAL_STEP = { uv: '准备下载工具', packages: '安装运行环境', model: '下载模型', test: '测速' }
-
-/**
- * 本机配音：显示这台电脑的配置，每个模型按配置标推荐 / 流畅 / 吃力 / 跑不动；
- * 用户自己选下载哪个、用哪个、用哪个声音。开拍时先用选的那个，3 分钟内配不完才换更快的。
- */
-function LocalVoicePanel({ onChange, kind = 'voice' }) {
-  const music = kind === 'music'
-  const what = music ? '配乐' : '配音'
-  const [st, err, reload] = useLive(music ? 'local-voice?kind=music' : 'local-voice', () => false)
-  const [busy, setBusy] = React.useState(null)
-  const [fail, setFail] = React.useState(null)
-  const running = st?.setup?.running
-  // 配音和配乐的下载共用一条队伍：另一类在下载时这边先不能点
-  const other = Boolean(st?.setup?.busyOther)
-  const wasRunning = React.useRef(false)
-  React.useEffect(() => {
-    if (wasRunning.current && !running) onChange?.()
-    wasRunning.current = running
-    if (!running && !other) return undefined
-    const t = setInterval(reload, 1000)
-    return () => clearInterval(t)
-  }, [running, other, reload])
-  if (err) return <div className="lv-err">{err.message}</div>
-  if (!st) return <div className="lv-subtle lv-shimmer">正在看这台电脑的配置…</div>
-  const hw = st.hardware
-  const blocked = running || other
-  const act = async (key, path, body, after) => {
-    setBusy(key)
-    setFail(null)
-    try {
-      const r = await api(path, body)
-      after?.(r)
-      reload()
-    } catch (e) {
-      setFail(e.message)
-    } finally {
-      setBusy(null)
-    }
-  }
-  const listen = async (m, lang) => {
-    setFail(null)
-    try {
-      const r = await api('local-voice/preview', music ? { kind: 'music', model: m.id } : { model: m.id, lang, voice: m.chosenVoices[lang] })
-      return fileUrl(r.url)
-    } catch (e) {
-      setFail(e.message)
-      return null
-    }
-  }
-  const s = st.setup
-  // 配置低于门槛：直接说明用系统语音，不列模型、不给下载
-  if (!st.minimum.ok) {
-    return (
-      <div className="lv-local">
-        <div className="lv-banner" style={{ marginBottom: 0 }}>
-          <span className="lv-grow">这台电脑配置偏低（{st.minimum.reason}），离线{what}跑不动，{music ? '可以选火山配乐或 ElevenLabs' : '配音用系统自带语音'}。离线{what}最低要 {st.minimum.spec.ramGB}GB 内存、{st.minimum.spec.cores} 核 CPU、{st.minimum.spec.freeDiskGB}GB 磁盘剩余。</span>
-        </div>
-      </div>
-    )
-  }
-  return (
-    <div className="lv-local">
-      <div className="lv-subtle">这台电脑：{hw.chip || hw.platform} · {hw.ramGB}GB 内存{hw.gpu ? ` · ${hw.gpu.name} ${hw.gpu.vramGB}GB 显存` : ''}</div>
-      <div className="lv-local-list">
-        {st.models.map(m => {
-          const doing = running && s.model === m.id
-          const using = st.usingLocal && st.active === m.id
-          return (
-            <div key={m.id} className={`lv-local-row ${m.grade === 'unable' ? 'off' : ''}`}>
-              <div className="l">
-                <b className="lv-row" style={{ gap: 8 }}>{m.name}<GradeBadge m={m} st={st} />{using ? <Badge tone="ok">使用中</Badge> : null}</b>
-                <span className="lv-subtle">{m.note}</span>
-                {m.gradeReason ? <span className="lv-subtle">{m.gradeReason}</span> : null}
-                {m.installed ? <span className="lv-subtle">{music ? `已装好 · 做 1 分钟配乐约 ${Math.max(1, m.installed.oneMinute)} 秒` : `已装好 · 配 1 分钟口播约 ${m.installed.oneMinute} 秒 · ${m.installed.maxMinutes >= 1 ? `最长能配约 ${m.installed.maxMinutes} 分钟` : '这台电脑上偏慢'}`}</span> : null}
-                {using && music ? <div className="lv-row" style={{ marginTop: 8 }}><ListenButton size="sm" kind="ghost" load={() => listen(m)} /><span className="lv-subtle">听一段 15 秒的样曲</span></div> : null}
-                {using && !music ? <VoicePicker m={m} busy={busy} onPick={voices => act('voice', 'local-voice/use', { model: m.id, voices }, () => onChange?.())} onListen={lang => listen(m, lang)} /> : null}
-                {doing ? (
-                  <div className="lv-col" style={{ marginTop: 6 }}>
-                    <span className="lv-subtle">{LOCAL_STEP[s.step] || '准备中'}…{s.step === 'model' ? ` ${Math.round((s.progress || 0) * 100)}%` : ''}</span>
-                    {s.step === 'model' ? <Bar value={s.progress} /> : null}
-                  </div>
-                ) : null}
-                {!running && s.model === m.id && s.error ? <span className="lv-err">{s.error}</span> : null}
-              </div>
-              <div className="lv-row" style={{ gap: 6, flexShrink: 0 }}>
-                {m.grade !== 'unable' && !m.installed ? <Button size="sm" kind={st.recommended === m.id ? 'pri' : ''} busy={busy === m.id || doing} disabled={blocked} onClick={() => act(m.id, 'local-voice/setup', { model: m.id })}>下载（约 {m.downloadGB}GB）</Button> : null}
-                {m.installed && !using ? <Button size="sm" kind="pri" busy={busy === `use-${m.id}`} disabled={blocked} onClick={() => act(`use-${m.id}`, 'local-voice/use', { model: m.id }, () => { onChange?.(); toast({ text: `${what}换成 ${m.name}` }) })}>用这个</Button> : null}
-                {m.installed ? <Button size="sm" kind="ghost" busy={doing} disabled={blocked} onClick={() => act(m.id, 'local-voice/setup', { model: m.id })}>重新测速</Button> : null}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-      {other ? <div className="lv-subtle">正在下载离线{music ? '配音' : '配乐'}，下完再装这里的</div> : null}
-      {fail ? <div className="lv-err">{fail}</div> : null}
-    </div>
-  )
-}
-
-/** 按这台电脑的配置给的评级：推荐（最合适的那个）/ 流畅 / 吃力 / 跑不动 */
-function GradeBadge({ m, st }) {
-  if (m.grade === 'unable') return <Badge tone="err">跑不动</Badge>
-  if (m.grade === 'heavy') return <Badge tone="warn">吃力</Badge>
-  return st.recommended === m.id ? <Badge tone="info">推荐</Badge> : <Badge tone="ok">流畅</Badge>
-}
-
-// 同一时间只放一段试听：点另一个试听时，前一个停下
-let stopCurrent = null
-
-/**
- * 试听按钮：点一下生成并播放，再点停止；播放时图标换成跳动的声纹。不用浏览器自带的播放条。
- * load 返回音频地址，失败返回 null（错误由调用方显示）。
- */
-function ListenButton({ load, size, kind }) {
-  const [state, setState] = React.useState('idle')
-  const audio = React.useRef(null)
-  const stop = React.useCallback(() => {
-    audio.current?.pause()
-    audio.current = null
-    setState('idle')
-  }, [])
-  React.useEffect(() => () => audio.current?.pause(), [])
-  const click = async () => {
-    if (state === 'playing') return stop()
-    stopCurrent?.()
-    setState('loading')
-    const url = await load()
-    if (!url) return setState('idle')
-    const a = new Audio(url)
-    audio.current = a
-    stopCurrent = stop
-    a.onended = stop
-    a.onerror = stop
-    setState('playing')
-    a.play().catch(stop)
-  }
-  return (
-    <Button className={`lv-btn lv-listen ${kind || ''} ${size || ''}`} busy={state === 'loading'} onClick={click}>
-      {state === 'playing' ? <Wave audio={audio.current} /> : state === 'idle' ? <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 1.3v7.4L8.7 5z" fill="currentColor" /></svg> : null}
-      {state === 'playing' ? '停止' : '试听'}
-    </Button>
-  )
-}
-
-// 整页共用一个 AudioContext（浏览器对个数有限制）；同一个 audio 元素只能接一次
-let audioCtx = null
-const sources = new WeakMap()
-
-/** 声纹：几根竖条跟着正在放的声音实时跳动；读不到音量时退回固定的起伏动画 */
-function Wave({ audio }) {
-  const bars = React.useRef([])
-  React.useEffect(() => {
-    if (!audio) return undefined
-    let analyser = null
-    try {
-      audioCtx ||= new (window.AudioContext || window.webkitAudioContext)()
-      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {})
-      let src = sources.get(audio)
-      if (!src) {
-        src = audioCtx.createMediaElementSource(audio)
-        sources.set(audio, src)
-      }
-      analyser = audioCtx.createAnalyser()
-      analyser.fftSize = 64
-      analyser.smoothingTimeConstant = 0.6
-      src.connect(analyser)
-      analyser.connect(audioCtx.destination)
-    } catch {
-      analyser = null
-    }
-    const data = new Uint8Array(32)
-    // 人声能量集中在低频：最强的频段放中间，两边放弱一些的，看起来像声纹而不是一条斜坡
-    const bins = [5, 2, 1, 3, 7]
-    let raf = 0
-    const t0 = performance.now()
-    const tick = now => {
-      if (analyser) analyser.getByteFrequencyData(data)
-      bars.current.forEach((el, i) => {
-        if (!el) return
-        const v = analyser ? data[bins[i]] / 255 : 0.5 + 0.5 * Math.sin((now - t0) / 140 + i * 1.3)
-        el.style.height = `${3 + Math.round(v * 9)}px`
-      })
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => {
-      cancelAnimationFrame(raf)
-      try {
-        analyser?.disconnect()
-        // 断开分析器后要把声音重新接到扬声器，否则下次播放没声
-        sources.get(audio)?.connect(audioCtx.destination)
-      } catch { /* 已断开 */ }
-    }
-  }, [audio])
-  return <span className="lv-wave" aria-hidden="true">{[0, 1, 2, 3, 4].map(i => <i key={i} ref={el => { bars.current[i] = el }} />)}</span>
-}
-
-/** 正在用的模型：选中文、英文各用哪个声音，选完马上能试听 */
-function VoicePicker({ m, busy, onPick, onListen }) {
-  const langs = [['zh', '中文'], ['en', '英文']].filter(([l]) => (m.voices[l] || []).length > 1)
-  if (!langs.length) return null
-  return (
-    <div className="lv-row" style={{ gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
-      {langs.map(([l, label]) => (
-        <div key={l} className="lv-row" style={{ gap: 6 }}>
-          <span className="lv-subtle">{label}</span>
-          <select className="lv-select" style={{ width: "auto" }} value={m.chosenVoices[l]} disabled={busy === 'voice'} onChange={e => onPick({ [l]: e.target.value })}>
-            {m.voices[l].map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-          </select>
-          <ListenButton size="sm" kind="ghost" load={() => onListen(l)} />
-        </div>
-      ))}
     </div>
   )
 }

@@ -338,8 +338,25 @@ function pyEnv(backend, extra = {}) {
   }
 }
 
-let state = { running: false, model: null, step: null, progress: 0, error: null }
-export const setupState = () => ({ ...state })
+/**
+ * 每个模型各自的下载状态：配音、配乐可以同时下载。
+ * 装下载工具和 Python 包会改同一个环境，这一步排队做（envLock）；下载模型、测速各下各的。
+ */
+const jobs = new Map()
+const idle = model => ({ running: false, model, step: null, progress: 0, error: null })
+export const setupState = (modelId = null) => ({ ...(jobs.get(modelId) || idle(modelId)) })
+let envLock = Promise.resolve()
+function withEnvLock(fn) {
+  const run = envLock.then(fn, fn)
+  envLock = run.catch(() => {})
+  return run
+}
+
+/** 这一类（配音或配乐）界面上要显示的下载状态：正在下载的优先，没有就是最近一次的结果 */
+function kindSetup(kind) {
+  const list = [...jobs.values()].filter(j => kindOf(byId(j.model)) === kind)
+  return { ...(list.find(j => j.running) || list[list.length - 1] || idle(null)) }
+}
 
 function sh(cmd, args, { env, timeoutMs = 1_800_000 } = {}) {
   return new Promise(resolve => {
@@ -424,12 +441,15 @@ function dirSize(dir) {
   return n
 }
 
-async function downloadModel(py, b) {
+async function downloadModel(py, b, job) {
   const script = `import sys\nfrom huggingface_hub import snapshot_download\nfor r in sys.argv[1:]:\n    snapshot_download(r)\n`
-  const before = dirSize(hfHome())
+  // 只看这个模型自己的缓存目录，两个模型同时下载时进度不会串
+  const repoDirs = b.repos.map(r => join(hfHome(), 'hub', `models--${r.replace('/', '--')}`))
+  const size = () => repoDirs.reduce((n, d) => n + dirSize(d), 0)
+  const before = size()
   const total = b.sizeGB * 1024 ** 3
   const tick = setInterval(() => {
-    state.progress = Math.min(0.99, (dirSize(hfHome()) - before) / total)
+    job.progress = Math.min(0.99, (size() - before) / total)
   }, 1000)
   try {
     let r = await sh(py, ['-c', script, ...b.repos], { env: { HF_HOME: hfHome() } })
@@ -446,7 +466,7 @@ const TEST_EN = 'A lithography machine shrinks a drawn pattern again and again, 
 /** 测速：中英文各热身一句，再各测一段，取慢的那个；配乐热身 5 秒、再测一首 30 秒 */
 async function benchmark(modelId) {
   const w = await worker(modelId)
-  const tmp = ensureDir(join(ttsDir(), 'bench'))
+  const tmp = ensureDir(join(ttsDir(), 'bench', modelId))
   if (kindOf(byId(modelId)) === 'music') {
     await w.speak({ prompt: 'warm piano', seconds: 5, out: join(tmp, 'warm.wav') })
     const m = await w.speak({ prompt: 'calm lo-fi piano, soft pads, warm and curious, 80 bpm', seconds: 30, out: join(tmp, 'music.wav') })
@@ -461,24 +481,29 @@ async function benchmark(modelId) {
   return { rtf: Math.round(rtf * 1000) / 1000, load: w.load, sample: join(tmp, 'zh.wav') }
 }
 
-/** 下载并测速一个模型（后台进行，进度看 setupState） */
+/** 下载并测速一个模型（后台进行，进度看 setupState(modelId)）；不同模型可以同时下载 */
 export function startSetup(modelId) {
-  if (state.running) return setupState()
+  if (jobs.get(modelId)?.running) return setupState(modelId)
   const model = byId(modelId)
   if (!model) throw Object.assign(new Error('没有这个模型'), { status: 400 })
   const hw = hardware()
   const f = fit(model, hw)
   if (!f.ok) throw Object.assign(new Error(`这台电脑跑不了 ${model.name}：${f.reason}`), { status: 409 })
-  state = { running: true, model: modelId, step: 'uv', progress: 0, error: null }
+  const job = { running: true, model: modelId, step: 'queued', progress: 0, error: null }
+  jobs.set(modelId, job)
   ;(async () => {
     try {
-      const uv = await ensureUv()
-      state.step = 'packages'
-      const py = await ensureEnv(uv, model, hw)
-      state.step = 'model'
-      await downloadModel(py, model[hw.backend])
-      state.step = 'test'
-      state.progress = 0
+      // 装下载工具和运行环境：同一时间只装一个，另一个显示「排队中」
+      const py = await withEnvLock(async () => {
+        job.step = 'uv'
+        const uv = await ensureUv()
+        job.step = 'packages'
+        return ensureEnv(uv, model, hw)
+      })
+      job.step = 'model'
+      await downloadModel(py, model[hw.backend], job)
+      job.step = 'test'
+      job.progress = 0
       const r = await benchmark(modelId)
       const s = readSettings()
       s.local = { ...(s.local || {}), models: { ...(s.local?.models || {}), [modelId]: { rtf: r.rtf, load: r.load, backend: hw.backend, at: new Date().toISOString() } } }
@@ -491,12 +516,26 @@ export function startSetup(modelId) {
         else s.music = { ...s.music, provider: 'local' }
       }
       writeSettings(s)
-      state = { running: false, model: modelId, step: 'done', progress: 1, error: null }
+      Object.assign(job, { running: false, step: 'done', progress: 1, error: null })
     } catch (e) {
-      state = { ...state, running: false, error: e.message }
+      Object.assign(job, { running: false, error: e.message })
     }
   })().catch(() => {})
-  return setupState()
+  return setupState(modelId)
+}
+
+/** 会话里一键准备：默认的离线配音和离线配乐一起下（这台电脑跑不了的、已经装好的跳过） */
+export function startDefaultSetup() {
+  const s = readSettings()
+  const hw = hardware()
+  const started = []
+  for (const id of [DEFAULT_MODEL, DEFAULT_MUSIC_MODEL]) {
+    const m = byId(id)
+    if (s.local?.models?.[id] || !fit(m, hw).ok) continue
+    startSetup(id)
+    started.push(id)
+  }
+  return { started, voice: kindSetup('voice'), music: kindSetup('music') }
 }
 
 /** 设置页要的全部信息（kind：voice 配音 / music 配乐） */
@@ -526,11 +565,13 @@ export function localVoiceStatus(kind = 'voice') {
         voices: m.voices || null, chosenVoices: m.voices ? voicesFor(m.id, s) : null,
         downloadGB: b ? Math.round((b.sizeGB + envGB(m, hw)) * 10) / 10 : null,
         ok: f.ok, reason: f.reason,
+        // 这个模型自己的下载进度（配音、配乐、不同模型可以同时下载）
+        job: jobs.has(m.id) ? setupState(m.id) : null,
         installed: inst ? { rtf: inst.rtf, load: inst.load, oneMinute: Math.round(predictSeconds(inst, 60)), maxMinutes: Math.max(0, Math.floor(((BUDGET_SECONDS - (inst.load || 0)) / (inst.rtf * 1.15)) / 60 * 10) / 10) } : null,
       }
     }),
     // 下载是配音、配乐共用的一条队伍：只显示这一类的进度
-    setup: kindOf(byId(state.model)) === kind ? setupState() : { ...setupState(), running: false, model: null, error: null, busyOther: state.running },
+    setup: kindSetup(kind),
   }
 }
 

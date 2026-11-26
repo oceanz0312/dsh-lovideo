@@ -3,7 +3,7 @@
 //   - 随包的 lovideo-director skill（导演的做法）
 //   - /lovideo/api/*：管理页和对话卡片的接口
 // 浏览器半边（管理页、对话卡片）在 src/client，打包成 dist/client.js。
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { PLUGIN_ROOT } from './paths.js'
 import { bindLlm } from './llm.js'
@@ -20,28 +20,30 @@ import { installBriefContext } from './composer.js'
 export const name = 'dsh-lovideo'
 export const inject = ['webServer', 'connection', 'tools', 'skills']
 
-const SKILL_DIR = join(PLUGIN_ROOT, 'skills', 'lovideo-director')
+// 插件带的 Skill：skills/<名字>/SKILL.md（导演的做法、帮用户配置配音配乐的向导）
+const SKILLS_DIR = join(PLUGIN_ROOT, 'skills')
 
 function skillProvider() {
-  const file = join(SKILL_DIR, 'SKILL.md')
-  const read = () => {
-    const text = readFileSync(file, 'utf8')
-    const fm = readFrontmatter(text)
-    return { name: fm.name, description: fm.description, text }
-  }
+  const all = () => (existsSync(SKILLS_DIR) ? readdirSync(SKILLS_DIR, { withFileTypes: true }) : [])
+    .filter(d => d.isDirectory() && existsSync(join(SKILLS_DIR, d.name, 'SKILL.md')))
+    .map(d => {
+      const dir = join(SKILLS_DIR, d.name)
+      const text = readFileSync(join(dir, 'SKILL.md'), 'utf8')
+      const fm = readFrontmatter(text)
+      return { name: fm.name, description: fm.description, text, dir }
+    })
   const candidate = s => ({
-    name: s.name, description: s.description, path: file, invocation: { modelInvocable: true, userInvocable: true },
-    source: 'bundled', provider: 'dsh-lovideo', rank: 600, locator: SKILL_DIR, resourceBase: { kind: 'directory', path: SKILL_DIR },
+    name: s.name, description: s.description, path: join(s.dir, 'SKILL.md'), invocation: { modelInvocable: true, userInvocable: true },
+    source: 'bundled', provider: 'dsh-lovideo', rank: 600, locator: s.dir, resourceBase: { kind: 'directory', path: s.dir },
   })
   return {
     name: 'dsh-lovideo',
     async list() {
-      return existsSync(file) ? [candidate(read())] : []
+      return all().map(candidate)
     },
     async get(c) {
-      if (!existsSync(file)) return undefined
-      const s = read()
-      if (c.name !== s.name) return undefined
+      const s = all().find(x => x.name === c.name)
+      if (!s) return undefined
       const { rank, locator, ...summary } = candidate(s)
       return { ...summary, content: s.text.replace(/^---[\s\S]*?---\n/, '') }
     },

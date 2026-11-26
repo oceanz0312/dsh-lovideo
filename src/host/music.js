@@ -15,6 +15,7 @@ export const MUSIC_NAMES = { local: '离线配乐', volcengine: '火山配乐', 
  */
 export async function generateMusic({ brief, mood, seconds, out, signal, settings = readSettings() }) {
   const m = settings.music
+  const keys = settings.keys
   const want = Math.max(10, Math.round(seconds))
   if (m.provider === 'local') {
     const r = await musicLocal({ prompt: mood, seconds: want, out, signal })
@@ -23,8 +24,8 @@ export async function generateMusic({ brief, mood, seconds, out, signal, setting
   const raw = `${out}.download`
   try {
     // 火山按中文描述效果更好（和网站一样）；ElevenLabs 和离线模型用英文
-    if (m.provider === 'volcengine') await volcengine({ text: brief || mood, seconds: want, ak: m.key, sk: m.secret, out: raw, signal })
-    else if (m.provider === 'elevenlabs') await elevenlabs({ styles: mood, seconds: want, key: m.key, out: raw, signal })
+    if (m.provider === 'volcengine') await volcengine({ text: brief || mood, seconds: want, ak: keys.volcAk, sk: keys.volcSk, out: raw, signal })
+    else if (m.provider === 'elevenlabs') await elevenlabs({ styles: mood, seconds: want, key: keys.elevenlabs, out: raw, signal })
     else throw new Error('设置里选了不配乐')
     await toWav(raw, out, signal)
   } finally {

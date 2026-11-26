@@ -5,6 +5,7 @@ import { api, argsOf, fileUrl, loginUrl, openExternal, pick, resultText, useLive
 import { Badge, Bar, Button, Dialog, LinkButton, Mark, Media, Player, SEG, STEP, SpeedButton, Spin, StatusBadge, Styles, Switch, fmtSec, usePlaybackRate } from './ui.jsx'
 import { openManager } from './host.js'
 import { toast } from './toast.jsx'
+import { MUSIC_NAMES, VOICE_NAMES, jobText } from './sound-settings.jsx'
 
 /* ---------- 外框 ---------- */
 
@@ -141,96 +142,84 @@ export function Doctor({ onVoiceChange } = {}) {
         desc={st.login.account ? `已登录 ${st.login.account.email || ''} · 平台风格可用` : pending ? '已在浏览器打开 lovideo.ai，核对下面的代码后点「允许」' : '登录后可以用平台上的 100 多种风格，注册即免费'}
         extra={pending ? <div className="lv-code" style={{ marginTop: 8 }}>{pending.userCode}</div> : st.login.error ? <div className="lv-err">{st.login.error}</div> : null}
         action={st.login.account ? null : pending ? <LinkButton size="sm" href={loginUrl(pending.url)}>重新打开</LinkButton> : <Button size="sm" kind={env.ready ? 'pri' : ''} busy={busy === 'login'} onClick={() => act('login', login)}>登录</Button>} />
-      <VoiceRow voice={st.settings.voice} onChange={() => { reload(); onVoiceChange?.() }} />
-      <MusicRow music={st.settings.music} onChange={() => { reload(); onVoiceChange?.() }} />
+      <SoundRow settings={st.settings} onChange={() => { reload(); onVoiceChange?.() }} />
       {err ? <div className="lv-err">{err}</div> : null}
     </div>
   )
 }
 
 /**
- * 配音这一行。没装离线配音时给一个轻量提示，点一下就下载默认的 Kokoro（最小、哪台电脑都能跑），装好自动用上；
- * 换别的模型、换声音去设置页。
+ * 配音和配乐这一行。默认的离线配音（Kokoro）、离线配乐（Stable Audio 3）还没下载时，给一个按钮两样一起下，
+ * 装好自动用上；换服务、换模型、换声音去设置页。
  */
-function VoiceRow({ voice, onChange }) {
-  const lv = useLocalVoice(['system', 'local'].includes(voice.provider), onChange)
-  const settings = <Button size="sm" kind="ghost" onClick={() => openManager('settings')}>设置</Button>
-  const p = voice.provider
-  if (!['system', 'local'].includes(p) || !lv.st) {
-    const desc = p === 'none' ? '不配音，只出字幕' : p === 'system' ? '系统自带语音' : p === 'local' ? '离线配音' : `${p}${voice.hasKey ? '' : '（还没填 key）'}`
-    return <Row ok title="配音" desc={desc} action={settings} />
-  }
-  const st = lv.st
-  const active = st.models.find(m => m.id === st.active)
-  if (p === 'local' && active) {
-    const names = Object.fromEntries((active.voices.zh || []).concat(active.voices.en || []))
-    const voices = [active.chosenVoices.zh, active.chosenVoices.en].filter(id => id && names[id] && Object.keys(names).length > 2).map(id => names[id].split(' · ').pop())
-    return <Row ok title="配音" desc={`离线配音 · ${active.name}${voices.length ? ` · ${voices.join(' / ')}` : ''}`} action={settings} />
-  }
-  if (!st.minimum.ok) return <Row ok title="配音" desc="系统自带语音（这台电脑配置偏低，离线配音跑不动）" action={settings} />
-  if (st.models.some(m => m.installed)) return <Row ok title="配音" desc="系统自带语音 · 已下载离线配音，可以在设置里换过去" action={settings} />
-  return (
-    <Row ok title="配音"
-      desc={lv.running ? `正在下载离线配音（${lv.def.name}）：${lv.progress}` : `系统自带语音 · 下载离线配音会更自然（${lv.def.name}，约 ${lv.def.downloadGB}GB，不用联网生成）`}
-      extra={lv.running && st.setup.step === 'model' ? <div style={{ marginTop: 6 }}><Bar value={st.setup.progress} /></div> : lv.error ? <div className="lv-err">{lv.error}</div> : null}
-      action={<div className="lv-row" style={{ gap: 6 }}>{lv.running ? null : <Button size="sm" busy={lv.busy} onClick={lv.download}>下载</Button>}{settings}</div>} />
-  )
-}
-
-/** 配乐这一行：选的离线配乐还没下载时，点一下下载默认的配乐模型，装好自动用上 */
-function MusicRow({ music, onChange }) {
-  const lv = useLocalVoice(music.provider === 'local', onChange, 'music')
-  const settings = <Button size="sm" kind="ghost" onClick={() => openManager('settings')}>设置</Button>
-  const names = { volcengine: '火山配乐', elevenlabs: 'ElevenLabs', none: '不配乐' }
-  if (music.provider !== 'local') {
-    const desc = music.provider === 'none' ? '不配乐' : `${names[music.provider] || music.provider}${music.hasKey ? '' : '（还没填 key）'}`
-    return <Row ok title="配乐" desc={desc} action={settings} />
-  }
-  if (!lv.st) return <Row ok title="配乐" desc="离线配乐" action={settings} />
-  const st = lv.st
-  const active = st.models.find(m => m.id === st.active)
-  if (active) return <Row ok title="配乐" desc={`离线配乐 · ${active.name}`} action={settings} />
-  if (!st.minimum.ok) return <Row ok title="配乐" desc="这台电脑配置偏低，离线配乐跑不动；可以在设置里换成火山配乐或 ElevenLabs" action={settings} />
-  return (
-    <Row ok title="配乐"
-      desc={lv.running ? `正在下载离线配乐（${lv.def.name}）：${lv.progress}` : `还没下载离线配乐 · 下载后导演建议配乐的片子会自动配上（${lv.def.name}，约 ${lv.def.downloadGB}GB）`}
-      extra={lv.running && st.setup.step === 'model' ? <div style={{ marginTop: 6 }}><Bar value={st.setup.progress} /></div> : lv.error ? <div className="lv-err">{lv.error}</div> : null}
-      action={<div className="lv-row" style={{ gap: 6 }}>{lv.running ? null : <Button size="sm" busy={lv.busy} disabled={Boolean(st.setup.busyOther)} onClick={lv.download}>下载</Button>}{settings}</div>} />
-  )
-}
-
-/** 离线配音的状态和一键下载默认模型（会话里的提示用） */
-function useLocalVoice(enabled = true, onDone, kind = 'voice') {
-  const [st, , reload] = useLive(enabled ? (kind === 'music' ? 'local-voice?kind=music' : 'local-voice') : null, () => false)
+function SoundRow({ settings, onChange }) {
+  const voice = useLocalStatus('voice', onChange)
+  const music = useLocalStatus('music', onChange)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState(null)
-  const running = Boolean(st?.setup?.running)
-  const wasRunning = React.useRef(false)
-  React.useEffect(() => {
-    // 装完时配音会自动切到离线配音，通知外面刷新
-    if (wasRunning.current && !running) onDone?.()
-    wasRunning.current = running
-    if (!running) return undefined
-    const t = setInterval(reload, 1000)
-    return () => clearInterval(t)
-  }, [running, reload])
-  const def = st?.models.find(m => m.id === st.defaultModel)
+  const settingsBtn = <Button size="sm" kind="ghost" onClick={() => openManager('settings')}>设置</Button>
+  const vp = settings.voice.provider
+  const mp = settings.music.provider
+  const keys = settings.keys || {}
+  const activeName = d => d?.models.find(m => m.id === d.active)?.name
+  const voiceDesc = vp === 'local' ? (activeName(voice) ? `离线配音 · ${activeName(voice)}` : '系统自带语音（离线配音还没下载）')
+    : vp === 'doubao' || vp === 'elevenlabs' || vp === 'openai' ? `${VOICE_NAMES[vp]}${keys[vp] ? '' : '（还没填 Key）'}` : VOICE_NAMES[vp] || vp
+  const musicDesc = mp === 'local' ? (activeName(music) ? `离线配乐 · ${activeName(music)}` : '离线配乐还没下载')
+    : mp === 'volcengine' ? `火山配乐${keys.volcAk && keys.volcSk ? '' : '（还没填 Key）'}` : mp === 'elevenlabs' ? `ElevenLabs${keys.elevenlabs ? '' : '（还没填 Key）'}` : MUSIC_NAMES[mp] || mp
+  // 一键下载会下哪些：用得上（选的是离线或系统语音）、还没装、这台电脑跑得动的默认模型
+  const want = (d, wanted) => {
+    if (!d || !wanted || !d.minimum.ok || d.models.some(m => m.installed)) return null
+    const m = d.models.find(x => x.id === d.defaultModel)
+    return m && m.ok && !m.installed ? m : null
+  }
+  const needs = [['voice', want(voice, vp === 'local' || vp === 'system')], ['music', want(music, mp === 'local')]].filter(([, m]) => m)
+  const jobs = [voice, music].flatMap(d => (d?.models || []).filter(m => m.job?.running).map(m => ({ kind: d.kind, m })))
+  const failed = [voice, music].flatMap(d => (d?.models || []).filter(m => !m.job?.running && m.job?.error).map(m => `${m.name}：${m.job.error}`))
   const download = async () => {
     setBusy(true)
     setError(null)
     try {
-      await api('local-voice/setup', { model: st.defaultModel })
-      reload()
+      await api('local-voice/setup-defaults', {})
+      voice.reload()
+      music.reload()
     } catch (e) {
       setError(e.message)
     } finally {
       setBusy(false)
     }
   }
-  const step = { uv: '准备下载工具', packages: '安装运行环境', model: '下载模型', test: '测速' }[st?.setup?.step]
-  const progress = running ? `${step || '准备中'}${st.setup.step === 'model' ? ` ${Math.round((st.setup.progress || 0) * 100)}%` : ''}` : ''
-  const failed = error || (!running && !busy && st?.setup?.model === st?.defaultModel ? st?.setup?.error : null) || null
-  return { st, def, running, busy, error: failed, download, progress }
+  const gb = Math.round(needs.reduce((n, [, m]) => n + (m.downloadGB || 0), 0) * 10) / 10
+  const what = needs.length === 2 ? '离线配音和配乐' : needs[0]?.[0] === 'music' ? '离线配乐' : '离线配音'
+  return (
+    <Row ok title="配音和配乐"
+      desc={`配音：${voiceDesc}；配乐：${musicDesc}${needs.length && !jobs.length ? '。下载离线的会更自然，不联网、不用 key' : ''}`}
+      extra={jobs.length || failed.length || error ? (
+        <div className="lv-col" style={{ marginTop: 6, gap: 6 }}>
+          {jobs.map(({ kind, m }) => (
+            <div key={m.id}>
+              <div className="lv-subtle">{kind === 'music' ? '离线配乐' : '离线配音'}（{m.name}）：{jobText(m.job)}</div>
+              {m.job.step === 'model' ? <Bar value={m.job.progress} /> : null}
+            </div>
+          ))}
+          {failed.map(t => <div key={t} className="lv-err">{t}</div>)}
+          {error ? <div className="lv-err">{error}</div> : null}
+        </div>
+      ) : null}
+      action={<div className="lv-row" style={{ gap: 6 }}>{needs.length && !jobs.length ? <Button size="sm" kind="pri" busy={busy} onClick={download}>下载{what}（约 {gb}GB）</Button> : null}{settingsBtn}</div>} />
+  )
+}
+
+/** 离线配音或配乐的状态：有模型在下载时每秒刷新，下完时通知外面（装好会自动用上） */
+function useLocalStatus(kind, onDone) {
+  const [data, , reload] = useLive(kind === 'music' ? 'local-voice?kind=music' : 'local-voice', () => false,
+    d => (d?.models?.some(m => m.job?.running) ? 1000 : 0))
+  const running = (data?.models || []).some(m => m.job?.running)
+  const was = React.useRef(false)
+  React.useEffect(() => {
+    if (was.current && !running) onDone?.()
+    was.current = running
+  }, [running])
+  return data ? { ...data, reload } : { kind, reload, models: [], minimum: { ok: false } }
 }
 
 function Row({ ok, title, desc, action, extra }) {
