@@ -1,6 +1,6 @@
 {
   "name": "dsh-lovideo",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "lovideo 视频插件：在 DeepSeek Harness 里一句话做出任意风格的视频。导演用你选的模型，画面在你自己的电脑上渲染。",
   "homepage": "https://lovideo.ai",
   "repository": {
