@@ -2,8 +2,13 @@
 //
 //   npm run dev:desktop             开发模式：profile 链接到本仓库，后端源码改了自动重载
 //   npm run dev                     另开一个终端：客户端改了自动重新打包，页面自动换上新的
-//   npm run dev:desktop:off         回到 npm 上发布的版本（默认最新版）
-//   npm run dev:desktop:off -- --tgz <文件>   换成本地打的包，发版前按用户的装法再验一遍
+//   npm run dev:desktop:off         回到 GitHub 上发布的版本，和用户的装法一样（默认 main 最新）
+//   npm run dev:desktop:off -- --version v0.2.0   换成 GitHub 上某个版本标签
+//   npm run dev:desktop:off -- --tgz <文件>   换成本地打的包
+//
+// 换插件来源一律走这个脚本：它会同时关掉后端热重载。只换依赖、不关热重载时，DeepSeek Harness
+// 仍会从本仓库的 src/host 加载后端，而 pnpm 换掉链接依赖时又会删掉本仓库的 node_modules，
+// 后端就找不到 puppeteer-core 等依赖，制作直接失败。
 //   npm run dev:desktop:status
 //
 // 选项：--profile <名字>（默认 desktop）
@@ -29,6 +34,7 @@ const manifestFile = join(profileDir, 'package.json')
 // 写进 profile patch 的这一段带标记，开关时整段加上或删掉，不动用户别的配置
 const BEGIN = '# >>> dsh-lovideo 开发模式（npm run dev:desktop:off 会删掉这一段）'
 const END = '# <<< dsh-lovideo 开发模式'
+const GITHUB = 'github:oceanz0312/dsh-lovideo'
 
 function dshCli() {
   if (process.env.DSH_CLI) return process.env.DSH_CLI
@@ -65,17 +71,26 @@ function readPatch() {
   return existsSync(patchFile) ? readFileSync(patchFile, 'utf8') : ''
 }
 
+/**
+ * 删掉开发模式那一段：只删两行标记和我们自己写的 hmr 条目。
+ * DSH 或用户后来往标记中间加的配置（比如模型服务商）原样留下，不能跟着删。
+ */
 function withoutDevBlock(text) {
   const a = text.indexOf(BEGIN)
   const b = text.indexOf(END)
   if (a < 0 || b < 0) return text
-  return (text.slice(0, a) + text.slice(b + END.length)).replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '')
+  const inner = text.slice(a + BEGIN.length, b).replace(devEntry(), '').replace(/^\n+/, '')
+  return (text.slice(0, a) + inner + text.slice(b + END.length)).replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '')
 }
 
 /** 打开 base 组合里的 hmr，监听插件后端源码；客户端的热重载由 DSH 轮询 dist/client.js 完成 */
-function devBlock() {
+function devEntry() {
   const host = join(ROOT, 'src', 'host').replace(/\\/g, '/')
-  return `${BEGIN}\n- id: hmr\n  config:\n    root:\n      - ${JSON.stringify(host)}\n${END}\n`
+  return `- id: hmr\n  config:\n    root:\n      - ${JSON.stringify(host)}\n`
+}
+
+function devBlock() {
+  return `${BEGIN}\n${devEntry()}${END}\n`
 }
 
 function ensureBundle() {
@@ -117,7 +132,10 @@ if (cmd === 'on') {
   console.log('- DeepSeek Harness 没在运行就打开它；已经开着的话一般几秒内生效，没生效就重启一次')
 } else if (cmd === 'off') {
   const tgz = opt('tgz')
-  const spec = tgz ? resolve(tgz) : `${PKG.name}@${opt('version') || 'latest'}`
+  const version = opt('version')
+  // 发版走 GitHub（见 README「发版」），用户也是从 GitHub 装的
+  const spec = tgz ? resolve(tgz) : `${GITHUB}${version ? `#${version}` : ''}`
+  // 先关热重载，再换依赖：顺序反过来的话，换依赖的那一刻后端会从已经没有依赖的源码目录重新加载
   writeFileSync(patchFile, withoutDevBlock(readPatch()))
   dshPlugin('add', spec)
   ensureBundle()
@@ -129,6 +147,9 @@ if (cmd === 'on') {
   console.log(`profile：${profile}（${profileDir}）`)
   console.log(`插件来源：${spec ?? '没装'}`)
   console.log(`开发模式：${dev && spec === `link:${ROOT}` ? '开（链接本仓库 + 后端热重载）' : dev ? '部分开启（patch 在，但没链接本仓库）' : '关'}`)
+  if (dev && spec !== `link:${ROOT}`) {
+    console.log('  ↳ 这个状态会出错：后端仍从本仓库加载，用的却不是装好的插件。运行 npm run dev:desktop:off 切干净')
+  }
 } else {
   fail('用法：node scripts/dev-desktop.mjs on|off|status [--profile <名字>] [--tgz <文件>] [--version <版本>]')
 }

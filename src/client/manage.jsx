@@ -1,9 +1,9 @@
 // 侧栏「lovideo 视频」：作品、官方风格、我的风格、设置。随时点开看，和对话里的卡片读同一份数据。
 import * as React from 'react'
 import { api, fileUrl, loginUrl, openExternal, useLive } from './api.js'
-import { Badge, Bar, Button, ConfirmDialog, LinkButton, Mark, Media, Player, StatusBadge, Styles, fmtSec } from './ui.jsx'
+import { Badge, Bar, Button, ConfirmDialog, HoverVideo, LinkButton, Mark, Media, Player, StatusBadge, Styles, fmtSec, useHoverPreview } from './ui.jsx'
 import { Doctor, WorkActions, WorkBody, coverOf } from './cards.jsx'
-import { host, openSession, startDirector } from './host.js'
+import { host, openSession, startDirector, watchPanel } from './host.js'
 import { toast } from './toast.jsx'
 
 const PAGE_CSS = `
@@ -42,6 +42,7 @@ const PAGE_CSS = `
 .lv-wave{display:inline-flex;align-items:center;gap:2px;height:12px;flex:none}
 .lv-wave i{display:block;width:2px;height:3px;border-radius:1px;background:currentColor;transition:height 80ms linear}
 @media (prefers-reduced-motion:reduce){.lv-wave i{transition:none}}
+.lv-end{height:1px}
 .lv-banner{animation:lv-in var(--lv-slow) var(--lv-ease-out);display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--dsw-alias-card-fill);margin-bottom:16px}
 `
 
@@ -49,11 +50,18 @@ const TABS = [['works', '作品'], ['platform', '官方风格'], ['mine', '我�
 
 export function ManagePage() {
   const [tab, setTab] = React.useState(host.tab || 'works')
+  // 从哪个对话跳过来的；用户离开管理页就清掉，下次从侧栏直接进来时不会冒出旧的来源
+  const [from, setFrom] = React.useState(host.from)
   React.useEffect(() => {
     host.setTab = setTab
     host.tab = null
+    host.setFrom = setFrom
+    host.from = null
+    const off = watchPanel(() => setFrom(null))
     return () => {
       host.setTab = null
+      host.setFrom = null
+      off()
     }
   }, [])
   return (
@@ -61,6 +69,11 @@ export function ManagePage() {
       <Styles />
       <style>{PAGE_CSS}</style>
       <div className="lv-top">
+        {from ? (
+          <Button size="sm" kind="ghost" onClick={() => openSession(from.sessionId)}>
+            ← 返回对话{from.title ? <span className="lv-truncate" style={{ display: 'inline-block', maxWidth: 200, verticalAlign: 'bottom' }}>《{from.title}》</span> : null}
+          </Button>
+        ) : null}
         <span className="lv-brand"><Mark />lovideo</span>
         <nav className="lv-tabs" aria-label="lovideo">
           {TABS.map(([id, label]) => <button key={id} type="button" className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>)}
@@ -166,11 +179,34 @@ function Platform() {
   const [q, setQ] = React.useState('')
   const [aspect, setAspect] = React.useState('all')
   const [sel, setSel] = React.useState(null)
+  const [count, setCount] = React.useState(BATCH)
+  const top = React.useRef(null)
+  const end = React.useRef(null)
   const list = (data?.platform || []).filter(s => (!q || `${s.name}${s.use || ''}${s.description || ''}`.includes(q)) && (aspect === 'all' || (s.aspects || []).includes(aspect)))
+  // 选中的风格可能还没滚出来，详情栏照样显示它，所以从筛选后的完整列表里找
   const current = list.find(s => s.slug === sel)
+  const shown = list.slice(0, count)
+  const more = shown.length < list.length
+  // 搜索词或画幅一变，结果换了一批，从头开始显示
+  const filter = fn => v => {
+    fn(v)
+    setCount(BATCH)
+    top.current?.closest('.lv-body')?.scrollTo({ top: 0 })
+  }
+  // 列表底部的哨兵快进入视野（提前 400px）就多显示一批；每显示一批重新观察一次，
+  // 所以屏幕很高、一批填不满时会接着往下补，直到铺满或没有更多
+  React.useEffect(() => {
+    const el = end.current
+    if (!el || !more) return undefined
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) setCount(c => c + BATCH)
+    }, { root: el.closest('.lv-body'), rootMargin: '0px 0px 400px 0px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [more, count])
   return (
     <div className={current ? 'lv-split' : ''}>
-      <div>
+      <div ref={top}>
         <div className="lv-head">
           <h1 className="lv-h1">官方风格</h1>
           <span className="lv-subtle">{data?.platform?.length || 0} 个 · 注册即免费 · 用到时下载到本机</span>
@@ -179,27 +215,28 @@ function Platform() {
             <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.2 6.3 6.3 2.2-6.3 2.2L12 19.5l-2.2-6.3L3.5 11l6.3-2.2z" fill="#ff6b3d" /></svg>
             不知道选哪个？AI 帮你推荐
           </Button>
-          <input className="lv-input" style={{ width: 200 }} placeholder="搜风格、用途…" value={q} onChange={e => setQ(e.target.value)} />
-          <div className="lv-seg">{[['all', '全部'], ['16:9', '16:9'], ['9:16', '9:16']].map(([k, l]) => <button key={k} type="button" className={aspect === k ? 'on' : ''} onClick={() => setAspect(k)}>{l}</button>)}</div>
+          <input className="lv-input" style={{ width: 200 }} placeholder="搜风格、用途…" value={q} onChange={e => filter(setQ)(e.target.value)} />
+          <div className="lv-seg">{[['all', '全部'], ['16:9', '16:9'], ['9:16', '9:16']].map(([k, l]) => <button key={k} type="button" className={aspect === k ? 'on' : ''} onClick={() => filter(setAspect)(k)}>{l}</button>)}</div>
         </div>
         {st && !st.login.account ? <LoginBanner onDone={reload} /> : null}
         {data?.offline ? <div className="lv-banner"><span className="lv-grow">现在连不上 lovideo.ai，显示的是上次的风格列表。</span><Button size="sm" onClick={reload}>重试</Button></div> : null}
         {!data ? <div className="lv-subtle lv-shimmer">读取中…</div> : (
-          <div className="lv-grid">
-            {list.map(s => (
-              <button key={s.slug} type="button" className={`lv-tile ${sel === s.slug ? 'on' : ''}`} onClick={() => setSel(sel === s.slug ? null : s.slug)}>
-                <Media src={coverOf(s)} chip={s.installed ? '已在本机' : null} chipRight={s.gpu ? '3D 绘制' : null} />
-                <div className="lv-tile-title lv-truncate">{s.name}</div>
-                <div className="lv-subtle lv-truncate">{[s.use, (s.aspects || []).join(' · ')].filter(Boolean).join(' · ')}</div>
-              </button>
-            ))}
-          </div>
+          <>
+            <div className="lv-grid">
+              {shown.map(s => <StyleTile key={s.slug} s={s} selected={sel === s.slug} onSelect={() => setSel(sel === s.slug ? null : s.slug)} />)}
+            </div>
+            {!list.length ? <div className="lv-subtle">没有符合的风格。</div> : null}
+            {more ? <div ref={end} className="lv-end" aria-hidden="true" /> : null}
+          </>
         )}
       </div>
       {current ? <StylePanel s={current} onClose={() => setSel(null)} /> : null}
     </div>
   )
 }
+
+/** 官方风格每次多显示几张：24 张能排满 3、4、6 列的整行 */
+const BATCH = 24
 
 function LoginBanner({ onDone }) {
   const [st, , reload] = useLive('state', () => false)
@@ -222,6 +259,20 @@ function LoginBanner({ onDone }) {
       <span className="lv-grow">{pending ? <>已在浏览器打开 lovideo.ai，确认页面上的代码是 <b className="lv-mono">{pending.userCode}</b> 后点「允许」。</> : '登录 lovideo 后就能用这些风格（注册即免费）。'}</span>
       {pending ? <LinkButton size="sm" kind="pri" href={loginUrl(pending.url)}>重新打开</LinkButton> : <Button size="sm" kind="pri" onClick={login}>登录</Button>}
     </div>
+  )
+}
+
+/** 官方风格卡片：鼠标停在上面就在封面处播这个风格的小样片，离开回到封面 */
+function StyleTile({ s, selected, onSelect }) {
+  const { playing, stop, bind } = useHoverPreview(s.sample)
+  return (
+    <button type="button" className={`lv-tile ${selected ? 'on' : ''}`} onClick={onSelect} {...bind}>
+      <Media src={coverOf(s)} chip={s.installed ? '已在本机' : null} chipRight={s.gpu ? '3D 绘制' : null}>
+        {playing ? <HoverVideo src={s.sample} onFail={stop} /> : null}
+      </Media>
+      <div className="lv-tile-title lv-truncate">{s.name}</div>
+      <div className="lv-subtle lv-truncate">{[s.use, (s.aspects || []).join(' · ')].filter(Boolean).join(' · ')}</div>
+    </button>
   )
 }
 
@@ -377,8 +428,7 @@ function Settings() {
       return fileUrl(r.url)
     } catch (e) {
       setMsg({ ok: false, text: e.message })
-    } finally {
-      setBusy(null)
+      return null
     }
   }
   const pickModel = e => {
@@ -390,6 +440,15 @@ function Settings() {
   return (
     <div style={{ maxWidth: 760 }}>
       <div className="lv-head"><h1 className="lv-h1">设置</h1><span className="lv-subtle">电脑上有的用你自己的；key 只存在这台电脑上，不上传 lovideo，也不发给模型。</span></div>
+
+      <div className="lv-section">
+        <h3>lovideo 账号</h3>
+        <div className="lv-srow">
+          <div className="l"><b>{st.login.account ? st.login.account.email || '已登录' : '未登录'}</b><span className="lv-subtle">{st.login.account ? '平台风格免费使用' : '登录后可以用平台上的风格（注册即免费）'}</span></div>
+          {st.login.account ? <Button size="sm" onClick={() => setAskLogout(true)}>退出</Button> : null}
+        </div>
+        {!st.login.account ? <LoginBanner onDone={reload} /> : null}
+      </div>
 
       <div className="lv-section">
         <h3>这台电脑</h3>
@@ -446,14 +505,6 @@ function Settings() {
         </div>
       </div>
 
-      <div className="lv-section">
-        <h3>lovideo 账号</h3>
-        <div className="lv-srow">
-          <div className="l"><b>{st.login.account ? st.login.account.email || '已登录' : '未登录'}</b><span className="lv-subtle">{st.login.account ? '平台风格免费使用' : '登录后可以用平台上的风格（注册即免费）'}</span></div>
-          {st.login.account ? <Button size="sm" onClick={() => setAskLogout(true)}>退出</Button> : null}
-        </div>
-        {!st.login.account ? <LoginBanner onDone={reload} /> : null}
-      </div>
       <ConfirmDialog open={askLogout} title="退出 lovideo 账号？" confirmText="退出" danger busy={loggingOut} onConfirm={logout} onCancel={() => setAskLogout(false)}>
         <p>退出后不能再用官方风格开新片，要用时重新登录就行。这台电脑上的作品、你自己的风格和已经下载的风格都会保留。</p>
       </ConfirmDialog>

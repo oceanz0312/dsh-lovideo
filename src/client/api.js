@@ -16,6 +16,12 @@ export async function api(path, body) {
     data = null
   }
   if (!res.ok) throw Object.assign(new Error(data?.error || `请求失败（${res.status}）`), { status: res.status, code: data?.code })
+  // 对作品的改动请求成功后，立刻让本页的卡片重新读一遍，不等后端的变化推送：
+  // 推送要是晚到或没到，点完按钮的卡片也不会停在旧状态上
+  if (body !== undefined) {
+    const m = /^works\/([\w-]+)\//.exec(path)
+    if (m) for (const fn of listeners) fn({ id: m[1] })
+  }
   return data
 }
 
@@ -60,7 +66,7 @@ function ensureSource() {
     for (const fn of listeners) fn(msg)
   }
   source.onerror = () => {
-    // 断了浏览器会自动重连；连不上时卡片退回定时刷新
+    // 断了浏览器会自动重连；重连之前推送是收不到的，作品在制作时靠 whileProducing 的定时刷新兜底
   }
 }
 
@@ -76,7 +82,13 @@ export function subscribe(fn) {
   }
 }
 
-/** 读一个接口并在作品变化时自动刷新；filter 决定哪些变化需要刷新 */
+/** 作品正在制作时每 3 秒读一次，作为变化推送的兜底；做完或没在做就不轮询 */
+export const whileProducing = w => (w?.status === 'producing' ? 3000 : 0)
+
+/**
+ * 读一个接口并在作品变化时自动刷新；filter 决定哪些变化需要刷新。
+ * intervalMs 可以是固定毫秒数，也可以是按当前数据算出毫秒数的函数（0 表示不轮询）。
+ */
 export function useLive(path, filter = () => true, intervalMs = 0) {
   const [data, setData] = React.useState(null)
   const [error, setError] = React.useState(null)
@@ -96,14 +108,18 @@ export function useLive(path, filter = () => true, intervalMs = 0) {
       clearTimeout(timer.current)
       timer.current = setTimeout(load, 250)
     })
-    const poll = intervalMs ? setInterval(load, intervalMs) : null
     return () => {
       off()
       clearTimeout(timer.current)
-      if (poll) clearInterval(poll)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, load, intervalMs])
+  }, [path, load])
+  const ms = typeof intervalMs === 'function' ? intervalMs(data) : intervalMs
+  React.useEffect(() => {
+    if (!ms) return undefined
+    const poll = setInterval(load, ms)
+    return () => clearInterval(poll)
+  }, [ms, load])
   return [data, error, load, setData]
 }
 

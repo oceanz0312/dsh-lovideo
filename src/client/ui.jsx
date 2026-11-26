@@ -316,6 +316,49 @@ export function Media({ src, portrait, chip, chipRight, children, style }) {
   )
 }
 
+/* ---------- 悬停预览：鼠标停在卡片上约 0.15 秒才开始播，离开就停；全页同一时间只播一个 ---------- */
+
+let activeStop = null
+
+export function useHoverPreview(src) {
+  const [playing, setPlaying] = React.useState(false)
+  const timer = React.useRef(null)
+  const stopRef = React.useRef(null)
+  if (!stopRef.current) {
+    stopRef.current = () => {
+      clearTimeout(timer.current)
+      setPlaying(false)
+      if (activeStop === stopRef.current) activeStop = null
+    }
+  }
+  const stop = stopRef.current
+  const start = e => {
+    // 只认鼠标；用户设了「减少动态效果」就不自动播
+    if (!src || e.pointerType !== 'mouse' || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => {
+      if (activeStop && activeStop !== stop) activeStop()
+      activeStop = stop
+      setPlaying(true)
+    }, 150)
+  }
+  React.useEffect(() => stop, [stop])
+  return { playing, stop, bind: { onPointerEnter: start, onPointerLeave: stop } }
+}
+
+/** 放在 Media 里：画面出来之前保持透明，不会闪一下黑；竖版视频放进横版框里完整显示，不裁切 */
+export function HoverVideo({ src, onFail }) {
+  const [ready, setReady] = React.useState(false)
+  return (
+    <video className={`lv-hv ${ready ? 'on' : ''}`} src={src} muted loop autoPlay playsInline aria-hidden="true"
+      onLoadedMetadata={e => {
+        const v = e.currentTarget
+        v.style.objectFit = v.videoWidth < v.videoHeight ? 'contain' : 'cover'
+      }}
+      onPlaying={() => setReady(true)} onError={onFail} />
+  )
+}
+
 export const STATUS = {
   draft: ['分镜待确认', 'info'],
   producing: ['制作中', 'warn'],

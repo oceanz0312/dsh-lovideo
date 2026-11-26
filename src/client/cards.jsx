@@ -1,7 +1,7 @@
 // 对话里的 lovideo 卡片：按工具名注册到 tool.call.toolview。
 // 卡片只从工具结果里拿作品 id，内容实时读本机数据，所以和管理页、和后续的修改永远一致。
 import * as React from 'react'
-import { api, argsOf, fileUrl, loginUrl, openExternal, pick, resultText, useLive } from './api.js'
+import { api, argsOf, fileUrl, loginUrl, openExternal, pick, resultText, useLive, whileProducing } from './api.js'
 import { Badge, Bar, Button, Dialog, LinkButton, Mark, Media, Player, SEG, STEP, SpeedButton, Spin, StatusBadge, Styles, Switch, fmtSec, usePlaybackRate } from './ui.jsx'
 import { openManager } from './host.js'
 import { toast } from './toast.jsx'
@@ -325,7 +325,7 @@ function useStylePick(callId, sessionId) {
 export function PlanCard(props) {
   const id = done(props) ? pick(resultText(props.block), 'work_id') : null
   const myRev = Number((/分镜 v(\d+)/.exec(resultText(props.block)) || [])[1] || 0)
-  const [w] = useLive(id ? `works/${id}` : null, m => m.id === id)
+  const [w] = useLive(id ? `works/${id}` : null, m => m.id === id, whileProducing)
   const [busy, setBusy] = React.useState(false)
   const [err, setErr] = React.useState(null)
   const [open, setOpen] = React.useState(false)
@@ -533,7 +533,7 @@ export function WorkCard(props) {
 }
 
 export function LiveWork({ id, compact }) {
-  const [w, error] = useLive(id ? `works/${id}` : null, m => m.id === id)
+  const [w, error] = useLive(id ? `works/${id}` : null, m => m.id === id, whileProducing)
   if (error) return <Shell title="作品" error={error.message} />
   if (!w) return <Shell title="作品" right={<span className="lv-subtle lv-shimmer">读取中…</span>} />
   return (
