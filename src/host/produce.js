@@ -20,6 +20,7 @@ import { ensureFonts, findPython, fontsDir, mediaSeconds, run, runtimeStatus } f
 import { MODELS, activeModel, chooseModel, estimateSeconds, hardware, meetsMinimum } from './localvoice.js'
 import { assembleFilm, buildTimeline, syncSwitches } from './assemble.js'
 import { MUSIC_NAMES, generateMusic } from './music.js'
+import { filmLang, voicePickOf, withMusicSource } from './filmsound.js'
 import { musicReady } from './localvoice.js'
 
 export const ASPECTS = { '16:9': { width: 1920, height: 1080 }, '9:16': { width: 1080, height: 1920 } }
@@ -28,7 +29,7 @@ const controllers = new Map()
 
 export const isRunning = id => controllers.has(id)
 
-const lang = work => (/[\u4e00-\u9fff]/.test(JSON.stringify(work.plan?.scenes || [])) ? 'zh' : 'en')
+const lang = filmLang
 
 /* ---------- 状态 ---------- */
 
@@ -262,7 +263,10 @@ async function run_(id, ctl) {
  * 都来不及、或者还没装好时，这部片子先用系统语音。
  */
 async function pickVoice(settings, work, id) {
-  const v = voiceConfig(settings)
+  // 分镜卡上给这部片子换过声音：用它（设置里换了配音服务就不算数，用新服务的默认声音）
+  const pick = voicePickOf(work, settings)
+  const base = voiceConfig(settings)
+  const v = pick && base.provider !== 'local' ? { ...base, voice: pick.id } : base
   if (v.provider !== 'local') return v
   // 配置低于门槛（比如内存不够了、磁盘满了）：不用本机模型
   const min = meetsMinimum(hardware())
@@ -279,7 +283,8 @@ async function pickVoice(settings, work, id) {
       ? `${name(preferred)} 配这部片子（约 ${Math.round(sec)} 秒口播）预计要超过 3 分钟，这次换成更快的 ${name(choice.id)}`
       : null
     await setJob(id, { voiceModel: choice.id, voiceNote: note, voiceNoteCode: note ? 'degraded' : null })
-    return { ...v, localModel: choice.id }
+    // 换过的声音属于某个模型：这次换成了更快的模型就用那个模型自己的声音
+    return { ...v, localModel: choice.id, localVoices: pick?.model === choice.id ? { [pick.lang]: pick.id } : undefined }
   }
   const installed = Object.keys(settings.local.models).length > 0
   const note = installed
@@ -301,8 +306,9 @@ async function makeMusic(id, settings, signal) {
     const fps = work.job.fps || 30
     const total = segmentsOf(work).reduce((n, sg) => n + sg.frames, 0) / fps
     if (work.music.file && existsSync(join(workDir(id), work.music.file))) return await note('done', null)
+    // 配乐来源：分镜卡上给这部片子选过就用它，否则用设置里的
+    settings = withMusicSource(settings, work)
     const p = settings.music.provider
-    if (p === 'none') return await note('skipped', '设置里选了不配乐，这次没加配乐', 'off')
     if (p === 'local') {
       const ready = musicReady(total)
       if (!ready.ok) return await note('skipped', ready.reason, ready.code)

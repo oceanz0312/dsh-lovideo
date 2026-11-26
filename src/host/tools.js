@@ -2,11 +2,12 @@ import { randomUUID } from 'node:crypto'
 // 给导演（DSH 里的 agent）用的工具。每个工具在对话里都有一张 lovideo 自己画的卡片（见 src/client/cards），
 // 卡片按工具结果里的作品 id 去读本机的同一份数据，所以对话卡片和管理页永远一致。
 // 工具和界面按钮调的是同一组函数（docs/DSH-user-actions：一个操作，两个调用方）。
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { DEFAULT_DURATION, FILM_DURATIONS, MIN_SHOT_SEC, createWork, listWorks, requireWork, updateWork } from './works.js'
 import { estimateSeconds } from './localvoice.js'
 import { listMine, listStyles } from './styles.js'
+import { styleSheets } from './stylesheets.js'
 import { pauseProduction, startProduction, narrationText } from './produce.js'
 import { reviseFilm, setSwitches } from './edit.js'
 import { openInJianying, startExport, waitExport } from './export.js'
@@ -92,7 +93,7 @@ function check(args, schema, at = '') {
 function tool(def) {
   return {
     ...def,
-    output: { schema: ANY, render: (args, value) => text(value.text) },
+    output: { schema: ANY, render: def.render || ((args, value) => text(value.text)) },
     async execute(args, exec) {
       const errs = check(args ?? {}, def.parameters)
       if (errs.length) throw new Error(errs.join('；'))
@@ -187,7 +188,7 @@ const configure = tool({
     properties: {
       voice_provider: { type: 'string', enum: VOICE_PROVIDERS, description: '配音用什么：local 离线配音、doubao 豆包语音、elevenlabs、system 系统自带语音、openai OpenAI 兼容、none 不配音' },
       voice_id: { type: 'string', description: '配音声音的 ID（豆包形如 seed-tts-2.0/zh_female_vv_uranus_bigtts，ElevenLabs 是 voice_id）；不填用默认' },
-      music_provider: { type: 'string', enum: MUSIC_PROVIDERS, description: '配乐用什么：local 离线配乐、volcengine 火山配乐、elevenlabs、none' },
+      music_provider: { type: 'string', enum: MUSIC_PROVIDERS, description: '配乐用什么：local 离线配乐、volcengine 火山配乐、elevenlabs（每部片子要不要配乐由分镜卡上的开关定）' },
       keys: {
         type: 'object', additionalProperties: false, description: '要填的 key，只传要改的',
         properties: {
@@ -242,7 +243,7 @@ const configure = tool({
         lines.push(`读取声音列表失败：${e.message}`)
       }
     }
-    if (args.test_music && s.music.provider !== 'none') {
+    if (args.test_music) {
       try {
         const r = await generateMusic({ brief: '轻快温暖的钢琴小品', mood: 'light warm piano, soft pads, curious, 90 bpm', seconds: 30, out: join(tmp, `configure-music-${Date.now()}.wav`), settings: s })
         lines.push(`配乐试做：成功（${Math.round(r.seconds)} 秒）`)
@@ -256,31 +257,84 @@ const configure = tool({
 
 const styles = tool({
   name: 'lovideo_styles',
-  description: '列出可以用的视频风格（平台风格和用户自己的风格），并在对话里用卡片展示你推荐的 1 到 3 个（带真实封面）。出分镜前调用一次，按用户要讲的内容挑最合适的风格推荐。卡片上每个风格都能点选：推荐完用一句话请用户在卡片上点一个（或直接说），然后停下等；用户点了你会收到「[lovideo 通知] 用户在推荐卡片上选了风格」。',
+  description: '挑风格。分两步：① 不带 recommend 调用一次，拿到全部风格（编号、名字、用途、画幅、完整介绍）和所有风格封面拼成的总览图（编号和列表一致），看图、读介绍；② 按用户要讲的内容、受众和语气挑 1 到 3 个最合适的，带上 recommend 和每个的理由 why 再调用一次，卡片会显示封面，用户可以点选。推荐完用一句话请用户在卡片上点一个（或直接说），然后停下等；用户点了你会收到「[lovideo 通知] 用户在推荐卡片上选了风格」。',
   parameters: {
     type: 'object', additionalProperties: false,
     properties: {
-      query: { type: 'string', description: '按名字、用途筛选，例如「产品」「科普」「节日」；不填列出全部' },
-      recommend: { type: 'array', maxItems: 3, items: { type: 'string' }, description: '要在卡片里推荐的风格 slug（从列表里挑），按推荐程度排序' },
+      recommend: { type: 'array', maxItems: 3, items: { type: 'string' }, description: '第二步才填：要推荐的风格 slug，按推荐程度排序。必须先不带它调用一次、看过全部风格' },
+      why: { type: 'array', maxItems: 3, items: { type: 'string' }, description: '和 recommend 一一对应：为什么这个风格适合这部片子（一句话，20 字以内，写给用户看，说画面和内容怎么对上）' },
     },
   },
+  render: (args, value) => [
+    ...text(value.text),
+    ...(value.images || []).flatMap(im => [{ type: 'text', text: im.label }, { type: 'image', attachment: im.ref }]),
+  ],
   async run(args, exec) {
     const { platform, mine, offline } = await listStyles('zh')
     const all = [...mine.filter(s => !s.draft), ...platform]
-    const q = (args.query || '').trim()
-    const hit = q ? all.filter(s => `${s.name} ${s.use || ''} ${s.description || ''} ${s.slug}`.includes(q)) : all
-    const list = (hit.length ? hit : all).slice(0, 60)
-    const unknown = (args.recommend || []).filter(r => !all.some(s => s.slug === r))
-    if (unknown.length) throw new Error(`没有这些风格：${unknown.join('、')}`)
-    const lines = list.map(s => `- ${s.slug} | ${s.name} | ${s.source === 'mine' ? '我的风格' : s.use || ''} | ${(s.aspects || ['16:9']).join(' ')}${s.gpu ? ' | 3D 绘制' : ''}${s.description ? ` | ${String(s.description).slice(0, 80)}` : ''}`)
+    const sessionKey = exec?.agent?.id || null
+    // 卡片上点选风格时要找到这个会话的导演：会话 id 写进结果，卡片从结果里取
+    const session = sessionKey ? `session_id: ${sessionKey}\n` : ''
+    if (exec?.agent && typeof exec.agent.followup === 'function') pickers.set(exec.agent.id, exec.agent)
+    const recommend = args.recommend || []
+    if (recommend.length) {
+      // 没看过全部风格就推荐，等于瞎猜：先让它看
+      if (sessionKey && !seenStyles.has(sessionKey)) throw new Error('先不带 recommend 调用一次 lovideo_styles，看完全部风格的总览图和介绍，再按内容推荐')
+      const unknown = recommend.filter(r => !all.some(s => s.slug === r))
+      if (unknown.length) throw new Error(`没有这些风格：${unknown.join('、')}`)
+      const why = args.why || []
+      if (why.length !== recommend.length || why.some(w => !String(w).trim())) throw new Error('why 要和 recommend 一一对应，每个风格写一句为什么适合')
+      const names = recommend.map((slug, i) => `「${all.find(s => s.slug === slug).name}」（${why[i]}）`)
+      return { text: `${session}已在卡片上推荐：${names.join('、')}。请用户在卡片上点一个，然后停下等。`, recommend, why }
+    }
     const note = offline ? '（现在连不上 lovideo.ai，平台风格列表用的是缓存或为空）\n' : ''
     const login = readSettings().account ? '' : '（用户还没登录 lovideo：平台风格要登录后才能用，可以先用 lovideo_setup 让用户登录）\n'
-    // 卡片上点选风格时要找到这个会话的导演：会话 id 写进结果，卡片从结果里取
-    const session = exec?.agent?.id ? `session_id: ${exec.agent.id}\n` : ''
-    if (exec?.agent && typeof exec.agent.followup === 'function') pickers.set(exec.agent.id, exec.agent)
-    return { text: `${session}${note}${login}共 ${all.length} 个风格${q ? `，匹配「${q}」的 ${hit.length} 个` : ''}：\n${lines.join('\n')}`, recommend: args.recommend || [] }
+    const lines = all.map((s, i) => [
+      `#${i + 1} ${s.slug} | ${s.name} | ${s.source === 'mine' ? '我的风格' : s.use || ''} | ${(s.aspects || ['16:9']).join(' ')}${s.gpu ? ' | 3D 绘制（较慢）' : ''}`,
+      s.description ? `   ${String(s.description).replace(/\s+/g, ' ').trim()}` : '',
+    ].filter(Boolean).join('\n'))
+    const seen = await styleImages(all, exec)
+    if (sessionKey) seenStyles.add(sessionKey)
+    const how = '挑法：先想清楚这部片子讲什么、给谁看、要什么语气，再对照总览图里的画面和下面的介绍找最贴的；用途只是参考，画面气质和内容对得上最重要。用户要竖屏就只挑支持 9:16 的。挑好后带 recommend 和 why 再调用一次。'
+    return {
+      text: `${session}${note}${login}共 ${all.length} 个风格。${seen.note}\n${how}\n\n${lines.join('\n')}`,
+      images: seen.images,
+      recommend: [],
+    }
   },
 })
+
+/** 在这个会话里看过全部风格的导演（推荐前必须看过） */
+const seenStyles = new Set()
+
+/**
+ * 把所有风格的封面拼成总览图交给导演看。当前模型不能看图、或拼图失败时只给文字，并说明原因。
+ * @returns {Promise<{ images: { label: string, ref: object }[], note: string }>}
+ */
+async function styleImages(list, exec) {
+  try {
+    const attachments = hostCtx?.get('attachments')
+    const llm = hostCtx?.get('llm')
+    const routed = exec?.agent?.session?.requestHeader?.()?.config
+    const provider = routed?.provider ?? exec?.agent?.options?.provider
+    const model = routed?.model ?? exec?.agent?.options?.model
+    if (!attachments || !llm || !provider || !model) return { images: [], note: '' }
+    const info = await llm.resolveModelInfo(provider, model, exec.signal)
+    if (!info?.inputModalities?.includes('image')) return { images: [], note: '（当前模型不能看图，只能按文字介绍挑）' }
+    const sheets = await styleSheets(list)
+    const images = []
+    for (const s of sheets) {
+      const ref = await attachments.saveImage({ data: readFileSync(s.file), mediaType: 'image/jpeg', name: `lovideo-styles-${s.from}-${s.to}.jpg` })
+      images.push({
+        label: `风格总览图：#${s.from} 到 #${s.to}`,
+        ref: { attachmentId: ref.attachmentId, mediaType: ref.mediaType, bytes: ref.bytes, width: ref.width, height: ref.height, ...(ref.name ? { name: ref.name } : {}) },
+      })
+    }
+    return { images, note: `下面附了 ${images.length} 张总览图，每格是一个风格的封面，左下角是编号。` }
+  } catch (e) {
+    return { images: [], note: `（总览图这次没拼出来：${String(e?.message || e).slice(0, 80)}；先按文字介绍挑）` }
+  }
+}
 
 const SCENE = {
   type: 'object', additionalProperties: false, required: ['title', 'description', 'narration'],

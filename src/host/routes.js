@@ -1,5 +1,6 @@
 // /lovideo/api/*：管理页和对话卡片调的接口。和工具调的是同一组函数。
 // DSH 的 web 服务不替插件鉴权，每个请求都先走 connection.requestRejection；写操作再拒绝跨站请求。
+import { MUSIC_SOURCES, filmSound, musicSourceOf, musicSourceReady } from './filmsound.js'
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { dirname, extname, join, resolve } from 'node:path'
@@ -132,21 +133,13 @@ function state() {
     model: modelInfo(),
     site: siteUrl(),
     // 配乐现在能不能做（分镜卡上提示用）：离线配乐要先下载；其他来源看有没有填 key
-    musicReady: musicSourceReady(),
+    musicReady: musicSourceReadyNow(),
   }
 }
 
-function musicSourceReady() {
+function musicSourceReadyNow() {
   const s = readSettings()
-  const m = s.music
-  if (m.provider === 'none') return { ok: false, reason: '设置里选了不配乐', code: 'off' }
-  if (m.provider === 'local') {
-    const r = musicReady(60)
-    return r.ok ? { ok: true, source: '离线配乐' } : { ok: false, reason: r.code === 'not-installed' ? '还没下载离线配乐' : r.reason, code: r.code }
-  }
-  if (m.provider === 'volcengine' && !(s.keys.volcAk && s.keys.volcSk)) return { ok: false, reason: '火山配乐还没填 Key', code: 'no-key' }
-  if (m.provider === 'elevenlabs' && !s.keys.elevenlabs) return { ok: false, reason: 'ElevenLabs 还没填 Key', code: 'no-key' }
-  return { ok: true, source: m.provider === 'volcengine' ? '火山配乐' : 'ElevenLabs' }
+  return musicSourceReady(musicSourceOf(null, s), s)
 }
 
 export async function route(req, res) {
@@ -163,6 +156,8 @@ export async function route(req, res) {
       const w = getWork(assertId(m[1]))
       return w ? json(res, 200, view(w)) : json(res, 404, { error: '作品不存在' })
     }
+    // 分镜卡上配音、配乐两行：现在的声音、能换的声音、配乐来源各自能不能用
+    if ((m = /^works\/([\w-]+)\/sound$/.exec(path))) return json(res, 200, await filmSound(requireWork(assertId(m[1]))))
     if ((m = /^works\/([\w-]+)\/file\/(.+)$/.exec(path))) {
       const dir = workDir(assertId(m[1]))
       const file = resolve(dir, m[2])
@@ -235,6 +230,19 @@ export async function route(req, res) {
             x.choices[k] = body[k]
           }
           if (dur !== undefined) x.choices.duration = dur
+          // 只给这部片子换声音：{ provider, id, model?, lang }，null 表示回到设置里的声音
+          if (body.voicePick === null) delete x.choices.voicePick
+          else if (body.voicePick && typeof body.voicePick === 'object') {
+            const v = body.voicePick
+            if (!VOICE_PROVIDERS.includes(v.provider) || typeof v.id !== 'string' || !v.id) throw Object.assign(new Error('声音不对'), { status: 400 })
+            x.choices.voicePick = { provider: v.provider, id: v.id.slice(0, 200), ...(typeof v.model === 'string' ? { model: v.model } : {}), lang: v.lang === 'en' ? 'en' : 'zh' }
+          }
+          // 这部片子的配乐来源，null 表示用设置里的
+          if (body.musicSource === null) delete x.choices.musicSource
+          else if (body.musicSource !== undefined) {
+            if (!MUSIC_SOURCES.includes(body.musicSource)) throw Object.assign(new Error('没有这个配乐来源'), { status: 400 })
+            x.choices.musicSource = body.musicSource
+          }
           return x
         })
         // 时长变了分镜要重出：叫导演按新时长出一版

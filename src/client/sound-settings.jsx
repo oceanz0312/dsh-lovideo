@@ -27,11 +27,6 @@ const CSS = `
 .lv-linkbtn{border:0;background:none;padding:0;font:inherit;font-size:12.5px;color:var(--dsw-alias-state-business-primary);cursor:pointer}
 .lv-linkbtn:hover{text-decoration:underline}
 .lv-ok-text{color:var(--dsw-alias-state-success-primary,#1a7f37);font-size:12.5px}
-.lv-listen{position:relative;overflow:hidden;min-width:64px;justify-content:center}
-.lv-listen svg{width:10px;height:10px;flex:none}
-.lv-wave{display:inline-flex;align-items:center;gap:2px;height:12px;flex:none}
-.lv-wave i{display:block;width:2px;height:3px;border-radius:1px;background:currentColor;transition:height 80ms linear}
-@media (prefers-reduced-motion:reduce){.lv-wave i{transition:none}}
 .lv-dialog:has(.lv-help){width:min(460px,100%)}
 .lv-help{display:flex;flex-direction:column;gap:10px}
 .lv-or{display:flex;align-items:center;gap:10px;margin-top:6px;font-size:12px;color:var(--dsw-alias-label-tertiary)}
@@ -762,9 +757,9 @@ export function ListenButton({ load, size, kind, label = '试听', trigger = 0, 
     if (trigger) click()
   }, [trigger])
   return (
-    <Button className={`lv-btn lv-listen ${kind || 'ghost'} ${size || ''}`} busy={state === 'loading'} onClick={click}>
+    <Button className={`lv-btn lv-listen ${kind || 'ghost'} ${size || ''}`} busy={state === 'loading'} onClick={click} aria-label={label || (state === 'playing' ? '停止' : '试听')}>
       {state === 'playing' ? <Wave audio={audio.current} /> : state === 'idle' ? <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 1.3v7.4L8.7 5z" fill="currentColor" /></svg> : null}
-      {state === 'playing' ? '停止' : label}
+      {label ? (state === 'playing' ? '停止' : label) : null}
     </Button>
   )
 }

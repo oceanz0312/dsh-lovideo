@@ -666,9 +666,11 @@ export function stopAll() {
 }
 
 /** 用本机模型念一段；返回生成信息 */
-export async function speakLocal(modelId, { text, lang, out, instruct }) {
+export async function speakLocal(modelId, { text, lang, out, instruct, voice }) {
   ensureDir(join(out, '..'))
   const w = await worker(modelId)
-  return w.speak({ text, lang, out, instruct, voice: voicesFor(modelId)[lang] })
+  // voice：试听或分镜卡上给这部片子换的声音；不给就用设置里选的
+  const list = MODELS.find(m => m.id === modelId)?.voices?.[lang] || []
+  return w.speak({ text, lang, out, instruct, voice: voice && list.some(([id]) => id === voice) ? voice : voicesFor(modelId)[lang] })
 }
 

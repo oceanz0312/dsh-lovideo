@@ -27,6 +27,36 @@ export const CSS = `
 .lv-dur input:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-state-business-primary) 30%,transparent)}
 .lv-dur-v{width:64px;text-align:right;font-variant-numeric:tabular-nums;font-size:12.5px;font-weight:500}
 .lv-tile:disabled{cursor:default}
+.lv-prows{display:flex;flex-direction:column;gap:8px}
+.lv-prow{position:relative;display:flex;align-items:center;gap:10px;min-height:42px;padding:6px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px}
+.lv-prow>.k{flex:none;width:30px;font-size:12px;color:var(--dsw-alias-label-secondary)}
+.lv-prow>.m{flex:1;min-width:0;display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden}
+.lv-prow>.m b{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
+.lv-prow>.m .lv-why{flex:1 1 0;min-width:40px}
+.lv-prow.off>.m{opacity:.55}
+.lv-prow .lv-dur{width:min(240px,40%)}
+.lv-mini{flex:none;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-secondary)}
+.lv-prow .lv-select.lv-src{flex:none;width:auto;max-width:200px;height:26px;font-size:12px;padding:0 6px}
+.lv-pnote{font-size:12px;padding:0 4px}
+.lv-pnote a,.lv-vfoot a{color:var(--dsw-alias-state-business-primary);text-decoration:none}
+.lv-card:has(.lv-vmenu){overflow:visible}
+.lv-vwrap{position:relative;flex:none}
+.lv-vmenu{position:absolute;right:0;top:calc(100% + 4px);z-index:30;width:330px;max-height:380px;overflow:auto;padding:6px;border-radius:10px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-base));box-shadow:0 12px 30px -10px rgba(0,0,0,.3);animation:lv-in var(--lv-dur) var(--lv-ease-out)}
+.lv-vmenu h5{margin:4px 8px 6px;font-size:11.5px;font-weight:500;color:var(--dsw-alias-label-tertiary)}
+.lv-vopt{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:7px;cursor:pointer;white-space:nowrap}
+.lv-vopt:hover,.lv-vopt:focus-visible,.lv-vopt.on{background:var(--dsw-alias-interactive-bg-hover);outline:0}
+.lv-vopt b{font-weight:500}
+.lv-vopt .chk{margin-left:auto;font-size:12px}
+.lv-vfoot{display:flex;justify-content:space-between;gap:8px;margin-top:4px;padding:8px 8px 2px;border-top:1px solid var(--dsw-alias-border-l2);font-size:12px}
+.lv-listen{position:relative;overflow:hidden;min-width:64px;justify-content:center}
+.lv-listen svg{width:10px;height:10px;flex:none}
+.lv-wave{display:inline-flex;align-items:center;gap:2px;height:12px;flex:none}
+.lv-wave i{display:block;width:2px;height:3px;border-radius:1px;background:currentColor;transition:height 80ms linear}
+@media (prefers-reduced-motion:reduce){.lv-wave i{transition:none}}
+/* 试听按钮：分镜卡、设置页共用 */
+.lv-listen.round{width:26px;min-width:26px;height:26px;padding:0;border-radius:50%;border:1px solid var(--dsw-alias-border-l4)}
+.lv-listen.round .lv-wave{gap:1.5px}
+.lv-style-why{font-size:12px;line-height:1.45;color:var(--dsw-alias-label-secondary);margin-top:4px;text-align:left}
 .lv-switches{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .lv-warn-text{color:var(--dsw-alias-state-warn-primary,#b26a00)}
 .lv-switches label{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--dsw-alias-label-secondary)}

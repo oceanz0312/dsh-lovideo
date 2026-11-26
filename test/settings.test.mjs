@@ -1,7 +1,7 @@
 // 配音、配乐设置：每家服务各存各的 key 和声音；导演用 lovideo_configure 填，结果里只露末 4 位
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -54,4 +54,26 @@ test('lovideo_configure：填 key、换服务，结果里只露末 4 位', async
   // 豆包会把内置的声音列出来，导演可以照着换
   assert.match(r.text, /zh_female_vv_uranus_bigtts ｜ Vivi/)
   await assert.rejects(configure.execute({ voice_provider: 'nope' }), /voice_provider 只能是/)
+})
+
+test('分镜卡上只给这部片子换声音、换配乐来源；设置里换了配音服务，换过的声音不再算数', async () => {
+  const { filmSound, musicSourceOf, voicePickOf } = await import('../src/host/filmsound.js')
+  updateSettings({ voice: { provider: 'doubao', voices: { doubao: '' } }, music: { provider: 'local' }, keys: { doubao: 'k-1234', volcAk: null, volcSk: null } })
+  const work = { plan: { scenes: [{ narration: '你好' }] }, choices: { voicePick: { provider: 'doubao', id: 'seed-tts-2.0/zh_male_m191_uranus_bigtts', lang: 'zh' }, musicSource: 'volcengine' } }
+  const s = await filmSound(work)
+  assert.equal(s.voice.lang, 'zh')
+  assert.equal(s.voice.current.name, '云舟')
+  assert.ok(s.voice.options.every(o => !o.id.includes('/en_')), '中文片只列中文声音')
+  assert.equal(s.voice.picked, true)
+  assert.equal(s.music.source, 'volcengine')
+  assert.equal(s.music.sources.find(x => x.id === 'volcengine').ok, false)
+  assert.equal(musicSourceOf({ choices: {} }), 'local')
+  updateSettings({ voice: { provider: 'system' } })
+  assert.equal(voicePickOf(work), null)
+  // 以前存过的「不配乐」读出来按离线配乐算；设置里也不能再选「不配乐」
+  const file = join(process.env.LOVIDEO_DATA_DIR, 'settings.json')
+  writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')), music: { provider: 'none' } }))
+  assert.equal(readSettings().music.provider, 'local')
+  assert.equal(musicSourceOf({ choices: {} }), 'local')
+  assert.throws(() => updateSettings({ music: { provider: 'none' } }), /不支持/)
 })

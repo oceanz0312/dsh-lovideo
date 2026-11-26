@@ -5,7 +5,7 @@ import { api, argsOf, fileUrl, loginUrl, openExternal, pick, resultText, useLive
 import { Badge, Bar, Button, Dialog, LinkButton, Mark, Media, Player, SEG, STEP, SpeedButton, Spin, StatusBadge, Styles, Switch, fmtSec, usePlaybackRate } from './ui.jsx'
 import { openManager } from './host.js'
 import { toast } from './toast.jsx'
-import { MUSIC_NAMES, VOICE_NAMES, jobText } from './sound-settings.jsx'
+import { ListenButton, MUSIC_NAMES, VOICE_NAMES, jobText } from './sound-settings.jsx'
 
 /* ---------- 外框 ---------- */
 
@@ -254,7 +254,7 @@ export function StylesCard(props) {
   const sessionId = pick(resultText(props.block), 'session_id')
   if (!picks.length) {
     return <Shell title="风格库" right={<Button size="sm" kind="ghost" onClick={() => openManager('platform')}>看全部风格</Button>}>
-      <div className="lv-card-body lv-subtle">{data ? `共 ${all.length} 个风格可用` : '正在读取风格…'}</div>
+      <div className="lv-card-body lv-subtle">{data ? `导演看过了全部 ${all.length} 个风格的封面和介绍，正在按你的内容挑` : '正在读取风格…'}</div>
     </Shell>
   }
   return (
@@ -266,6 +266,7 @@ export function StylesCard(props) {
               <Media src={coverOf(s)} chip={chosen === s.slug ? '已选' : i === 0 ? '最推荐' : null} chipRight={s.gpu ? '3D 绘制' : null} />
               <div className="lv-tile-title">{s.name}</div>
               <div className="lv-subtle lv-truncate">{s.source === 'mine' ? '我的风格' : s.use || (s.aspects || []).join(' · ')}</div>
+              {args.why?.[i] ? <div className="lv-style-why">{args.why[i]}</div> : null}
             </button>
           ))}
         </div>
@@ -457,17 +458,26 @@ const durLabel = n => (n < 60 ? `${n} 秒` : n % 60 ? `${Math.floor(n / 60)} 分
  * 导演给的建议，用户在这里直接改（开拍前）。改过的记在作品上，导演再出分镜时照用户的来；
  * 改时长要重出分镜，会自动叫导演按新时长出一版。
  */
+const ZH_LINE = '你好，这是 lovideo 的配音试听。'
+const EN_LINE = 'Hi, this is a lovideo narration preview.'
+
+/**
+ * 分镜卡上的时长、字幕、配音、配乐（和 lovideo 网站的分镜卡一样每项一行）：
+ * 配音能只给这部片子换声音（列出现在的配音服务里这部片子语言的声音，每个都能试听），也能选「不配音」；
+ * 配乐能换来源、开关。都是开拍前改，记进这部片子的 choices。
+ */
 function PlanOptions({ w }) {
-  const [st] = useLive('state', () => false)
+  const [sound, soundErr, reloadSound] = useLive(`works/${w.id}/sound`, msg => msg?.id === w.id)
   const [busy, setBusy] = React.useState(null)
   const [err, setErr] = React.useState(null)
   const [replan, setReplan] = React.useState(null)
-  const set = async (key, value) => {
+  const set = async (key, patch) => {
     setBusy(key)
     setErr(null)
     try {
-      const r = await api(`works/${w.id}/choices`, { [key]: value })
-      if (key === 'duration') setReplan(r.replanning ? value : -1)
+      const r = await api(`works/${w.id}/choices`, patch)
+      if (patch.duration !== undefined) setReplan(r.replanning ? patch.duration : -1)
+      if ('voicePick' in patch || 'musicSource' in patch) reloadSound()
     } catch (e) {
       setErr(e.message)
     } finally {
@@ -477,48 +487,120 @@ function PlanOptions({ w }) {
   const voiceOn = w.voice?.enabled !== false
   const musicOn = w.music?.enabled === true
   const subsOn = w.subtitlesOn !== false
-  const mr = st?.musicReady
-  const musicDesc = musicOn
-    ? (mr && !mr.ok ? <span className="lv-warn-text">{mr.reason}，现在开拍这部片子不会有配乐 · <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>去设置</a></span> : `画面做好前一起配好${mr?.source ? `（${mr.source}）` : ''}`)
-    : w.music?.suggested ? '建议配乐，打开就会做' : '不建议配乐'
+  const v = sound?.voice
+  const m = sound?.music
+  const src = m?.sources.find(x => x.id === m.source)
+  const preview = o => async () => {
+    setErr(null)
+    try {
+      const r = v.provider === 'local'
+        ? await api('local-voice/preview', { model: o.model, lang: v.lang, voice: o.id })
+        : await api('settings/test-voice', { provider: v.provider, voice: o.id || undefined, text: v.lang === 'en' ? EN_LINE : ZH_LINE })
+      return fileUrl(r.url)
+    } catch (e) {
+      setErr(e.message)
+      return null
+    }
+  }
+  const toSettings = <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>去设置</a>
+  const langName = v?.lang === 'en' ? '英文' : '中文'
   return (
-    <div className="lv-card-body" style={{ paddingBottom: 0 }}>
-      <div className="lv-opts">
-        <div className="lv-opt">
-          <span className="k">时长</span>
-          <span className="v">
-            <b>目标 {durLabel(w.duration || 30)}</b>
-            <span className="lv-subtle">{replan > 0 ? `已经请导演按 ${durLabel(replan)} 重出分镜…` : replan === -1 ? '会话已经关了，回到对话里请导演按新时长重出分镜' : '素材撑不满时会做短一点'}</span>
-          </span>
-          <DurationSlider value={w.duration || 30} busy={busy === 'duration'} onCommit={n => set('duration', n)} />
+    <div className="lv-card-body lv-prows" style={{ paddingBottom: 0 }}>
+      <div className="lv-prow">
+        <span className="k">时长</span>
+        <div className="m">
+          <DurationSlider value={w.duration || 30} busy={busy === 'duration'} onCommit={n => set('duration', { duration: n })} />
+          <span className="lv-subtle lv-truncate">{replan > 0 ? `已经请导演按 ${durLabel(replan)} 重出分镜…` : replan === -1 ? '会话已经关了，回到对话里请导演按新时长重出' : '素材撑不满时会短一点'}</span>
         </div>
-        <div className={`lv-opt ${voiceOn ? '' : 'off'}`}>
-          <span className="k">配音</span>
-          <span className="v">
-            <b>{w.voice?.suggested !== false ? '建议配音' : '建议不配音'}{w.voice?.why ? `：${w.voice.why}` : ''}</b>
-            <span className="lv-subtle">{voiceOn ? '每镜口播按设置里的配音念' : '不念口播，片长按画面定'}</span>
-          </span>
-          <Switch checked={voiceOn} busy={busy === 'voice'} label="配音" onChange={v => set('voice', v)} />
-        </div>
-        <div className={`lv-opt ${musicOn ? '' : 'off'}`}>
-          <span className="k">配乐</span>
-          <span className="v">
-            <b>{w.music?.suggested ? '建议配乐' : '建议不配乐'}{w.music?.brief ? `：${w.music.brief}` : ''}</b>
-            <span className="lv-subtle">{musicDesc}</span>
-          </span>
-          <Switch checked={musicOn} busy={busy === 'music'} label="配乐" onChange={v => set('music', v)} />
-        </div>
-        <div className={`lv-opt ${subsOn ? '' : 'off'}`}>
-          <span className="k">字幕</span>
-          <span className="v">
-            <b>{subsOn ? '显示字幕' : '不显示字幕'}</b>
-            <span className="lv-subtle">字幕就是口播原文，成片后也能随时开关</span>
-          </span>
-          <Switch checked={subsOn} busy={busy === 'subtitles'} label="字幕" onChange={v => set('subtitles', v)} />
-        </div>
+        <span className="lv-mini">字幕<Switch checked={subsOn} busy={busy === 'subtitles'} label="字幕" onChange={x => set('subtitles', { subtitles: x })} /></span>
       </div>
-      {err ? <div className="lv-err" style={{ marginTop: 6 }}>{err}</div> : null}
+
+      <div className={`lv-prow ${voiceOn ? '' : 'off'}`}>
+        <span className="k">配音</span>
+        <div className="m">
+          {!v ? <span className="lv-subtle lv-shimmer">读取声音…</span> : voiceOn ? (
+            <>
+              {v.current ? <ListenButton size="round" kind="plain" label="" load={preview(v.current)} /> : null}
+              <b>{v.current?.name || v.service}</b>
+              <span className="lv-subtle lv-truncate">{[langName, v.current?.gender, v.current?.note, v.service].filter(Boolean).join(' · ')}</span>
+            </>
+          ) : (
+            <><b>不配音</b><span className="lv-subtle">只出字幕和画面</span></>
+          )}
+          {w.voice?.why ? <span className="lv-subtle lv-truncate lv-why">· 导演{w.voice.suggested === false ? '建议不配音' : '建议'}：{w.voice.why}</span> : null}
+        </div>
+        {v ? <VoiceMenu v={v} on={voiceOn} busy={busy === 'voice'} preview={preview} langName={langName}
+          onPick={o => set('voice', { voice: true, voicePick: { provider: v.provider, id: o.id, model: o.model, lang: v.lang } })}
+          onDefault={() => set('voice', { voice: true, voicePick: null })}
+          onOff={() => set('voice', { voice: false })} /> : null}
+      </div>
+
+      <div className={`lv-prow ${musicOn ? '' : 'off'}`}>
+        <span className="k">配乐</span>
+        <div className="m">
+          <b>{w.music?.brief || '配乐'}</b>
+          <span className="lv-subtle lv-why">· {w.music?.suggested ? '导演建议配乐' : '导演建议不配乐'}</span>
+        </div>
+        {m ? (
+          <select className="lv-select lv-src" aria-label="配乐来源" value={m.source} disabled={busy === 'music'} onChange={e => set('music', { musicSource: e.target.value })}>
+            {m.sources.map(x => <option key={x.id} value={x.id}>{x.name}{x.ok ? '' : x.code === 'no-key' ? '（没填 Key）' : x.code === 'not-installed' ? '（没下载）' : '（用不了）'}</option>)}
+          </select>
+        ) : null}
+        <Switch checked={musicOn} busy={busy === 'music'} label="配乐" onChange={x => set('music', { music: x })} />
+      </div>
+
+      {voiceOn && v?.note ? <div className="lv-warn-text lv-pnote">{v.note} · {toSettings}</div> : null}
+      {musicOn && src && !src.ok ? <div className="lv-warn-text lv-pnote">{src.reason}，现在开拍这部片子不会有配乐 · {toSettings}</div> : null}
+      {err || soundErr ? <div className="lv-err">{err || soundErr.message}</div> : null}
     </div>
+  )
+}
+
+/** 「更换」：现在的配音服务里这部片子语言的声音（只改这部片子），最后是「不配音」 */
+function VoiceMenu({ v, on, busy, preview, langName, onPick, onDefault, onOff }) {
+  const [open, setOpen] = React.useState(false)
+  const box = React.useRef(null)
+  React.useEffect(() => {
+    if (!open) return undefined
+    const close = e => !box.current?.contains(e.target) && setOpen(false)
+    const esc = e => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', esc)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', esc)
+    }
+  }, [open])
+  const choose = fn => {
+    setOpen(false)
+    fn()
+  }
+  return (
+    <span className="lv-vwrap" ref={box}>
+      <Button size="sm" busy={busy} aria-expanded={open} onClick={() => setOpen(o => !o)}>更换 ▾</Button>
+      {open ? (
+        <div className="lv-vmenu" role="menu">
+          <h5>{v.service} · {langName}（只改这部片子）</h5>
+          {v.options.length ? v.options.map(o => {
+            const cur = on && v.current?.id === o.id
+            return (
+              <div key={o.id} role="menuitemradio" aria-checked={cur} tabIndex={0} className={`lv-vopt ${cur ? 'on' : ''}`}
+                onClick={() => choose(() => onPick(o))} onKeyDown={e => e.key === 'Enter' && choose(() => onPick(o))}>
+                <span onClick={e => e.stopPropagation()}><ListenButton size="round" kind="plain" label="" load={preview(o)} /></span>
+                <b>{o.name}</b>
+                <span className="lv-subtle lv-truncate">{[o.gender, o.note].filter(Boolean).join(' · ')}</span>
+                {cur ? <span className="chk">✓</span> : null}
+              </div>
+            )
+          }) : <div className="lv-subtle" style={{ padding: '6px 8px' }}>{v.provider === 'system' ? '系统自带语音没有别的声音可选' : v.provider === 'openai' ? 'OpenAI 兼容的声音在设置里填' : '这个配音服务现在没有可选的声音'}</div>}
+          {v.picked ? <div role="menuitem" tabIndex={0} className="lv-vopt" onClick={() => choose(onDefault)} onKeyDown={e => e.key === 'Enter' && choose(onDefault)}><b>用设置里的默认声音</b></div> : null}
+          <div role="menuitemradio" aria-checked={!on} tabIndex={0} className={`lv-vopt ${on ? '' : 'on'}`} onClick={() => choose(onOff)} onKeyDown={e => e.key === 'Enter' && choose(onOff)}>
+            <b>不配音</b><span className="lv-subtle">只出字幕和画面</span>{on ? null : <span className="chk">✓</span>}
+          </div>
+          <div className="lv-vfoot"><span className="lv-subtle">换配音服务（离线 / 豆包 / ElevenLabs）</span><a href="#" onClick={e => { e.preventDefault(); setOpen(false); openManager('settings') }}>去设置</a></div>
+        </div>
+      ) : null}
+    </span>
   )
 }
 

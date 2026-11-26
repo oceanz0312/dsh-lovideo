@@ -187,7 +187,8 @@ export async function speak(text, out, voiceSettings, signal) {
     const model = voiceSettings.localModel || chooseModel(local.models, estimateSeconds([t]), activeModel())?.id
     if (!model) throw new Error('还没有下载离线配音，请在 lovideo 设置的「配音」里下载')
     const raw = `${out}.local.wav`
-    await speakLocal(model, { text: t, lang: isZh(t) ? 'zh' : 'en', out: raw, instruct: voiceSettings.instruct })
+    const lang = isZh(t) ? 'zh' : 'en'
+    await speakLocal(model, { text: t, lang, out: raw, instruct: voiceSettings.instruct, voice: voiceSettings.localVoices?.[lang] })
     await normalize(raw, out, signal)
     rmSync(raw, { force: true })
   } else if (p === 'system') await systemSay(t, out, { voice: voiceSettings.voice, signal })

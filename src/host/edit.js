@@ -5,6 +5,7 @@
 //   subtitles 字幕整体显示 / 隐藏（播放和导出 MP4、剪映都照它；不用重新拼成片）
 //   redraw    让导演重画某一镜（只重做这一段，其余不动）
 // 前四种只改时间线、马上重新拼一遍成片（几秒）；redraw 在后台重做这一段。
+import { withMusicSource } from './filmsound.js'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { ensureDir } from './paths.js'
@@ -139,8 +140,7 @@ export async function setSwitches(id, patch = {}) {
         // 片子还没有配乐：按导演写的描述做一首，长度对上成片
         const file = join('music', 'bgm.wav')
         ensureDir(join(workDir(id), 'music'))
-        const settings = readSettings()
-        if (settings.music.provider === 'none') throw new Error('设置里选了不配乐，先在 lovideo 设置的「配乐」里选一个来源')
+        const settings = withMusicSource(readSettings(), next)
         const r = await generateMusic({ brief: next.music?.brief, mood: next.music?.mood || next.music?.brief || 'gentle instrumental background music, warm, unobtrusive', seconds: next.film.duration, out: join(workDir(id), file), settings })
         next.music = { ...next.music, file, seconds: r.seconds, model: r.model, source: settings.music.provider }
       }

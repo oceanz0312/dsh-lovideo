@@ -107,13 +107,13 @@ test('确认分镜后在本机做出成片', { timeout: 300_000 }, async () => {
   assert.equal(x.voice.enabled, false)
   assert.notEqual(x.film.version, v0, '关配音后成片要重新拼')
   assert.ok(existsSync(join(process.env.LOVIDEO_DATA_DIR, 'works', work.id, 'film', 'final.mp4')))
-  // 设置里选了不配乐：打开配乐会失败，开关和成片都不变
-  updateSettings({ music: { provider: 'none' } })
+  // 配乐来源用不了（离线配乐在测试环境里没下载）：打开配乐会失败，开关和成片都不变
+  updateSettings({ music: { provider: 'local' } })
   await setSwitches(work.id, { music: true })
   for (let i = 0; i < 50 && getWork(work.id).remix?.state !== 'failed'; i++) await new Promise(r => setTimeout(r, 100))
   x = getWork(work.id)
   assert.equal(x.remix?.state, 'failed')
-  assert.match(x.remix.error, /不配乐/)
+  assert.match(x.remix.error, /还没有下载离线配乐/)
   assert.equal(x.timeline.tracks.some(t => t.role === 'bgm'), false)
   await startExport(work.id, { format: 'jianying' })
   const e2 = await waitExport(work.id)

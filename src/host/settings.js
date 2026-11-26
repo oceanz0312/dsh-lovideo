@@ -5,7 +5,8 @@ import { dataDir, defaultExportDir, ensureDir } from './paths.js'
 import { readJson, writeJson } from './json-file.js'
 
 export const VOICE_PROVIDERS = ['local', 'system', 'doubao', 'elevenlabs', 'openai', 'none']
-export const MUSIC_PROVIDERS = ['local', 'volcengine', 'elevenlabs', 'none']
+// 要不要配乐由每部片子的开关定，这里只选用什么来做（没有「不配乐」）
+export const MUSIC_PROVIDERS = ['local', 'volcengine', 'elevenlabs']
 /**
  * 各家服务的 key，按服务分开存：换配音服务不会冲掉另一家的 key；
  * ElevenLabs 配音和配乐用同一把，火山配乐要 AccessKey + SecretKey 两把。
@@ -41,7 +42,8 @@ export function readSettings() {
     ...DEFAULTS,
     ...saved,
     voice: { ...DEFAULTS.voice, ...(saved.voice || {}), voices: { ...(saved.voice?.voices || {}) } },
-    music: { ...DEFAULTS.music, ...(saved.music || {}) },
+    // 以前存过的「不配乐」按离线配乐算
+    music: { ...DEFAULTS.music, ...(saved.music || {}), ...(MUSIC_PROVIDERS.includes(saved.music?.provider) ? {} : { provider: DEFAULTS.music.provider }) },
     keys: { ...DEFAULTS.keys, ...(saved.keys || {}) },
     local: { models: {}, ...(saved.local || {}) },
   }
