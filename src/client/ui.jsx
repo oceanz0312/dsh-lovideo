@@ -205,27 +205,27 @@ a.lv-btn{text-decoration:none}
 .lvc-seg button:disabled{opacity:.4;cursor:default}
 .lvc-shape{display:inline-block;border:1.6px solid currentColor;border-radius:3px}
 .lvc-link{display:flex;align-items:center;gap:6px;width:100%;margin-top:10px;padding:10px 2px 0;border:0;border-top:1px solid var(--dsw-alias-border-l2);background:none;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;cursor:pointer;text-align:left}
-.lvc-durpanel{width:540px;padding:18px 22px 16px}
-.lvc-dhead{display:flex;align-items:center;justify-content:space-between;height:34px}
-.lvc-dhead b{font-size:21px;font-weight:600}
-.lvc-custom{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--dsw-alias-label-secondary)}
-.lvc-custom input{width:64px;height:30px;border:1px solid var(--dsw-alias-border-l4);border-radius:8px;padding:0 8px;text-align:right;background:var(--dsw-alias-bg-base);color:inherit;font-size:14px;outline:0}
+.lvc-durpanel{width:380px;padding:14px 16px 12px}
+.lvc-dhead{display:flex;align-items:center;justify-content:space-between;height:28px}
+.lvc-dhead b{font-size:16px;font-weight:600}
+.lvc-custom{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-secondary)}
+.lvc-custom input{width:52px;height:26px;border:1px solid var(--dsw-alias-border-l4);border-radius:8px;padding:0 8px;text-align:right;background:var(--dsw-alias-bg-base);color:inherit;font-size:13px;outline:0}
 .lvc-custom input:focus{box-shadow:0 0 0 3px var(--dsw-alias-interactive-bg-hover)}
 .lvc-custom input.bad{border-color:var(--dsw-alias-state-error-primary)}
-.lvc-rng{position:relative;height:30px;margin-top:12px}
+.lvc-rng{position:relative;height:30px;margin-top:6px}
 .lvc-tr{position:absolute;left:9px;right:9px;top:13px;height:5px;border-radius:3px;background:var(--dsw-alias-border-l2)}
 .lvc-fill{position:absolute;left:9px;top:13px;height:5px;border-radius:3px;background:var(--dsw-alias-label-primary)}
 .lvc-knob{position:absolute;top:6px;width:18px;height:18px;margin-left:-9px;border-radius:50%;background:var(--dsw-alias-bg-base);box-shadow:0 0 0 1px var(--dsw-alias-border-l3,rgba(0,0,0,.12)),0 2px 6px rgba(0,0,0,.18);pointer-events:none}
 .lvc-rng input{position:absolute;inset:0;width:100%;height:30px;margin:0;opacity:0;cursor:pointer}
-.lvc-ticks{position:relative;height:20px;margin:2px 9px 0;font-size:12.5px;color:var(--dsw-alias-label-tertiary)}
+.lvc-ticks{position:relative;height:18px;margin:0 9px;font-size:11.5px;color:var(--dsw-alias-label-tertiary)}
 .lvc-ticks span{position:absolute;transform:translateX(-50%)}
 .lvc-ticks span.on{color:var(--dsw-alias-label-primary);font-weight:600}
-.lvc-durpanel p{margin:12px 0 0;line-height:1.6;font-size:12.5px}
+.lvc-durpanel p{margin:8px 0 0;line-height:1.55;font-size:12px}
 /* 首页是上下居中的：风格墙浮在输入框下面、不占高度，切到「lovideo 导演」时输入框和标题一动不动 */
-[data-composer-dock]:has(.lvc-lib){align-self:stretch;position:relative;height:0;margin:0;padding:0}
-.lvc-lib{position:absolute;left:0;right:0;top:0;padding-top:22px;text-align:left;animation:lv-fade var(--lv-slow) var(--lv-ease)}
-/* 风格墙自己滚动，高度铺到窗口底部（由 Library 按位置算好写进 --lvc-h） */
-.lvc-scroll{max-height:var(--lvc-h,320px);overflow:auto;overscroll-behavior:contain;padding:4px 4px 0;margin:0 -4px;scrollbar-gutter:stable}
+/* 「lovideo 导演」首页：输入框贴近顶部，风格墙铺满下面（高度由 Library 按窗口算好写进 --lvc-h，内容多少都不变，页面不会再跳） */
+[data-composer-dock]:has(.lvc-lib){align-self:stretch;flex-wrap:wrap}
+.lvc-lib{flex:1 1 100%;width:100%;margin-top:22px;text-align:left;animation:lv-fade var(--lv-slow) var(--lv-ease)}
+.lvc-scroll{height:var(--lvc-h,320px);overflow:auto;overscroll-behavior:contain;padding:4px 4px 0;margin:0 -4px;scrollbar-gutter:stable}
 .lvc-lhead{display:flex;align-items:center;gap:4px;margin-bottom:14px}
 .lvc-tab{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 13px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13.5px;cursor:pointer}
 .lvc-tab:hover{background:var(--dsw-alias-interactive-bg-hover)}

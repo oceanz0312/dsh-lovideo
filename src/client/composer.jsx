@@ -186,10 +186,15 @@ export function ComposerPopover() {
       document.removeEventListener('scroll', move, true)
     }
   }, [p])
+  // 按弹出层实际的宽度摆位置，靠右的按钮弹出来也不会超出窗口
+  const [w, setW] = React.useState(0)
+  React.useLayoutEffect(() => {
+    if (box.current && box.current.offsetWidth !== w) setW(box.current.offsetWidth)
+  })
   if (!p || !p.anchor.current) return null
   const r = p.anchor.current.getBoundingClientRect()
   const below = window.innerHeight - r.bottom > 260
-  const style = { position: 'fixed', left: Math.max(12, Math.min(r.left, window.innerWidth - 12 - (p.width || 320))), zIndex: 1000 }
+  const style = { position: 'fixed', left: Math.max(12, Math.min(r.left, window.innerWidth - 12 - (w || p.width || 320))), zIndex: 1000 }
   if (below) style.top = r.bottom + 10
   else style.bottom = window.innerHeight - r.top + 10
   return (
@@ -226,10 +231,24 @@ export function StyleChip(props) {
     while (el && !el.querySelector?.('[data-composer-dock]')) el = el.parentElement
     setDock(el?.querySelector('[data-composer-dock]') || null)
   }, [active, c.ready, anchor])
-  if (!active || !c.ready) return null
+  // 切模式时输入框要从中间移到顶部（或移回去）：不硬跳，用动画滑过去
+  const probe = React.useRef(null)
+  const last = React.useRef({ docked: null, top: null })
+  const docked = Boolean(active && c.ready && dock)
+  React.useLayoutEffect(() => {
+    const seat = probe.current?.closest('[class*="composerSeat"]')
+    if (!seat) return
+    const top = seat.getBoundingClientRect().top
+    const prev = last.current
+    last.current = { docked, top }
+    if (prev.docked === null || prev.docked === docked || Math.abs(prev.top - top) < 4) return
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    seat.animate?.([{ transform: `translateY(${prev.top - top}px)` }, { transform: 'translateY(0)' }], { duration: 360, easing: 'cubic-bezier(.16,1,.3,1)' })
+  })
+  if (!active || !c.ready) return <span ref={probe} hidden />
   const panel = () => <AspectPanel sessionId={sessionId} />
   return (
-    <span className="lv">
+    <span ref={probe} className="lv">
       <Styles />
       {dock && hasPortal() ? portal(<Library {...props} />, dock) : null}
       <button ref={anchor} type="button" className={`lvc-chip lvc-style ${open ? 'on' : ''}`} aria-haspopup="dialog" aria-expanded={open}
@@ -375,23 +394,32 @@ export function Library(props) {
     })
     return () => tabSubs.delete(sessionId)
   }, [sessionId])
-  // 风格墙浮在输入框下面：滚动区的高度按它离窗口底部还有多远来定，窗口变了重新算
+  // 风格墙铺满首页剩下的高度：首页是上下居中的，墙把空白占满，输入框就贴到顶部。
+  // 高度固定下来（不跟着内容多少变），读完风格、换标签时页面都不会再动；窗口变了重新算
   React.useLayoutEffect(() => {
     const el = scroller.current
     if (!el) return undefined
+    const body = el.closest('[class*="scrollBody"]')
+    const seat = el.closest('[class*="composerSeat"]')
     const fit = () => {
-      const top = el.getBoundingClientRect().top
-      el.style.setProperty('--lvc-h', `${Math.max(220, Math.round(window.innerHeight - top - 20))}px`)
+      if (!body || !seat) {
+        el.style.setProperty('--lvc-h', `${Math.max(240, Math.round(window.innerHeight * 0.55))}px`)
+        return
+      }
+      const cs = getComputedStyle(body)
+      const free = body.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - seat.offsetHeight
+      const next = Math.max(240, Math.round(el.offsetHeight + free - 16))
+      if (Math.abs(next - el.offsetHeight) > 1) el.style.setProperty('--lvc-h', `${next}px`)
     }
     fit()
+    const ro = typeof ResizeObserver === 'function' && body ? new ResizeObserver(fit) : null
+    ro?.observe(body)
     window.addEventListener('resize', fit)
-    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(fit) : null
-    if (ro && root.current?.parentElement) ro.observe(root.current.parentElement.parentElement || root.current.parentElement)
     return () => {
       window.removeEventListener('resize', fit)
       ro?.disconnect()
     }
-  })
+  }, [])
   const hit = text => !q.trim() || text.toLowerCase().includes(q.trim().toLowerCase())
   const platform = styles?.platform || []
   const mine = (styles?.mine || []).filter(s => !s.draft)
