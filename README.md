@@ -48,16 +48,18 @@ npm run dev            # 开着：客户端改了自动重新打包
 - `npm run dev:desktop:status` 查看当前状态；`--profile <名字>` 换别的配置（默认 desktop）。
 - 原理：桌面版的插件依赖改成 `link:` 到本仓库；profile 的 `cordis.patch.yml` 里加一段带标记的 `hmr` 配置，监听 `src/host`。客户端靠 DeepSeek Harness 轮询 `dist/client.js`；打包脚本先写临时文件再改名，保证它读到的永远是完整文件。
 
-### 发版
+### 发版（走 GitHub，不发 npm）
+
+用户在 DeepSeek Harness「插件 → 添加插件」里填 `https://github.com/oceanz0312/dsh-lovideo` 安装（要固定版本填 `github:oceanz0312/dsh-lovideo#v0.2.0`）。从 GitHub 安装不会构建界面，所以 `dist/client.js` 跟着仓库走。
 
 在开发模式下把改动在桌面版里走通之后再发：
 
 1. `npm test`
-2. 把 `package.json` 的版本号加一，打包：`npm pack`
-3. 按用户的装法再验一遍：`npm run dev:desktop:off -- --tgz dsh-lovideo-<版本>.tgz`，重启桌面版，把改到的地方点一遍
-4. 发布：`npm_config_registry=https://registry.npmjs.org/ npm publish dsh-lovideo-<版本>.tgz --access public`
-   （需要登录 npmjs.com 的账号；新包第一次发布时，会先出现一个 `0.0.0-stage` 占位版本，约一分钟后才是正式版本）
-5. 提交并推送到 GitHub，然后 `npm run dev:desktop` 回到开发模式
+2. 把 `package.json` 的版本号加一，提交到 main
+3. `npm run release`：用已经提交的代码构建界面，只提交 `dist/client.js`，打 `v<版本号>` 标签，推送 main 和标签。工作区里没提交的改动不会混进去
+4. 按用户的装法再验一遍：桌面版「插件」里卸载 lovideo，再按上面的地址添加，把改到的地方点一遍；然后 `npm run dev:desktop` 回到开发模式
+
+`npm run dev` 会改写 `dist/client.js`（开发版）。发版脚本会给它设 skip-worktree，git 不会把开发版当成改动；要看实际提交的版本用 `git show HEAD:dist/client.js`。
 
 需要 DSH `>=0.2.2-rc.3 <0.3.0`。支持 macOS、Windows、Linux：电脑上没有 Chrome 或 ffmpeg 时，插件会下载 chrome-headless-shell 和静态版 ffmpeg。
 
