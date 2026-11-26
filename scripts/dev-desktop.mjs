@@ -107,6 +107,22 @@ function currentSpec() {
   return JSON.parse(readFileSync(manifestFile, 'utf8')).dependencies?.[PKG.name] ?? null
 }
 
+/**
+ * 0.3.x 及以前包名叫 dsh-lovideo，0.4.0 起改成 @oceanz0312/dsh-lovideo。
+ * profile 里留着旧名字的依赖或 bundle 时，DeepSeek Harness 会因为找不到旧包而整个配置加载失败，所以先清掉。
+ */
+const LEGACY = 'dsh-lovideo'
+function dropLegacy() {
+  if (PKG.name === LEGACY) return
+  const m = JSON.parse(readFileSync(manifestFile, 'utf8'))
+  const bundles = m.dsh?.profile?.bundles
+  if (Array.isArray(bundles) && bundles.includes(LEGACY)) {
+    m.dsh.profile.bundles = bundles.filter(b => b !== LEGACY)
+    writeFileSync(manifestFile, `${JSON.stringify(m, null, 2)}\n`)
+  }
+  if (m.dependencies?.[LEGACY]) dshPlugin('remove', LEGACY)
+}
+
 /** pnpm 去掉 link 依赖时会顺手清掉被链接目录里的 node_modules，事后补回来 */
 function ensureOwnDeps() {
   if (existsSync(join(ROOT, 'node_modules', 'puppeteer-core'))) return
@@ -121,6 +137,7 @@ if (cmd === 'on') {
   if (!existsSync(join(ROOT, 'dist', 'client.js'))) {
     spawnSync(process.execPath, [join(ROOT, 'scripts', 'build.mjs'), '--dev'], { stdio: 'inherit' })
   }
+  dropLegacy()
   if (currentSpec() !== `link:${ROOT}`) dshPlugin('add', `link:${ROOT}`)
   ensureBundle()
   ensureOwnDeps()
@@ -137,6 +154,7 @@ if (cmd === 'on') {
   const spec = tgz ? resolve(tgz) : `${GITHUB}${version ? `#${version}` : ''}`
   // 先关热重载，再换依赖：顺序反过来的话，换依赖的那一刻后端会从已经没有依赖的源码目录重新加载
   writeFileSync(patchFile, withoutDevBlock(readPatch()))
+  dropLegacy()
   dshPlugin('add', spec)
   ensureBundle()
   ensureOwnDeps()
