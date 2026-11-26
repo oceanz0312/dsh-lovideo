@@ -18,6 +18,15 @@ export const CSS = `
 .lv-opt>.v{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .lv-opt>.v b{font-weight:500;font-size:13px}
 .lv-opt.off>.v{opacity:.6}
+.lv-dur{flex:none;display:flex;align-items:center;gap:10px;width:min(280px,45%)}
+.lv-dur input{flex:1;min-width:0;height:18px;margin:0;appearance:none;-webkit-appearance:none;background:transparent;cursor:pointer}
+.lv-dur input:disabled{cursor:default;opacity:.5}
+.lv-dur input::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:linear-gradient(to right,var(--dsw-alias-label-primary) var(--p),var(--dsw-alias-border-l4) var(--p))}
+.lv-dur input::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;border-radius:50%;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l4);box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform var(--lv-fast) var(--lv-ease)}
+.lv-dur input:active::-webkit-slider-thumb{transform:scale(1.15)}
+.lv-dur input:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-state-business-primary) 30%,transparent)}
+.lv-dur-v{width:64px;text-align:right;font-variant-numeric:tabular-nums;font-size:12.5px;font-weight:500}
+.lv-tile:disabled{cursor:default}
 .lv-switches{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .lv-warn-text{color:var(--dsw-alias-state-warn-primary,#b26a00)}
 .lv-switches label{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--dsw-alias-label-secondary)}

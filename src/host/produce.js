@@ -9,7 +9,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, normalize, relative } from 'node:path'
 import { PLUGIN_ROOT, ensureDir, isInside } from './paths.js'
-import { readSettings } from './settings.js'
+import { MAX_PARALLEL, readSettings } from './settings.js'
 import { notify } from './notices.js'
 import { getWork, requireWork, updateWork, workDir } from './works.js'
 import { resolveStyle } from './styles.js'
@@ -216,7 +216,7 @@ async function run_(id, ctl) {
     await setJob(id, { state: 'drawing' })
     const site = await startSite(mountsOf(spec, { skill: style.dir, project: proj }))
     try {
-      await pool(pending, Math.max(1, Math.min(4, settings.parallel || 2)), seg =>
+      await pool(pending, Math.max(1, Math.min(MAX_PARALLEL, settings.parallel || 4)), seg =>
         makeSegment({ id, seg, style, spec, size, fps, proj, site, signal }))
     } finally {
       site.server.closeAllConnections?.()

@@ -435,8 +435,10 @@ function Settings() {
       <div className="lv-section">
         <h3>制作和导出</h3>
         <div className="lv-srow">
-          <div className="l"><b>同时渲染几段</b><span className="lv-subtle">越多越快，也越占电脑</span></div>
-          <div className="lv-seg">{[1, 2, 3, 4].map(n => <button key={n} type="button" className={form.parallel === n ? 'on' : ''} onClick={() => { setForm(f => ({ ...f, parallel: n })); save({ parallel: n }) }}>{n}</button>)}</div>
+          <div className="l"><b>最多同时渲染几段</b><span className="lv-subtle">越多越快，也越占电脑；默认 4 段</span></div>
+          <select className="lv-select" style={{ width: 'auto' }} value={form.parallel || 4} onChange={e => { const n = Number(e.target.value); setForm(f => ({ ...f, parallel: n })); save({ parallel: n }) }}>
+            {Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n} 段{n === 4 ? '（默认）' : ''}</option>)}
+          </select>
         </div>
         <div className="lv-srow">
           <div className="l"><b>导出位置</b><span className="lv-subtle lv-mono">{st.settings.exportDir}</span></div>

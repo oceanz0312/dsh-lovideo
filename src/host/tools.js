@@ -119,6 +119,23 @@ export function askDirector(work, msg) {
   return true
 }
 
+// 列过推荐风格的会话（会话 id → 导演）；DSH 重启后句柄会失效，所以优先用会话当前活着的导演
+const pickers = new Map()
+
+/** 用户在推荐卡片上点了一个风格：告诉这个会话的导演用它（会话不在了返回 false） */
+export function pickStyle(sessionId, s) {
+  let live
+  try {
+    live = hostCtx?.get('agents')?.get(sessionId)
+  } catch {
+    live = undefined
+  }
+  const agent = live || pickers.get(sessionId)
+  if (!agent) return false
+  followup(agent, `[lovideo 通知] 用户在推荐卡片上选了风格「${s.name}」（style: ${s.slug}）。还没出分镜就用它出分镜；这个会话里已经用别的风格出过分镜的，带上那部片子的 work_id 换成这个风格重出一版，口播和片长不变。不用再问用户，出完用一句话说明。`)
+  return true
+}
+
 /** 制作完成时叫醒导演，让它告诉用户（不在对话里时什么都不做） */
 export const watchers = new Map()
 function watch(workId, exec) {
@@ -152,7 +169,7 @@ const setup = tool({
 
 const styles = tool({
   name: 'lovideo_styles',
-  description: '列出可以用的视频风格（平台风格和用户自己的风格），并在对话里用卡片展示你推荐的 1 到 3 个（带真实封面）。出分镜前调用一次，按用户要讲的内容挑最合适的风格推荐，然后用 ask_user_question 让用户选。',
+  description: '列出可以用的视频风格（平台风格和用户自己的风格），并在对话里用卡片展示你推荐的 1 到 3 个（带真实封面）。出分镜前调用一次，按用户要讲的内容挑最合适的风格推荐。卡片上每个风格都能点选：推荐完用一句话请用户在卡片上点一个（或直接说），然后停下等；用户点了你会收到「[lovideo 通知] 用户在推荐卡片上选了风格」。',
   parameters: {
     type: 'object', additionalProperties: false,
     properties: {
@@ -160,7 +177,7 @@ const styles = tool({
       recommend: { type: 'array', maxItems: 3, items: { type: 'string' }, description: '要在卡片里推荐的风格 slug（从列表里挑），按推荐程度排序' },
     },
   },
-  async run(args) {
+  async run(args, exec) {
     const { platform, mine, offline } = await listStyles('zh')
     const all = [...mine.filter(s => !s.draft), ...platform]
     const q = (args.query || '').trim()
@@ -171,7 +188,10 @@ const styles = tool({
     const lines = list.map(s => `- ${s.slug} | ${s.name} | ${s.source === 'mine' ? '我的风格' : s.use || ''} | ${(s.aspects || ['16:9']).join(' ')}${s.gpu ? ' | 3D 绘制' : ''}${s.description ? ` | ${String(s.description).slice(0, 80)}` : ''}`)
     const note = offline ? '（现在连不上 lovideo.ai，平台风格列表用的是缓存或为空）\n' : ''
     const login = readSettings().account ? '' : '（用户还没登录 lovideo：平台风格要登录后才能用，可以先用 lovideo_setup 让用户登录）\n'
-    return { text: `${note}${login}共 ${all.length} 个风格${q ? `，匹配「${q}」的 ${hit.length} 个` : ''}：\n${lines.join('\n')}`, recommend: args.recommend || [] }
+    // 卡片上点选风格时要找到这个会话的导演：会话 id 写进结果，卡片从结果里取
+    const session = exec?.agent?.id ? `session_id: ${exec.agent.id}\n` : ''
+    if (exec?.agent && typeof exec.agent.followup === 'function') pickers.set(exec.agent.id, exec.agent)
+    return { text: `${session}${note}${login}共 ${all.length} 个风格${q ? `，匹配「${q}」的 ${hit.length} 个` : ''}：\n${lines.join('\n')}`, recommend: args.recommend || [] }
   },
 })
 
@@ -194,8 +214,8 @@ const plan = tool({
       work_id: { type: 'string', description: '改已有作品的分镜时填；新片子不填' },
       title: { type: 'string', description: '片名' },
       style: { type: 'string', description: '风格 slug（来自 lovideo_styles）' },
-      aspect: { type: 'string', enum: ['16:9', '9:16'], description: '画幅，默认 16:9' },
-      duration: { type: 'integer', enum: FILM_DURATIONS, description: `目标片长（秒），30 秒一档、最长 300。用户说了就取最近的一档，没说就 ${DEFAULT_DURATION}。这是目标不是指标：素材撑不满就做短一点，不要凑；镜头数不超过「片长 ÷ ${MIN_SHOT_SEC}」` },
+      aspect: { type: 'string', enum: ['16:9', '9:16'], description: '画幅。新片默认用风格的第一个画幅；改分镜时不填就沿用原来的' },
+      duration: { type: 'integer', enum: FILM_DURATIONS, description: `目标片长（秒），只能取这几档：${FILM_DURATIONS.join('、')}（10 秒到 10 分钟）。用户说了就取最近的一档，没说就 ${DEFAULT_DURATION}。这是目标不是指标：素材撑不满就做短一点，不要凑；镜头数不超过「片长 ÷ ${MIN_SHOT_SEC}」` },
       subtitles: { type: 'boolean', description: '要不要字幕（字幕就是口播原文）。有配音时一般要；用户说不要就 false' },
       voice: {
         type: 'object', additionalProperties: false, required: ['use', 'why'],
@@ -223,9 +243,11 @@ const plan = tool({
     const st = [...mine, ...platform].find(s => s.slug === args.style)
     if (!st) throw new Error(`没有风格「${args.style}」，先用 lovideo_styles 看可用的风格`)
     if (st.source === 'platform' && !readSettings().account) throw Object.assign(new Error('这是官方风格，需要先登录 lovideo（注册即免费）'), { code: 'login_required' })
-    const aspect = args.aspect || (st.aspects || ['16:9'])[0]
-    if (st.aspects && !st.aspects.includes(aspect)) throw new Error(`风格「${st.name}」只支持 ${st.aspects.join('、')}`)
     const cur = args.work_id ? requireWork(args.work_id) : null
+    // 改分镜没说画幅就沿用这部片子原来的（导演按新时长、新风格重出时常常漏掉画幅）
+    const keepAspect = cur?.aspect && (!st.aspects || st.aspects.includes(cur.aspect)) ? cur.aspect : null
+    const aspect = args.aspect || keepAspect || (st.aspects || ['16:9'])[0]
+    if (st.aspects && !st.aspects.includes(aspect)) throw new Error(`风格「${st.name}」只支持 ${st.aspects.join('、')}`)
     // 用户在分镜卡上定过的（时长、配音、配乐、字幕）以用户为准，导演这一版给的不算
     const userSet = cur?.choices || {}
     const duration = userSet.duration ?? args.duration

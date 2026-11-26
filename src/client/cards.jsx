@@ -258,9 +258,11 @@ export function coverOf(s) {
 export function StylesCard(props) {
   const args = argsOf(props.block)
   const [data] = useLive(done(props) ? 'styles' : null, () => false)
+  const { chosen, busy, err, choose } = useStylePick(props.callId, done(props) ? pick(resultText(props.block), 'session_id') : null)
   if (!done(props)) return <Pending props={props} label="挑风格" />
   const all = data ? [...data.mine, ...data.platform] : []
   const picks = (args.recommend || []).map(slug => all.find(s => s.slug === slug)).filter(Boolean)
+  const sessionId = pick(resultText(props.block), 'session_id')
   if (!picks.length) {
     return <Shell title="风格库" right={<Button size="sm" kind="ghost" onClick={() => openManager('platform')}>看全部风格</Button>}>
       <div className="lv-card-body lv-subtle">{data ? `共 ${all.length} 个风格可用` : '正在读取风格…'}</div>
@@ -271,16 +273,51 @@ export function StylesCard(props) {
       <div className="lv-card-body">
         <div className="lv-grid" style={{ '--lv-min': '150px' }}>
           {picks.map((s, i) => (
-            <div key={s.slug}>
-              <Media src={coverOf(s)} chip={i === 0 ? '最推荐' : null} chipRight={s.gpu ? '3D 绘制' : null} />
+            <button key={s.slug} type="button" className={`lv-tile ${chosen === s.slug ? 'on' : ''}`} disabled={!sessionId || busy} onClick={() => choose(s)} title={sessionId ? `用「${s.name}」出分镜` : undefined}>
+              <Media src={coverOf(s)} chip={chosen === s.slug ? '已选' : i === 0 ? '最推荐' : null} chipRight={s.gpu ? '3D 绘制' : null} />
               <div className="lv-tile-title">{s.name}</div>
               <div className="lv-subtle lv-truncate">{s.source === 'mine' ? '我的风格' : s.use || (s.aspects || []).join(' · ')}</div>
-            </div>
+            </button>
           ))}
         </div>
+        {sessionId ? <div className="lv-subtle" style={{ marginTop: 10 }}>{chosen ? `已告诉导演用「${picks.find(s => s.slug === chosen)?.name || chosen}」，分镜马上出来；想换可以再点一个` : '点一个风格，导演就用它出分镜'}</div> : null}
+        {err ? <div className="lv-err" style={{ marginTop: 6 }}>{err}</div> : null}
       </div>
     </Shell>
   )
+}
+
+/** 推荐卡片上点选风格：叫这个会话的导演用它出分镜（选过的记在本机，刷新后还在） */
+function useStylePick(callId, sessionId) {
+  const key = `lovideo-pick-${callId}`
+  const [chosen, setChosen] = React.useState(() => {
+    try {
+      return localStorage.getItem(key)
+    } catch {
+      return null
+    }
+  })
+  const [busy, setBusy] = React.useState(false)
+  const [err, setErr] = React.useState(null)
+  const choose = async s => {
+    if (!sessionId || s.slug === chosen) return
+    setBusy(true)
+    setErr(null)
+    try {
+      await api('styles/pick', { sessionId, slug: s.slug })
+      setChosen(s.slug)
+      try {
+        localStorage.setItem(key, s.slug)
+      } catch {
+        // 存不了就只在这次页面里记着
+      }
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return { chosen, busy, err, choose }
 }
 
 /* ---------- 分镜 ---------- */
@@ -395,7 +432,27 @@ function FilmSwitches({ w }) {
 
 /* ---------- 分镜卡上的时长、配音、配乐、字幕 ---------- */
 
-const DURATIONS = Array.from({ length: 10 }, (_, i) => 30 + i * 30)
+// 和后端 works.js 的 FILM_DURATIONS 一样：1 分钟内每 10 秒、1–5 分钟每 30 秒、5–10 分钟每分钟一档
+const DURATIONS = [10, 20, 30, 40, 50, 60, 90, 120, 150, 180, 210, 240, 270, 300, 360, 420, 480, 540, 600]
+const nearestIdx = n => DURATIONS.reduce((best, d, i) => (Math.abs(d - n) < Math.abs(DURATIONS[best] - n) ? i : best), 0)
+
+/** 片长拖动条：拖的时候只改显示，松手（或键盘调完）才提交，免得一路叫导演重出分镜 */
+function DurationSlider({ value, busy, onCommit }) {
+  const [idx, setIdx] = React.useState(() => nearestIdx(value))
+  React.useEffect(() => setIdx(nearestIdx(value)), [value])
+  const commit = () => {
+    if (DURATIONS[idx] !== value) onCommit(DURATIONS[idx])
+  }
+  return (
+    <div className="lv-dur">
+      <input type="range" min={0} max={DURATIONS.length - 1} step={1} value={idx} disabled={busy}
+        aria-label="目标片长" aria-valuetext={durLabel(DURATIONS[idx])}
+        style={{ '--p': `${(idx / (DURATIONS.length - 1)) * 100}%` }}
+        onChange={e => setIdx(Number(e.target.value))} onPointerUp={commit} onKeyUp={commit} onBlur={commit} />
+      <span className="lv-dur-v">{durLabel(DURATIONS[idx])}</span>
+    </div>
+  )
+}
 const durLabel = n => (n < 60 ? `${n} 秒` : n % 60 ? `${Math.floor(n / 60)} 分 ${n % 60} 秒` : `${n / 60} 分钟`)
 
 /**
@@ -435,9 +492,7 @@ function PlanOptions({ w }) {
             <b>目标 {durLabel(w.duration || 30)}</b>
             <span className="lv-subtle">{replan > 0 ? `已经请导演按 ${durLabel(replan)} 重出分镜…` : replan === -1 ? '会话已经关了，回到对话里请导演按新时长重出分镜' : '素材撑不满时会做短一点'}</span>
           </span>
-          <select className="lv-select" style={{ width: 'auto' }} value={w.duration || 30} disabled={busy === 'duration'} onChange={e => set('duration', Number(e.target.value))}>
-            {DURATIONS.map(n => <option key={n} value={n}>{durLabel(n)}</option>)}
-          </select>
+          <DurationSlider value={w.duration || 30} busy={busy === 'duration'} onCommit={n => set('duration', n)} />
         </div>
         <div className={`lv-opt ${voiceOn ? '' : 'off'}`}>
           <span className="k">配音</span>

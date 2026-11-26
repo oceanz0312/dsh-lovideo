@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process'
 import { dirname, extname, join, resolve } from 'node:path'
 import { assertId, isInside } from './paths.js'
 import { FILM_DURATIONS, deleteWork, events, getWork, listWorks, requireWork, updateWork, workDir } from './works.js'
-import { askDirector } from './tools.js'
+import { askDirector, pickStyle } from './tools.js'
 import { generateMusic } from './music.js'
 import { switchesOf, trackOf } from './assemble.js'
 import { listStyles, mineDir, removeMine, installPlatformStyle, platformCatalog } from './styles.js'
@@ -215,7 +215,7 @@ export async function route(req, res) {
         // 分镜卡上的时长、配音、配乐、字幕：开拍前改。记进 choices，导演再出分镜时照用户的来
         if (w.status !== 'draft') return json(res, 409, { error: '已经开拍了，要改这些请让导演出新一版分镜' })
         const dur = body.duration === undefined ? undefined : Number(body.duration)
-        if (dur !== undefined && !FILM_DURATIONS.includes(dur)) return json(res, 400, { error: '片长只能是 30 秒到 5 分钟、30 秒一档' })
+        if (dur !== undefined && !FILM_DURATIONS.includes(dur)) return json(res, 400, { error: '片长只能是 10 秒到 10 分钟里的几档' })
         const next = await updateWork(id, x => {
           x.choices = { ...(x.choices || {}) }
           for (const k of ['voice', 'music', 'subtitles']) {
@@ -229,7 +229,7 @@ export async function route(req, res) {
         // 时长变了分镜要重出：叫导演按新时长出一版
         let replanning = false
         if (dur !== undefined && dur !== w.duration) {
-          replanning = askDirector(next, `[lovideo 通知] work_id: ${id}：用户在分镜卡上把目标片长改成 ${dur} 秒。请按这个时长重新出一版分镜（调用 lovideo_plan，带上 work_id，duration 填 ${dur}，镜头数不超过 ${Math.max(1, Math.floor(dur / 15))}），其余照旧；不用问用户，出完用一句话说明改了什么。`)
+          replanning = askDirector(next, `[lovideo 通知] work_id: ${id}：用户在分镜卡上把目标片长改成 ${dur} 秒。请按这个时长重新出一版分镜（调用 lovideo_plan，带上 work_id，duration 填 ${dur}，镜头数不超过 ${Math.max(1, Math.floor(dur / 15))}），画幅、风格和其余设置照旧；不用问用户，出完用一句话说明改了什么。`)
         }
         return json(res, 200, { ...view(next), replanning })
       }
@@ -253,6 +253,15 @@ export async function route(req, res) {
     return json(res, 200, await listStyles('zh'))
   }
   if (path === 'distill') return json(res, 200, await startDistill(body))
+  // 推荐卡片上点选风格：叫这个会话的导演用它出分镜
+  if (path === 'styles/pick') {
+    const slug = String(body.slug || '')
+    const { platform, mine } = await listStyles('zh')
+    const s = [...mine, ...platform].find(x => x.slug === slug)
+    if (!s) return json(res, 404, { error: '没有这个风格' })
+    if (!pickStyle(String(body.sessionId || ''), s)) return json(res, 409, { error: '这个对话已经关了，回到对话里直接说要用哪个风格' })
+    return json(res, 200, { ok: true })
+  }
   if (path === 'runtime/setup') {
     // 下载完（或失败）时给页面一条提示；正在准备时重复点不会重复提示
     if (!setupProgress().running) {

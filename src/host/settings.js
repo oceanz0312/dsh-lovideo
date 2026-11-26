@@ -7,6 +7,9 @@ import { readJson, writeJson } from './json-file.js'
 export const VOICE_PROVIDERS = ['local', 'system', 'doubao', 'openai', 'elevenlabs', 'none']
 export const MUSIC_PROVIDERS = ['local', 'volcengine', 'elevenlabs', 'none']
 
+/** 最多同时渲染几段：默认 4，最多 10（每段一个浏览器页面，再多普通电脑吃不消） */
+export const MAX_PARALLEL = 10
+
 const DEFAULTS = {
   version: 1,
   // 系统自带语音：电脑上本来就有，默认用它；想要更好的声音再填自己的 key
@@ -14,7 +17,7 @@ const DEFAULTS = {
   // 配乐：默认用离线配乐（没下载模型时这部片子先不配，卡片上提示去下载）。火山要 AccessKey + SecretKey 两个
   music: { provider: 'local', key: '', secret: '' },
   exportDir: '',
-  parallel: 2,
+  parallel: 4,
   model: null,
   site: 'https://lovideo.ai',
   account: null,
@@ -80,7 +83,7 @@ export function updateSettings(patch = {}) {
   if (patch.exportDir !== undefined) s.exportDir = str(patch.exportDir, 1000) ?? ''
   if (patch.parallel !== undefined) {
     const n = Number(patch.parallel)
-    if (![1, 2, 3, 4].includes(n)) throw Object.assign(new Error('同时渲染只能是 1 到 4 段'), { status: 400 })
+    if (!Number.isInteger(n) || n < 1 || n > MAX_PARALLEL) throw Object.assign(new Error(`最多同时渲染只能是 1 到 ${MAX_PARALLEL} 段`), { status: 400 })
     s.parallel = n
   }
   if (patch.model !== undefined) {

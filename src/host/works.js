@@ -49,12 +49,19 @@ function save(work) {
 }
 
 /**
- * 片长和镜头（和 lovideo 网站一样）：片长 30 秒到 5 分钟、每 30 秒一档，是目标不是指标；
- * 一镜是制作时单独画的一段，每多一段就多一轮模型调用，所以一镜至少 15 秒。
+ * 片长和镜头：片长 10 秒到 10 分钟，是目标不是指标。分档越长越粗：
+ * 1 分钟内每 10 秒一档，1–5 分钟每 30 秒一档，5–10 分钟每分钟一档（分镜卡上拖动条按档跳）。
+ * 一镜是制作时单独画的一段，每多一段就多一轮模型调用，所以一镜至少 15 秒（不到 30 秒的片子只有一镜）。
  */
 export const MIN_SHOT_SEC = 15
 export const DEFAULT_DURATION = 30
-export const FILM_DURATIONS = Array.from({ length: 10 }, (_, i) => 30 + i * 30)
+export const FILM_DURATIONS = [
+  10, 20, 30, 40, 50, 60,
+  90, 120, 150, 180, 210, 240, 270, 300,
+  360, 420, 480, 540, 600,
+]
+/** 用户或导演给的任意秒数 → 最近的一档 */
+export const nearestDuration = n => FILM_DURATIONS.reduce((a, b) => (Math.abs(b - n) < Math.abs(a - n) ? b : a))
 
 export function createWork(fields) {
   const now = new Date().toISOString()
