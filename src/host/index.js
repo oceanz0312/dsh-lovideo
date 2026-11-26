@@ -15,6 +15,7 @@ import { markInterrupted, pauseAllProductions } from './produce.js'
 import { closeBrowser } from './render.js'
 import { stopAll as stopLocalVoice } from './localvoice.js'
 import { readFrontmatter } from './styles.js'
+import { installBriefContext } from './composer.js'
 
 export const name = 'dsh-lovideo'
 export const inject = ['webServer', 'connection', 'tools', 'skills']
@@ -59,6 +60,8 @@ export function apply(ctx) {
   setHostCtx(ctx)
   for (const tool of TOOLS) ctx.tools.register(tool)
   ctx.effect(() => ctx.skills.registerProvider(skillProvider))
+  // 输入框里选好的风格、画幅、片长：用户发出第一句话时交给导演
+  installBriefContext(ctx)
 
   // 上次没做完的片子标成暂停；之后做完时通知导演
   markInterrupted(listWorks()).catch(() => {})

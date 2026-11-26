@@ -35,8 +35,9 @@ test('口播比目标片长长太多时打回', async () => {
   await assert.rejects(plan.execute(args({ scenes: [scene(1, long), scene(2, long)] })), /长太多/)
 })
 
-test('只接受 30 秒一档的片长', async () => {
-  await assert.rejects(plan.execute(args({ duration: 45 })), /duration/)
+test('片长只能在 10 秒到 10 分钟之间', async () => {
+  await assert.rejects(plan.execute(args({ duration: 5 })), /duration 不能小于 10/)
+  await assert.rejects(plan.execute(args({ duration: 900 })), /duration 不能大于 600/)
 })
 
 test('用户在卡片上定的时长和开关，导演改分镜时照用户的来', async () => {

@@ -78,6 +78,8 @@ function check(args, schema, at = '') {
   } else if (schema.type === 'number' || schema.type === 'integer') {
     if (typeof args !== 'number' || !Number.isFinite(args)) errs.push(`${at.slice(0, -1)} 应该是数字`)
     else if (schema.enum && !schema.enum.includes(args)) errs.push(`${at.slice(0, -1)} 只能是 ${schema.enum.join(' / ')}`)
+    else if (schema.minimum !== undefined && args < schema.minimum) errs.push(`${at.slice(0, -1)} 不能小于 ${schema.minimum}`)
+    else if (schema.maximum !== undefined && args > schema.maximum) errs.push(`${at.slice(0, -1)} 不能大于 ${schema.maximum}`)
   } else if (schema.type === 'boolean' && typeof args !== 'boolean') errs.push(`${at.slice(0, -1)} 应该是 true 或 false`)
   return errs
 }
@@ -215,7 +217,7 @@ const plan = tool({
       title: { type: 'string', description: '片名' },
       style: { type: 'string', description: '风格 slug（来自 lovideo_styles）' },
       aspect: { type: 'string', enum: ['16:9', '9:16'], description: '画幅。新片默认用风格的第一个画幅；改分镜时不填就沿用原来的' },
-      duration: { type: 'integer', enum: FILM_DURATIONS, description: `目标片长（秒），只能取这几档：${FILM_DURATIONS.join('、')}（10 秒到 10 分钟）。用户说了就取最近的一档，没说就 ${DEFAULT_DURATION}。这是目标不是指标：素材撑不满就做短一点，不要凑；镜头数不超过「片长 ÷ ${MIN_SHOT_SEC}」` },
+      duration: { type: 'integer', minimum: FILM_DURATIONS[0], maximum: FILM_DURATIONS.at(-1), description: `目标片长（秒），${FILM_DURATIONS[0]} 到 ${FILM_DURATIONS.at(-1)}。用户在输入框选了片长就填那个秒数；用户在对话里说了就取 ${FILM_DURATIONS.join('、')} 里最近的一档；都没说就 ${DEFAULT_DURATION}。这是目标不是指标：素材撑不满就做短一点，不要凑；镜头数不超过「片长 ÷ ${MIN_SHOT_SEC}」` },
       subtitles: { type: 'boolean', description: '要不要字幕（字幕就是口播原文）。有配音时一般要；用户说不要就 false' },
       voice: {
         type: 'object', additionalProperties: false, required: ['use', 'why'],
@@ -250,7 +252,8 @@ const plan = tool({
     if (st.aspects && !st.aspects.includes(aspect)) throw new Error(`风格「${st.name}」只支持 ${st.aspects.join('、')}`)
     // 用户在分镜卡上定过的（时长、配音、配乐、字幕）以用户为准，导演这一版给的不算
     const userSet = cur?.choices || {}
-    const duration = userSet.duration ?? args.duration
+    // 输入框里可以填任意秒数，这里只把范围卡住
+    const duration = userSet.duration ?? Math.max(FILM_DURATIONS[0], Math.min(FILM_DURATIONS.at(-1), Math.round(Number(args.duration) || DEFAULT_DURATION)))
     const maxShots = Math.max(1, Math.floor(duration / MIN_SHOT_SEC))
     if (args.scenes.length > maxShots) throw new Error(`片长 ${duration} 秒最多 ${maxShots} 镜（每镜至少 ${MIN_SHOT_SEC} 秒，一镜里可以有好几个画面变化），把相邻的镜头合并后再出分镜`)
     const scenes = args.scenes.map((s, i) => ({ id: `shot-${i + 1}`, title: s.title, description: s.description, narration: s.narration || '', seconds: Math.max(3, Math.min(90, Number(s.seconds) || MIN_SHOT_SEC)) }))

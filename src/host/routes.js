@@ -22,6 +22,8 @@ import { loginState, logout, startLogin, siteUrl } from './site.js'
 import { speak } from './tts.js'
 import { tmpDir, ensureDir } from './paths.js'
 import { notices, notify } from './notices.js'
+import { listFavorites, setFavorite } from './favorites.js'
+import { COMPOSER_MAX_SEC, COMPOSER_MIN_SEC, composerDefaults, getBrief, normalizeBrief, setBrief } from './composer.js'
 
 export const BASE = '/lovideo/api'
 const MAX_JSON = 2_000_000
@@ -164,7 +166,12 @@ export async function route(req, res) {
       const file = resolve(dir, m[2])
       return isInside(dir, file) ? sendFile(req, res, file) : json(res, 403, { error: '路径不合法' })
     }
-    if (path === 'styles') return json(res, 200, await listStyles(url.searchParams.get('lang') || 'zh'))
+    if (path === 'styles') return json(res, 200, { ...(await listStyles(url.searchParams.get('lang') || 'zh')), favorites: listFavorites() })
+    // 输入框的开局条件：这个会话存过的，没有就给上次用过的默认值
+    if (path === 'composer') {
+      const sessionId = url.searchParams.get('session') || ''
+      return json(res, 200, { brief: sessionId ? getBrief(sessionId) : null, defaults: composerDefaults(), min: COMPOSER_MIN_SEC, max: COMPOSER_MAX_SEC })
+    }
     if ((m = /^styles\/mine\/([\w-]+)\/file\/(.+)$/.exec(path))) {
       const dir = mineDir(m[1])
       const file = resolve(dir, m[2])
@@ -253,6 +260,15 @@ export async function route(req, res) {
     return json(res, 200, await listStyles('zh'))
   }
   if (path === 'distill') return json(res, 200, await startDistill(body))
+  // 收藏 / 取消收藏一个官方风格
+  if (path === 'favorites') return json(res, 200, { favorites: setFavorite(String(body.slug || ''), body.on !== false) })
+  // 存一个会话的开局条件（brief 为 null 时清掉，比如切回了标准模式）
+  if (path === 'composer') {
+    const sessionId = String(body.sessionId || '')
+    if (!body.brief) return json(res, 200, { brief: setBrief(sessionId, null) })
+    const { platform, mine } = await listStyles('zh')
+    return json(res, 200, { brief: setBrief(sessionId, normalizeBrief(body.brief, [...mine, ...platform])) })
+  }
   // 推荐卡片上点选风格：叫这个会话的导演用它出分镜
   if (path === 'styles/pick') {
     const slug = String(body.slug || '')

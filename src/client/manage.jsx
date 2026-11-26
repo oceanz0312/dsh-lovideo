@@ -1,8 +1,9 @@
 // 侧栏「lovideo 视频」：作品、官方风格、我的风格、设置。随时点开看，和对话里的卡片读同一份数据。
 import * as React from 'react'
 import { api, fileUrl, loginUrl, openExternal, useLive } from './api.js'
-import { Badge, Bar, Button, ConfirmDialog, HoverVideo, LinkButton, Mark, Media, Player, StatusBadge, Styles, fmtSec, useHoverPreview } from './ui.jsx'
+import { Badge, Bar, Button, ConfirmDialog, LinkButton, Mark, Media, Player, StatusBadge, Styles, fmtSec } from './ui.jsx'
 import { Doctor, WorkActions, WorkBody, coverOf } from './cards.jsx'
+import { StyleTile, seedFavorites } from './tiles.jsx'
 import { host, openSession, startDirector, watchPanel } from './host.js'
 import { toast } from './toast.jsx'
 
@@ -176,6 +177,7 @@ function recommendPrompt(q, aspect) {
 function Platform() {
   const [data, , reload] = useLive('styles', () => false)
   const [st] = useLive('state', () => false)
+  React.useEffect(() => seedFavorites(data?.favorites), [data])
   const [q, setQ] = React.useState('')
   const [aspect, setAspect] = React.useState('all')
   const [sel, setSel] = React.useState(null)
@@ -259,20 +261,6 @@ function LoginBanner({ onDone }) {
       <span className="lv-grow">{pending ? <>已在浏览器打开 lovideo.ai，确认页面上的代码是 <b className="lv-mono">{pending.userCode}</b> 后点「允许」。</> : '登录 lovideo 后就能用这些风格（注册即免费）。'}</span>
       {pending ? <LinkButton size="sm" kind="pri" href={loginUrl(pending.url)}>重新打开</LinkButton> : <Button size="sm" kind="pri" onClick={login}>登录</Button>}
     </div>
-  )
-}
-
-/** 官方风格卡片：鼠标停在上面就在封面处播这个风格的小样片，离开回到封面 */
-function StyleTile({ s, selected, onSelect }) {
-  const { playing, stop, bind } = useHoverPreview(s.sample)
-  return (
-    <button type="button" className={`lv-tile ${selected ? 'on' : ''}`} onClick={onSelect} {...bind}>
-      <Media src={coverOf(s)} chip={s.installed ? '已在本机' : null} chipRight={s.gpu ? '3D 绘制' : null}>
-        {playing ? <HoverVideo src={s.sample} onFail={stop} /> : null}
-      </Media>
-      <div className="lv-tile-title lv-truncate">{s.name}</div>
-      <div className="lv-subtle lv-truncate">{[s.use, (s.aspects || []).join(' · ')].filter(Boolean).join(' · ')}</div>
-    </button>
   )
 }
 

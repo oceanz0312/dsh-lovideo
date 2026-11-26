@@ -38,8 +38,7 @@ export const CSS = `
 .lv-card-title{font-weight:600;font-size:13.5px}
 .lv-card-body{padding:12px 14px}
 .lv-card-foot{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-card-fill)}
-.lv-mark{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:5px;background:#111;flex:none}
-.lv-mark svg{width:9px;height:9px}
+.lv-mark{display:block;flex:none;border-radius:22%}
 .lv-muted{color:var(--dsw-alias-label-secondary)}
 .lv-subtle{color:var(--dsw-alias-label-tertiary);font-size:12px}
 .lv-mono{font-family:var(--ds-font-family-code,ui-monospace,monospace);font-variant-numeric:tabular-nums}
@@ -69,6 +68,15 @@ a.lv-btn{text-decoration:none}
 .lv-media img,.lv-media video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;transition:transform var(--lv-slow) var(--lv-ease-out)}
 .lv-media .lv-chip{position:absolute;left:6px;top:6px;z-index:2;font-size:11px;color:#fff;background:rgba(0,0,0,.55);border-radius:5px;padding:0 6px;line-height:18px}
 .lv-media .lv-chip.r{left:auto;right:6px}
+.lv-media .lv-chip.bl{top:auto;bottom:6px}
+.lv-tile{position:relative}
+.lv-star{position:absolute;right:4px;top:4px;z-index:3;width:28px;height:28px;padding:0;border:0;border-radius:8px;background:transparent;color:#fff;display:grid;place-items:center;cursor:pointer;opacity:0;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.55));transition:opacity var(--lv-dur) var(--lv-ease),transform var(--lv-fast) var(--lv-ease)}
+.lv-tile:hover .lv-star,.lv-tile:focus-within .lv-star,.lv-star.on{opacity:1}
+.lv-star:hover{transform:scale(1.15)}
+.lv-star:active{transform:scale(.92)}
+.lv-star.on{color:#f5b400}
+.lv-star:focus-visible{outline:2px solid #fff;outline-offset:-2px}
+@media (hover:none){.lv-star{opacity:1}}
 .lv-media .lv-hv{z-index:1;pointer-events:none;background:#000;opacity:0;transition:opacity var(--lv-dur) var(--lv-ease)}
 .lv-media .lv-hv.on{opacity:1}
 .lv-player{position:relative;border-radius:10px;overflow:hidden;background:#000}
@@ -144,6 +152,59 @@ a.lv-btn{text-decoration:none}
 .lv-dot{transition:background-color var(--lv-slow) var(--lv-ease),color var(--lv-slow) var(--lv-ease)}
 .lv-dot.ok{background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 15%,transparent);color:var(--dsw-alias-state-success-primary)}
 .lv-dot.no{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-tertiary)}
+/* lovideo 导演模式的输入框：只用宿主主题变量 */
+.lvc-chip{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 11px;border-radius:999px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-base));color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;white-space:nowrap;cursor:pointer;flex:none;transition:background-color var(--lv-dur) var(--lv-ease)}
+.lvc-chip:hover,.lvc-chip.on{background:var(--dsw-alias-interactive-bg-hover)}
+.lvc-chip:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.lvc-style{padding-left:4px}
+.lvc-style img,.lvc-ph{width:28px;height:22px;border-radius:6px;object-fit:cover;display:block;background:var(--dsw-alias-interactive-bg-hover)}
+.lvc-name{max-width:9em;overflow:hidden;text-overflow:ellipsis}
+.lvc-dot{color:var(--dsw-alias-label-tertiary)}
+.lvc-asp{color:var(--dsw-alias-label-secondary);font-size:12.5px}
+.lvc-cv{color:var(--dsw-alias-label-tertiary);flex:none}
+.lvc-dur{border-color:transparent;background:var(--dsw-alias-interactive-bg-hover)}
+.lvc-dur:hover,.lvc-dur.on{background:var(--dsw-alias-interactive-bg-active,var(--dsw-alias-interactive-bg-hover))}
+.lvc-durv{display:inline-block;width:5.8em;text-align:left}
+.lvc-mono{font-family:var(--ds-font-family-code,ui-monospace,monospace);font-variant-numeric:tabular-nums}
+.lv-pop{animation:lv-in var(--lv-dur) var(--lv-ease-out)}
+.lvc-panel{background:var(--dsw-alias-bg-layer-1,var(--dsw-alias-bg-base));color:var(--dsw-alias-label-primary);border-radius:16px;box-shadow:0 0 0 .5px var(--dsw-alias-border-l3,rgba(0,0,0,.12)),0 18px 44px rgba(0,0,0,.16);padding:14px;font-size:13.5px}
+.lvc-h{font-size:12.5px;color:var(--dsw-alias-label-tertiary);margin-bottom:9px}
+.lvc-seg{display:flex;gap:3px;padding:3px;border-radius:10px;background:var(--dsw-alias-interactive-bg-hover)}
+.lvc-seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;height:32px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer}
+.lvc-seg button.on{background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.lvc-seg button:disabled{opacity:.4;cursor:default}
+.lvc-shape{display:inline-block;border:1.6px solid currentColor;border-radius:3px}
+.lvc-link{display:flex;align-items:center;gap:6px;width:100%;margin-top:10px;padding:10px 2px 0;border:0;border-top:1px solid var(--dsw-alias-border-l2);background:none;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;cursor:pointer;text-align:left}
+.lvc-durpanel{width:540px;padding:18px 22px 16px}
+.lvc-dhead{display:flex;align-items:center;justify-content:space-between;height:34px}
+.lvc-dhead b{font-size:21px;font-weight:600}
+.lvc-custom{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--dsw-alias-label-secondary)}
+.lvc-custom input{width:64px;height:30px;border:1px solid var(--dsw-alias-border-l4);border-radius:8px;padding:0 8px;text-align:right;background:var(--dsw-alias-bg-base);color:inherit;font-size:14px;outline:0}
+.lvc-custom input:focus{box-shadow:0 0 0 3px var(--dsw-alias-interactive-bg-hover)}
+.lvc-custom input.bad{border-color:var(--dsw-alias-state-error-primary)}
+.lvc-rng{position:relative;height:30px;margin-top:12px}
+.lvc-tr{position:absolute;left:9px;right:9px;top:13px;height:5px;border-radius:3px;background:var(--dsw-alias-border-l2)}
+.lvc-fill{position:absolute;left:9px;top:13px;height:5px;border-radius:3px;background:var(--dsw-alias-label-primary)}
+.lvc-knob{position:absolute;top:6px;width:18px;height:18px;margin-left:-9px;border-radius:50%;background:var(--dsw-alias-bg-base);box-shadow:0 0 0 1px var(--dsw-alias-border-l3,rgba(0,0,0,.12)),0 2px 6px rgba(0,0,0,.18);pointer-events:none}
+.lvc-rng input{position:absolute;inset:0;width:100%;height:30px;margin:0;opacity:0;cursor:pointer}
+.lvc-ticks{position:relative;height:20px;margin:2px 9px 0;font-size:12.5px;color:var(--dsw-alias-label-tertiary)}
+.lvc-ticks span{position:absolute;transform:translateX(-50%)}
+.lvc-ticks span.on{color:var(--dsw-alias-label-primary);font-weight:600}
+.lvc-durpanel p{margin:12px 0 0;line-height:1.6;font-size:12.5px}
+[data-composer-dock]:has(.lvc-lib){align-self:stretch;flex-wrap:wrap}
+.lvc-lib{flex:1 1 100%;width:100%;margin-top:22px;text-align:left}
+/* 风格墙自己滚动：首页是上下居中的，墙太高会把输入框顶出屏幕 */
+.lvc-scroll{max-height:max(300px,calc(100vh - 430px));overflow:auto;overscroll-behavior:contain;padding:4px 4px 0;margin:0 -4px;scrollbar-gutter:stable}
+.lvc-lhead{display:flex;align-items:center;gap:4px;margin-bottom:14px}
+.lvc-tab{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 13px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13.5px;cursor:pointer}
+.lvc-tab:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.lvc-tab.on{background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-label-primary));color:var(--dsw-alias-label-primary-inverted,#fff)}
+.lvc-tab small{font-size:11.5px;opacity:.6}
+.lvc-search{width:200px;height:32px}
+.lvc-grid{--lv-min:190px;gap:18px 14px}
+.lvc-new{display:grid;place-items:center;text-align:center;line-height:1.7;font-size:13px;color:var(--dsw-alias-label-secondary);background:transparent;border:1.5px dashed var(--dsw-alias-border-l4)}
+.lvc-empty{grid-column:1/-1;text-align:center;padding:30px 0}
+.lvc-foot{text-align:center;padding:18px 0 4px}
 `
 
 /**
@@ -201,11 +262,20 @@ export function Styles() {
   return <style>{CSS}</style>
 }
 
-export function Mark() {
+/** lovideo 的标：和网站（lovideo.ai）用的是同一个图标 */
+export function Mark({ size = 16 }) {
+  const id = React.useId().replace(/:/g, '')
   return (
-    <span className="lv-mark" aria-hidden>
-      <svg viewBox="0 0 10 10"><path d="M2.5 1.2v7.6L9 5z" fill="#ff6b3d" /></svg>
-    </span>
+    <svg className="lv-mark" width={size} height={size} viewBox="0 0 512 512" aria-hidden="true">
+      <defs>
+        <linearGradient id={`${id}g`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ff8a3d" /><stop offset=".55" stopColor="#ff6b3d" /><stop offset="1" stopColor="#ff3d6e" /></linearGradient>
+        <linearGradient id={`${id}s`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".22" /><stop offset=".5" stopColor="#fff" stopOpacity="0" /></linearGradient>
+      </defs>
+      <rect width="512" height="512" rx="116" fill={`url(#${id}g)`} />
+      <rect width="512" height="512" rx="116" fill={`url(#${id}s)`} />
+      <path fill="#fff" stroke="#fff" strokeWidth="44" strokeLinejoin="round" d="M178 150 L370 262 L178 374 Z" />
+      <path fill="#fff" d="M390 92 Q398 132 430 140 Q398 148 390 188 Q382 148 350 140 Q382 132 390 92 Z" />
+    </svg>
   )
 }
 

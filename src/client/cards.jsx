@@ -439,17 +439,26 @@ const nearestIdx = n => DURATIONS.reduce((best, d, i) => (Math.abs(d - n) < Math
 /** 片长拖动条：拖的时候只改显示，松手（或键盘调完）才提交，免得一路叫导演重出分镜 */
 function DurationSlider({ value, busy, onCommit }) {
   const [idx, setIdx] = React.useState(() => nearestIdx(value))
-  React.useEffect(() => setIdx(nearestIdx(value)), [value])
+  // 输入框里可以填不在档位上的秒数（比如 45）：没拖过时照实显示，拖了才换成档位
+  const [moved, setMoved] = React.useState(false)
+  React.useEffect(() => {
+    setIdx(nearestIdx(value))
+    setMoved(false)
+  }, [value])
+  const shown = moved ? DURATIONS[idx] : value
   const commit = () => {
-    if (DURATIONS[idx] !== value) onCommit(DURATIONS[idx])
+    if (moved && DURATIONS[idx] !== value) onCommit(DURATIONS[idx])
   }
   return (
     <div className="lv-dur">
       <input type="range" min={0} max={DURATIONS.length - 1} step={1} value={idx} disabled={busy}
-        aria-label="目标片长" aria-valuetext={durLabel(DURATIONS[idx])}
+        aria-label="目标片长" aria-valuetext={durLabel(shown)}
         style={{ '--p': `${(idx / (DURATIONS.length - 1)) * 100}%` }}
-        onChange={e => setIdx(Number(e.target.value))} onPointerUp={commit} onKeyUp={commit} onBlur={commit} />
-      <span className="lv-dur-v">{durLabel(DURATIONS[idx])}</span>
+        onChange={e => {
+          setIdx(Number(e.target.value))
+          setMoved(true)
+        }} onPointerUp={commit} onKeyUp={commit} onBlur={commit} />
+      <span className="lv-dur-v">{durLabel(shown)}</span>
     </div>
   )
 }

@@ -19,7 +19,7 @@ const options = {
   jsxFactory: 'React.createElement',
   jsxFragment: 'React.Fragment',
   // React 和宿主的界面组件（Toast 等）都用 DeepSeek Harness 自带的
-  external: ['react', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
   legalComments: 'none',
   minify: !process.argv.includes('--dev'),
   banner: { js: `window.__ModuleLoader__.load({id:${JSON.stringify(pkg.name)},factory:(require)=>{const module={exports:{}};const exports=module.exports;` },
