@@ -26,6 +26,13 @@ const text = s => [{ type: 'text', text: s }]
 /** 「要先登录」的工具错误带这个记号：卡片据此在原地给登录按钮，而不是把给模型的话显示给用户 */
 export const LOGIN_MARK = '【需要登录】'
 
+/**
+ * 导演自己就能改好的错（参数不对、分镜太长太短、镜头太多）带这个记号：
+ * 只说给导演听，对话里不显示失败卡片，导演改好再调用一次就行
+ */
+export const FIX_MARK = '【请改好后再调用】'
+const fixable = msg => Object.assign(new Error(`${FIX_MARK}${msg}`), { code: 'fixable' })
+
 /* ---------- 登录后自动继续 ---------- */
 
 // 因为没登录卡住的会话（会话 id → 导演）；网站确认登录后逐个通知它们接着做
@@ -96,7 +103,7 @@ function tool(def) {
     output: { schema: ANY, render: def.render || ((args, value) => text(value.text)) },
     async execute(args, exec) {
       const errs = check(args ?? {}, def.parameters)
-      if (errs.length) throw new Error(errs.join('；'))
+      if (errs.length) throw fixable(errs.join('；'))
       try {
         return await def.run(args ?? {}, exec)
       } catch (err) {
@@ -341,8 +348,8 @@ const SCENE = {
   properties: {
     title: { type: 'string', description: '这一镜的标题，4 到 12 个字' },
     description: { type: 'string', description: '画面里有什么、怎么动（给制作看的，具体、可画）' },
-    narration: { type: 'string', description: '这一镜的口播，一两句口语；不要旁白就给空字符串' },
-    seconds: { type: 'number', description: '这一镜大概几秒（15 到 60）；有口播时以实际念完的时间为准' },
+    narration: { type: 'string', description: '这一镜的口播，口语化，每句都带具体信息；不要旁白就给空字符串。全片口播总字数约等于「片长秒数 × 4.5」（10 秒约 45 字、30 秒约 135 字、60 秒约 270 字），按镜头分下去；30 秒以上的片子每镜至少 15 秒，也就是每镜约 65 字以上' },
+    seconds: { type: 'number', description: '只在没有口播时填：这一镜几秒（15 到 60）。有口播时不用填，长度由口播念完的时间决定' },
   },
 }
 
@@ -394,10 +401,23 @@ const plan = tool({
     // 输入框里可以填任意秒数，这里只把范围卡住
     const duration = userSet.duration ?? Math.max(FILM_DURATIONS[0], Math.min(FILM_DURATIONS.at(-1), Math.round(Number(args.duration) || DEFAULT_DURATION)))
     const maxShots = Math.max(1, Math.floor(duration / MIN_SHOT_SEC))
-    if (args.scenes.length > maxShots) throw new Error(`片长 ${duration} 秒最多 ${maxShots} 镜（每镜至少 ${MIN_SHOT_SEC} 秒，一镜里可以有好几个画面变化），把相邻的镜头合并后再出分镜`)
-    const scenes = args.scenes.map((s, i) => ({ id: `shot-${i + 1}`, title: s.title, description: s.description, narration: s.narration || '', seconds: Math.max(3, Math.min(90, Number(s.seconds) || MIN_SHOT_SEC)) }))
-    const est = scenes.reduce((n, s) => n + Math.max(s.seconds, s.narration ? estimateSeconds([s.narration]) + 0.9 : 0), 0)
-    if (est > duration * 1.3) throw new Error(`这版分镜估计约 ${Math.round(est)} 秒，比目标片长 ${duration} 秒长太多：精简口播（中文每秒约 4.5 个字）或减少镜头后再出`)
+    if (args.scenes.length > maxShots) throw fixable(`片长 ${duration} 秒最多 ${maxShots} 镜（每镜至少 ${MIN_SHOT_SEC} 秒，一镜里可以有好几个画面变化），把相邻的镜头合并后再出分镜`)
+    // 以内容为准：有口播的镜头，长度就是口播念完的时间（不再按导演给的秒数把画面拉长空转）
+    const scenes = args.scenes.map((s, i) => {
+      const narration = String(s.narration || '').trim()
+      const talk = narration ? estimateSeconds([narration]) + 0.9 : 0
+      return { id: `shot-${i + 1}`, title: s.title, description: s.description, narration, seconds: Math.round(talk || Math.max(3, Math.min(90, Number(s.seconds) || MIN_SHOT_SEC))) }
+    })
+    // 口播太短的镜头会让画面空转：要么补上有信息量的内容，要么和相邻镜合并（只有一镜的短片不卡）
+    if (scenes.length > 1) {
+      const thin = scenes.map((s, i) => ({ i, s })).filter(({ s }) => s.narration && s.seconds < MIN_SHOT_SEC - 3)
+      if (thin.length) throw fixable(`这几镜口播太短，画面会空转：${thin.map(({ i, s }) => `第 ${i + 1} 镜约 ${s.seconds} 秒`).join('、')}（每镜至少 ${MIN_SHOT_SEC} 秒）。给它们补上具体的事实、数字或例子（从用户给的资料或搜到的资料里找），或者和相邻的镜头合并；不要用空话凑字数`)
+    }
+    const est = scenes.reduce((n, s) => n + s.seconds, 0)
+    // 直接告诉导演字数预算：中文每秒约 4.5 个字，所以「片长 × 4.5」就是全片口播的字数上限（短片最容易超）
+    if (est > duration * 1.3) throw fixable(`这版分镜估计约 ${Math.round(est)} 秒，比目标片长 ${duration} 秒长太多。全片口播一共写约 ${Math.round(duration * 4.5)} 个字以内（中文每秒约 4.5 个字），删掉信息量最少的句子或合并镜头后再出`)
+    // 比目标短很多：提醒导演还能不能补有用的内容；补不了就保持短（不在这里报错，内容优先）
+    const short = est < duration * 0.7 ? `这版约 ${Math.round(est)} 秒，比目标 ${duration} 秒短。如果用户给的资料里、或用 web_search 搜到的可靠资料里还有值得讲的具体内容，可以补进来再出一版；没有就保持现在的长度，不要凑。` : ''
     const pickOn = (key, suggested) => (typeof userSet[key] === 'boolean' ? userSet[key] : suggested)
     const fields = {
       title: args.title, aspect, style: { slug: st.slug, name: st.name, source: st.source, cover: st.cover || null },
@@ -428,7 +448,7 @@ const plan = tool({
     const userNotes = Object.keys(userSet).map(k => ({ duration: `时长 ${userSet.duration} 秒`, voice: userSet.voice ? '要配音' : '不配音', music: userSet.music ? '要配乐' : '不配乐', subtitles: userSet.subtitles ? '要字幕' : '不要字幕' })[k]).filter(Boolean)
     const keep = work.film ? '上一版成片还在，现在照样能看、能导出；确认开拍后，没改动的镜头直接沿用，只改字幕或改短的镜头不重画，几十秒就换成新成片。' : ''
     return {
-      text: `${workLine(work)}\n分镜 v${work.plan.revision}：${scenes.length} 镜，约 ${secs} 秒，${aspect}（目标 ${duration} 秒），风格「${st.name}」，${work.voice.enabled ? '配音' : '不配音'}、${work.music.enabled ? '配乐' : '不配乐'}、${work.subtitles.enabled ? '有字幕' : '无字幕'}。${userNotes.length ? `其中「${userNotes.join('、')}」是用户在卡片上定的，已照用户的来。` : ''}用户可以在卡片上改时长和这几个开关。卡片已经展示给用户；等用户确认开拍再调用 lovideo_produce。${keep}`,
+      text: `${workLine(work)}\n分镜 v${work.plan.revision}：${scenes.length} 镜，约 ${secs} 秒，${aspect}（目标 ${duration} 秒），风格「${st.name}」，${work.voice.enabled ? '配音' : '不配音'}、${work.music.enabled ? '配乐' : '不配乐'}、${work.subtitles.enabled ? '有字幕' : '无字幕'}。${userNotes.length ? `其中「${userNotes.join('、')}」是用户在卡片上定的，已照用户的来。` : ''}用户可以在卡片上改时长和这几个开关。${short}卡片已经展示给用户；等用户确认开拍再调用 lovideo_produce。${keep}`,
       work_id: work.id, revision: work.plan.revision,
     }
   },

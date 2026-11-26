@@ -2,7 +2,7 @@
 // 工具调用在过程区里会被折叠，卡片放在轮次末尾才能一直看得到。
 // 卡片数据只从会话记录里已有的 tool/call、tool/result 事件派生，不写新的事件类型。
 import * as React from 'react'
-import { TOOL_VIEWS } from './cards.jsx'
+import { TOOL_VIEWS, isFixable } from './cards.jsx'
 
 export const KIND = 'lovideo-card'
 
@@ -91,7 +91,8 @@ const LABELS = {
 /** 过程区里的工具行：一行字，完整卡片在本轮末尾 */
 export function ToolRow(props) {
   const settled = props.phase === 'result'
-  const failed = settled && props.block.isError
+  // 导演自己能改好的退回不算失败，这一行照常显示
+  const failed = settled && props.block.isError && !isFixable((props.block.content || []).map(c => c.text || '').join(''))
   const label = LABELS[props.toolName] || props.toolName
   return (
     <div className="lv" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--dsw-alias-label-tertiary)', padding: '2px 0' }}>

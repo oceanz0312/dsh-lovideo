@@ -31,6 +31,8 @@ function Pending({ props, label }) {
     const msg = resultText(props.block).replace(/^Error:\s*/, '')
     // 因为没登录：给用户看的是一句话加登录按钮，登录后这张卡自己变成「已登录」；给导演的话不显示
     if (needsLogin(msg)) return <LoginBlockedCard label={label} />
+    // 导演自己能改好的错（分镜太长、参数不对）不给用户看，导演改好再调用会出新卡片
+    if (isFixable(msg)) return null
     return <Shell title={label} right={<Badge tone="err">没成功</Badge>} error={msg.slice(0, 400)} />
   }
   return (
@@ -43,6 +45,10 @@ const done = props => props.phase === 'result' && !props.block.isError
 const LOGIN_MARK = '【需要登录】'
 // 老版本发出的卡片没有记号，按原话认出来
 const needsLogin = msg => msg.includes(LOGIN_MARK) || /需要.{0,4}先登录 lovideo/.test(msg)
+
+const FIX_MARK = '【请改好后再调用】'
+// 老版本发出的退回没有记号，按原话认出来
+export const isFixable = msg => msg.includes(FIX_MARK) || /长太多|最多 \d+ 镜|口播太短|^缺少 |应该是|只能是|不能小于|不能大于|未知参数/.test(msg)
 
 /** 因为没登录而没做成的卡片：跟着登录状态实时变，不留一张红色的失败卡 */
 function LoginBlockedCard({ label }) {

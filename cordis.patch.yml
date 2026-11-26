@@ -25,6 +25,12 @@
             name: '@deepseek-ai/dsh-tool-skill'
           - id: tool-ask-user
             name: '@deepseek-ai/dsh-tool-ask-user'
+          # 联网搜索和读网页：出分镜前查事实、新闻和原文，内容才有料（和 DSH 标准模式同一套配置）
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
           - id: present
             name: '@deepseek-ai/dsh-tool-present'
           - id: compaction

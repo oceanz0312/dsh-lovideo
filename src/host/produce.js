@@ -24,7 +24,9 @@ import { filmLang, voicePickOf, withMusicSource } from './filmsound.js'
 import { musicReady } from './localvoice.js'
 
 export const ASPECTS = { '16:9': { width: 1920, height: 1080 }, '9:16': { width: 1080, height: 1920 } }
-const MAX_ATTEMPTS = 3
+// 一镜最多让模型写几次；前两次用最低推理档（快），之后换正常推理档（写复杂的 3D 场景、改版面检查更准）
+const MAX_ATTEMPTS = 5
+const LIGHT_ATTEMPTS = 2
 const controllers = new Map()
 
 export const isRunning = id => controllers.has(id)
@@ -165,8 +167,9 @@ async function run_(id, ctl) {
           voiceSec = await speak(text, join(workDir(id), voiceFile), voiceSettings, signal)
         }
         const voice = voiceSec ? { file: voiceFile, seconds: voiceSec } : null
+        // 以内容为准：有口播就按口播念完的时间（念完留 0.9 秒收尾），不再按分镜秒数拉长画面；没口播才用分镜秒数
         const planned = Math.max(3, Number(scene.seconds) || 6)
-        const minFrames = Math.round(Math.max(planned, voiceSec ? voiceSec + 0.9 : 0) * fps)
+        const minFrames = Math.round((voiceSec ? voiceSec + 0.9 : planned) * fps)
         // 画面没变：时长没改就保持原长，改短了就裁；放不下新配音或要更长才重画
         if (hasVideo && pictureSig(old) === pictureSig(scene)) {
           const plannedChanged = (old.planned ?? Math.round(old.frames / fps)) !== planned
@@ -230,7 +233,8 @@ async function run_(id, ctl) {
     }
     work = requireWork(id)
     const failed = segmentsOf(work).filter(s => s.state !== 'done')
-    if (failed.length) throw new Error(`第 ${failed.map(s => s.idx).join('、')} 段没做出来：${failed[0].error || '原因不明'}`)
+    // 宁可停下让用户重试，也不拿不相干的画面凑数
+    if (failed.length) throw new Error(`第 ${failed.map(s => s.idx).join('、')} 镜画了 ${MAX_ATTEMPTS} 次都没通过风格的检查，点「重试」会只重画这几镜（最后一次的问题：${failed[0].error || '原因不明'}）`)
 
     // 4. 拼成片
     await musicTask
@@ -441,12 +445,15 @@ function snapshotDraft(proj, segId) {
   }
 }
 
-function restoreDraft(proj, segId) {
-  const dir = join(proj, segId)
-  const draft = join(dir, '.draft')
+/** 段目录里的这个文件是不是还和风格准备脚本写的草稿一模一样（模型还没改过） */
+function isUntouchedDraft(proj, segId, rel) {
+  const draft = join(proj, segId, '.draft', rel)
   if (!existsSync(draft)) return false
-  for (const f of listFiles(draft, draft)) copyFileSync(f.path, join(dir, f.rel))
-  return true
+  try {
+    return readFileSync(draft, 'utf8') === readFileSync(join(proj, segId, rel), 'utf8')
+  } catch {
+    return false
+  }
 }
 
 /** 风格包里给模型参考的代码（引擎、页面），按大小截断 */
@@ -493,15 +500,14 @@ async function makeSegment({ id, seg, style, spec, size, fps, proj, site, signal
     redraw: seg.brief ? `用户要求重画这一段：${seg.brief}` : undefined,
   }
   let lastError = null
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS + 1; attempt++) {
+  // 写不出来就让这一镜失败（整片可以「重试」），不再退回风格自带的草稿出片：
+  // 官方风格的草稿是别的主题的示例（比如立体线稿图解的电热水壶），退回去会把不相干的画面混进成片
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (signal.aborted) throw abortError()
-    const fallback = attempt > MAX_ATTEMPTS
     await setSegment(id, seg.id, { state: 'draw', attempts: attempt, error: null, rendered: 0 })
-    if (fallback) {
-      if (!restoreDraft(proj, seg.id)) break
-    } else {
-      const current = listFiles(segDir).filter(f => TEXT_EXT.test(f.rel) && f.size < 60_000)
-        .map(f => `--- ${f.rel} ---\n${readFileSync(f.path, 'utf8')}`).join('\n\n')
+    {
+      const files0 = listFiles(segDir).filter(f => TEXT_EXT.test(f.rel) && f.size < 60_000)
+      const current = files0.map(f => `${isUntouchedDraft(proj, seg.id, f.rel) ? `（下面的 ${f.rel} 还是风格自带的示例草稿，画的是别的东西：只能参考它的写法和引擎用法，物体、标题、标注、数字必须全部换成这一段的内容）\n` : ''}--- ${f.rel} ---\n${readFileSync(f.path, 'utf8')}`).join('\n\n')
       const user = [
         `# 风格 Skill（SKILL.md，风格包目录 ${style.dir}）\n\n${style.skillMd}`,
         `# 风格包里的页面和引擎（只读参考）\n\n${styleReference(style.dir) || '（无）'}`,
@@ -511,7 +517,7 @@ async function makeSegment({ id, seg, style, spec, size, fps, proj, site, signal
       ].filter(Boolean).join('\n\n')
       let text
       try {
-        ;({ text } = await callModel({ system: SYSTEM, user, maxTokens: 32000, signal, light: true }))
+        ;({ text } = await callModel({ system: SYSTEM, user, maxTokens: 32000, signal, light: attempt <= LIGHT_ATTEMPTS }))
       } catch (err) {
         if (signal.aborted) throw abortError()
         lastError = `模型调用失败：${err.message}`
@@ -556,7 +562,7 @@ async function makeSegment({ id, seg, style, spec, size, fps, proj, site, signal
       }
       if (spec.page) await renderPage({ origin: site.origin, entry: fill(spec.page, vars), film, out, poster, signal, onFrame })
       else await renderCommand({ command: spec.command, checkExit: spec.checkExit, vars, film, out, poster, signal })
-      await setSegment(id, seg.id, { state: 'done', rendered: seg.frames, file: `segs/${seg.id}.mp4`, poster: `segs/${seg.id}.jpg`, error: null, fallback })
+      await setSegment(id, seg.id, { state: 'done', rendered: seg.frames, file: `segs/${seg.id}.mp4`, poster: `segs/${seg.id}.jpg`, error: null })
       return
     } catch (err) {
       if (signal.aborted || err.name === 'AbortError') throw abortError()
