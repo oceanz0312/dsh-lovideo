@@ -352,21 +352,24 @@ export function Player({ src, poster, subtitles, hidden, portrait, autoPlay }) {
   const [t, setT] = React.useState(0)
   const video = React.useRef(null)
   const speed = usePlaybackRate(video)
-  // 成片换了新版本（比如切了配音、配乐开关重新拼过）：接着原来的位置和播放状态，不从头播
-  const last = React.useRef({ src, time: 0, playing: false })
+  const seekable = useSeekableSrc(src)
+  const play = seekable.src
+  // 成片换了新版本（比如切了配音、配乐开关重新拼过），或换成了能拖动的本地副本：接着原来的位置和播放状态，不从头播
+  const last = React.useRef({ src: play, time: 0, playing: false })
   const loaded = e => {
     speed.apply()
     const v = e.currentTarget
-    if (last.current.src !== src) {
+    if (last.current.src !== play) {
       if (last.current.time > 0) v.currentTime = Math.min(last.current.time, Math.max(0, (v.duration || 0) - 0.1))
       if (last.current.playing) v.play().catch(() => {})
-      last.current.src = src
+      last.current.src = play
     }
+    seekable.check(v)
   }
   const cap = !hidden && (subtitles || []).find(s => t >= s.start && t < s.end)
   return (
     <div className={`lv-player ${portrait ? 'p' : ''}`}>
-      <video ref={video} src={src} poster={poster || undefined} controls playsInline preload="metadata" autoPlay={autoPlay}
+      <video ref={video} src={play} poster={poster || undefined} controls playsInline preload="metadata" autoPlay={autoPlay}
         onLoadedMetadata={loaded}
         onPlay={() => (last.current.playing = true)} onPause={e => { if (!e.currentTarget.ended && e.currentTarget.src.endsWith(last.current.src || '')) last.current.playing = false }}
         onTimeUpdate={e => { setT(e.currentTarget.currentTime); last.current.time = e.currentTarget.currentTime }} />
@@ -374,6 +377,42 @@ export function Player({ src, poster, subtitles, hidden, portrait, autoPlay }) {
       <SpeedButton rate={speed.rate} onNext={speed.next} />
     </div>
   )
+}
+
+/**
+ * 让成片能拖动进度条。DeepSeek Harness 桌面版转发插件的文件时去掉了 content-length，
+ * 播放器因此不知道文件多大、拖不动（网页版没有这个问题）。播放时发现拖不动，就在后台把整个文件读进内存，
+ * 读完换成本地副本接着播；能拖动时什么都不做。
+ */
+function useSeekableSrc(src) {
+  const [need, setNeed] = React.useState(null)
+  const [copy, setCopy] = React.useState(null)
+  React.useEffect(() => {
+    if (!src || need !== src) return undefined
+    let url = null
+    const ctl = new AbortController()
+    fetch(src, { signal: ctl.signal })
+      .then(r => (r.ok ? r.blob() : null))
+      .then(b => {
+        if (!b || ctl.signal.aborted) return
+        url = URL.createObjectURL(b)
+        setCopy({ for: src, url })
+      })
+      .catch(() => {})
+    return () => {
+      ctl.abort()
+      if (url) URL.revokeObjectURL(url)
+    }
+  }, [need, src])
+  const local = copy && copy.for === src ? copy.url : null
+  return {
+    src: local || src,
+    check(v) {
+      if (local || need === src) return
+      const d = v.duration
+      if (Number.isFinite(d) && d > 1 && (!v.seekable.length || v.seekable.end(0) < d - 0.5)) setNeed(src)
+    },
+  }
 }
 
 export function Media({ src, portrait, chip, chipRight, children, style }) {
