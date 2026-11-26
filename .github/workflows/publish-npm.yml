@@ -1,0 +1,51 @@
+# 每次推到 main：package.json 的版本 npm 上还没有，就自动发到 npm；版本没变的推送什么都不发。
+# 用 npm 的可信发布（Trusted Publishing）：npm 网站上 dsh-lovideo 的设置里绑定了这个仓库和这个文件，
+# 这里不需要任何令牌；npm 上还会标明这个包是由本仓库构建的（provenance）。
+name: 发布到 npm
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # 可信发布靠 GitHub 签发的身份证明，不用令牌
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # 可信发布要 npm 11.5.1 以上
+      - run: npm install -g npm@latest
+
+      - name: 这个版本 npm 上有没有
+        id: check
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$NAME@$VERSION 已经在 npm 上，不用发"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "要发 $NAME@$VERSION"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.publish == 'true'
+        run: npm ci
+
+      # prepack 会重新构建界面（dist/client.js）
+      - if: steps.check.outputs.publish == 'true'
+        run: npm publish --access public
