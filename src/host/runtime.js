@@ -1,11 +1,10 @@
 // 本机渲染环境：浏览器（画画面）、ffmpeg（编码、拼接、混音）、Python（风格包的准备脚本、剪映导出）。
 // 电脑上已经有的直接用；没有的，在用户点「准备」后下载到 ~/.dsh/lovideo/runtime（约 150 MB），不会悄悄下载。
 import { spawn, spawnSync } from 'node:child_process'
-import { createWriteStream, existsSync, chmodSync, readdirSync } from 'node:fs'
-import { pipeline } from 'node:stream/promises'
+import { existsSync, chmodSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { createGunzip } from 'node:zlib'
-import { Readable } from 'node:stream'
 import { delimiter, join } from 'node:path'
+import { download, downloadText } from './download.js'
 import { ensureDir, runtimeDir } from './paths.js'
 
 const WIN = process.platform === 'win32'
@@ -54,8 +53,10 @@ function downloadedChrome() {
     const d = stack.pop()
     for (const e of readdirSync(d, { withFileTypes: true })) {
       const p = join(d, e.name)
-      if (e.isDirectory()) stack.push(p)
-      else if (e.name === exe('chrome-headless-shell')) return p
+      // .part 是正在解压的目录，里面的浏览器还不完整
+      if (e.isDirectory()) {
+        if (!e.name.endsWith('.part')) stack.push(p)
+      } else if (e.name === exe('chrome-headless-shell')) return p
     }
   }
   return null
@@ -114,52 +115,95 @@ export function runtimeStatus() {
 
 /* ---------- 下载缺的组件 ---------- */
 
-const FFMPEG_URLS = {
-  'darwin-arm64': 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-darwin-arm64.gz',
-  'darwin-x64': 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-darwin-x64.gz',
-  'linux-x64': 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-linux-x64.gz',
-  'linux-arm64': 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-linux-arm64.gz',
-  'win32-x64': 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-win32-x64.gz',
-}
+// ffmpeg-static 的预编译版。GitHub 在国内经常连不上或极慢，npmmirror 有同样的文件（同名、同目录结构）
+const FFMPEG_PLATFORMS = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64', 'win32-x64']
+const ffmpegUrls = key => [
+  `https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-${key}.gz`,
+  `https://cdn.npmmirror.com/binaries/ffmpeg-static/b6.0/ffmpeg-${key}.gz`,
+  `https://registry.npmmirror.com/-/binary/ffmpeg-static/b6.0/ffmpeg-${key}.gz`,
+]
 
 let setupState = { running: false, step: null, progress: 0, error: null }
 export const setupProgress = () => ({ ...setupState })
 
-async function downloadFfmpeg(onProgress) {
-  const url = FFMPEG_URLS[`${process.platform}-${process.arch}`]
-  if (!url) throw new Error(`没有适合 ${process.platform}-${process.arch} 的 ffmpeg，请自己安装 ffmpeg 后重试`)
-  const res = await fetch(url, { redirect: 'follow' })
-  if (!res.ok || !res.body) throw new Error(`下载 ffmpeg 失败：HTTP ${res.status}`)
-  const total = Number(res.headers.get('content-length')) || 0
-  let got = 0
-  const body = Readable.fromWeb(res.body)
-  body.on('data', c => {
-    got += c.length
-    if (total) onProgress(got / total)
-  })
+async function downloadFfmpeg(onProgress, signal) {
+  const key = `${process.platform}-${process.arch}`
+  if (!FFMPEG_PLATFORMS.includes(key)) throw new Error(`没有适合 ${key} 的 ffmpeg，请自己安装 ffmpeg 后重试`)
   const out = join(ensureDir(join(runtimeDir(), 'bin')), exe('ffmpeg'))
-  await pipeline(body, createGunzip(), createWriteStream(`${out}.part`))
-  const { renameSync } = await import('node:fs')
-  renameSync(`${out}.part`, out)
+  await download(ffmpegUrls(key), out, {
+    label: 'ffmpeg ',
+    hint: '请检查网络后再点一次「准备」；也可以自己安装 ffmpeg 后再点一次',
+    transforms: [() => createGunzip()],
+    onProgress,
+    signal,
+  })
   if (!WIN) chmodSync(out, 0o755)
 }
 
-async function downloadChrome(onProgress) {
+/*
+ * Chrome Headless Shell（电脑上没有 Chrome、Edge、Brave 时用）。版本清单和压缩包都先试 npmmirror 的镜像，
+ * 再试谷歌官方（探测后谁快先用谁）。镜像有时还没同步最新版，所以再备一个钉住的版本（和 puppeteer-core 用的一致），
+ * 清单拿不到、或最新版哪儿都下不到时用它。
+ */
+const CFT_MIRROR = 'https://cdn.npmmirror.com/binaries/chrome-for-testing'
+const CFT_GOOGLE = 'https://storage.googleapis.com/chrome-for-testing-public'
+const CHROME_PINNED_BUILD = '148.0.7778.97'
+
+async function stableChromeBuild(signal) {
+  try {
+    const { text } = await downloadText([
+      `${CFT_MIRROR}/last-known-good-versions.json`,
+      'https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json',
+    ], { label: 'Chrome 版本清单', signal })
+    return JSON.parse(text).channels?.Stable?.version || null
+  } catch {
+    return null
+  }
+}
+
+async function downloadChrome(onProgress, signal) {
   const browsers = await import('@puppeteer/browsers')
+  const { default: extractZip } = await import('extract-zip')
   const platform = browsers.detectBrowserPlatform()
-  const buildId = await browsers.resolveBuildId(browsers.Browser.CHROMEHEADLESSSHELL, platform, 'stable')
-  await browsers.install({
-    browser: browsers.Browser.CHROMEHEADLESSSHELL,
-    buildId,
-    cacheDir: ensureDir(join(runtimeDir(), 'chrome')),
-    downloadProgressCallback: (got, total) => total && onProgress(got / total),
+  if (!platform) throw new Error(`这台电脑（${process.platform}-${process.arch}）下载不了浏览器，请装好 Chrome 或 Edge 后再点一次`)
+  const builds = [...new Set([await stableChromeBuild(signal), CHROME_PINNED_BUILD].filter(Boolean))]
+  const buildOf = new Map()
+  const urls = builds.flatMap(build => [CFT_MIRROR, CFT_GOOGLE].map(base => {
+    const url = browsers.getDownloadUrl(browsers.Browser.CHROMEHEADLESSSHELL, platform, build, base).toString()
+    buildOf.set(url, build)
+    return url
+  }))
+  const root = ensureDir(join(runtimeDir(), 'chrome', 'chrome-headless-shell'))
+  const zip = join(root, 'download.zip')
+  const { url } = await download(urls, zip, {
+    label: '浏览器（Chrome Headless Shell）',
+    hint: '请检查网络后再点一次「准备」；也可以装好 Chrome 或 Edge 浏览器后再点一次',
+    onProgress,
+    signal,
   })
+  // 先解压到 .part 目录，完整解出来再改名：downloadedChrome() 只要找到可执行文件就会用，不能让它碰到解了一半的
+  const dir = join(root, `${platform}-${buildOf.get(url)}`)
+  const part = `${dir}.part`
+  rmSync(part, { recursive: true, force: true })
+  try {
+    await extractZip(zip, { dir: part })
+    rmSync(dir, { recursive: true, force: true })
+    renameSync(part, dir)
+  } catch (err) {
+    rmSync(part, { recursive: true, force: true })
+    throw new Error(`浏览器解压失败：${err.message}（可能是磁盘空间不够，清理后再点一次）`)
+  } finally {
+    rmSync(zip, { force: true })
+  }
+  const bin = downloadedChrome()
+  if (!bin) throw new Error('浏览器压缩包里没有找到 chrome-headless-shell，请再点一次「准备」')
+  if (!WIN) chmodSync(bin, 0o755)
 }
 
 /* ---------- 平台字体 ----------
  * 和网站制作机器的 /work/fonts 完全一样（lovideo 仓库 scripts/job-bundle.ts 的 FONTS，同样钉在这两个提交上）：
  * 风格的渲染命令用 --mount /pf/=/work/fonts 加载它们，大部分官方风格的中文靠 Noto Sans/Serif SC。
- * GitHub 连不上时走 jsDelivr 镜像。 */
+ */
 const FONTS_REF = 'e7db6ca603fd4862010383ff17ffd6cc4ffac1c0'
 const NOTO_CJK_REF = 'f8d157532fbfaeda587e826d4cd5b21a49186f7c'
 const gf = (file, dir, source, license = 'OFL.txt') => ({ file, repo: 'google/fonts', ref: FONTS_REF, path: `${dir}/${source}`, license: { name: `${file.replace(/\.[^.]+$/, '')}-${license}`, path: `${dir}/${license}` } })
@@ -180,20 +224,14 @@ export const FONTS = [
 export const fontsDir = () => process.env.LOVIDEO_FONTS_DIR || join(runtimeDir(), 'fonts')
 export const fontsReady = () => FONTS.every(f => existsSync(join(fontsDir(), f.file)))
 
-async function fetchPinned(repo, ref, path) {
-  const urls = [`https://raw.githubusercontent.com/${repo}/${ref}/${path}`, `https://cdn.jsdelivr.net/gh/${repo}@${ref}/${path}`]
-  let last = null
-  for (const url of urls) {
-    try {
-      const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(120_000) })
-      if (res.ok) return Buffer.from(await res.arrayBuffer())
-      last = new Error(`HTTP ${res.status}`)
-    } catch (err) {
-      last = err
-    }
-  }
-  throw new Error(`下载字体失败（${path.split('/').pop()}）：${last?.message || '网络不通'}`)
-}
+// GitHub 连不上时走 jsDelivr（cdn 和 fastly 两个入口，国内一般至少一个能通）
+const pinnedUrls = (repo, ref, path) => [
+  `https://raw.githubusercontent.com/${repo}/${ref}/${path}`,
+  `https://cdn.jsdelivr.net/gh/${repo}@${ref}/${path}`,
+  `https://fastly.jsdelivr.net/gh/${repo}@${ref}/${path}`,
+]
+const fetchPinned = (repo, ref, path, dest) =>
+  download(pinnedUrls(repo, ref, path), dest, { label: `字体（${decodeURIComponent(path.split('/').pop())}）`, hint: '请检查网络后再试一次' })
 
 let fontsJob = null
 /** 补齐缺的平台字体（几十 MB，只下一次）；并发调用共用同一次下载 */
@@ -205,10 +243,8 @@ export function ensureFonts(onProgress = () => {}) {
     const todo = FONTS.filter(f => !existsSync(join(dir, f.file)))
     let done = 0
     for (const f of todo) {
-      const { writeFileSync, renameSync } = await import('node:fs')
-      writeFileSync(join(lic, f.license.name), await fetchPinned(f.repo, f.ref, f.license.path))
-      writeFileSync(join(dir, `${f.file}.part`), await fetchPinned(f.repo, f.ref, f.path))
-      renameSync(join(dir, `${f.file}.part`), join(dir, f.file))
+      await fetchPinned(f.repo, f.ref, f.license.path, join(lic, f.license.name))
+      await fetchPinned(f.repo, f.ref, f.path, join(dir, f.file))
       onProgress(++done / todo.length)
     }
   })().finally(() => {
@@ -217,28 +253,55 @@ export function ensureFonts(onProgress = () => {}) {
   return fontsJob
 }
 
-/** 下载电脑上缺的组件；已有的跳过。返回最新状态 */
+/*
+ * 准备渲染环境的这一次「运行」。每个下载都有超时，正常不会卡住；万一哪一步超过 STUCK_MS 没有任何动静，
+ * 用户再点「准备」就放弃那一次、重新开始（旧的那次被取消，它的结果不会再改状态）。
+ */
+const STUCK_MS = 3 * 60_000
+let setupRun = null
+let setupActive = 0
+
+/** 现在点「准备」会不会真的开始：没在准备，或者正在准备但已经卡住 */
+export const setupCanStart = () => !setupState.running || Date.now() - setupActive > STUCK_MS
+
+/** 下载电脑上缺的组件；已有的跳过。返回最新状态（被后来的一次顶替时返回那一次的状态，running 为 true） */
 export async function setupRuntime() {
-  if (setupState.running) return setupProgress()
+  if (!setupCanStart()) return setupProgress()
+  setupRun?.abort()
+  const ac = new AbortController()
+  setupRun = ac
+  const mine = () => setupRun === ac
+  const step = name => {
+    if (!mine()) throw Object.assign(new Error('已取消'), { name: 'AbortError' })
+    setupState.step = name
+    setupState.progress = 0
+    setupActive = Date.now()
+  }
+  const progress = p => {
+    if (!mine()) return
+    setupState.progress = p
+    setupActive = Date.now()
+  }
   setupState = { running: true, step: null, progress: 0, error: null }
+  setupActive = Date.now()
   try {
     if (!findFfmpeg()) {
-      setupState.step = 'ffmpeg'
-      await downloadFfmpeg(p => (setupState.progress = p))
+      step('ffmpeg')
+      await downloadFfmpeg(progress, ac.signal)
     }
     if (!findChrome()) {
-      setupState.step = 'chrome'
-      setupState.progress = 0
-      await downloadChrome(p => (setupState.progress = p))
+      step('chrome')
+      await downloadChrome(progress, ac.signal)
     }
     if (!fontsReady()) {
-      setupState.step = 'fonts'
-      setupState.progress = 0
-      await ensureFonts(p => (setupState.progress = p))
+      step('fonts')
+      await ensureFonts(progress)
     }
-    setupState = { running: false, step: 'done', progress: 1, error: null }
+    if (mine()) setupState = { running: false, step: 'done', progress: 1, error: null }
   } catch (err) {
-    setupState = { running: false, step: setupState.step, progress: setupState.progress, error: err.message }
+    if (mine()) setupState = { running: false, step: setupState.step, progress: setupState.progress, error: err.message }
+  } finally {
+    if (mine()) setupRun = null
   }
   return setupProgress()
 }

@@ -15,6 +15,12 @@ lovideo 的 DeepSeek Harness 插件：在 DSH 的对话里用一句话做出任�
 
 用户看到的说明在 [docs/DETAIL.md](docs/DETAIL.md)。和网站保持一致的约定在 [docs/PROTOCOL.md](docs/PROTOCOL.md)。
 
+## 安装
+
+在 DeepSeek Harness「插件 → 添加插件」里填 npm 包名 `dsh-lovideo`。国内网络也建议用这个：DSH 装 npm 包时官方源连不上会自动换 npmmirror。填 GitHub 地址在国内可能装不上（Git 地址没有镜像可换）。
+
+第一次做片前点「准备」，电脑上没有的浏览器、ffmpeg、字体才会下载；每样都有国内镜像（npmmirror、jsDelivr、国内 PyPI 源），谁快用谁，一个地址卡住会自动换下一个。都下不动时会列出每个地址的原因，也可以自己装好 Chrome / Edge 或 ffmpeg 后再点一次。
+
 ## 目录
 
 | 路径 | 作用 |
