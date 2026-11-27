@@ -46,22 +46,28 @@ npm run dev            # 开着：客户端改了自动重新打包
 
 - **前端**（`src/client`）：存盘后约 1 秒，已打开的页面自动换上新插件，不用刷新（插件里的 React 状态会重置）。
 - **后端**（`src/host`）：存盘后几秒内 DeepSeek Harness 在同一个进程里换上新代码。正在做的片子会先暂停，重载后点「继续」。
-- 第一次打开开发模式时，如果桌面版已经开着，重启它一次；之后改代码都不用重启。
+- `npm run dev:desktop` 和 `npm run dev:desktop:off` 要在桌面版彻底退出时运行（开着会被拦下，见下面「原理」），跑完再打开；之后改代码都不用重启。
 - `npm run dev:desktop:status` 查看当前状态；`--profile <名字>` 换别的配置（默认 desktop）。
-- 原理：桌面版的插件依赖改成 `link:` 到本仓库；profile 的 `cordis.patch.yml` 里加一段带标记的 `hmr` 配置，监听 `src/host`。客户端靠 DeepSeek Harness 轮询 `dist/client.js`；打包脚本先写临时文件再改名，保证它读到的永远是完整文件。
+- 原理：用官方的 `dsh plugin add` 把桌面版的插件依赖改成 `link:` 到本仓库（它会自己把插件加进 profile 的插件列表）；profile 的 `cordis.patch.yml` 里加一段带标记的 `hmr` 配置，监听 `src/host`。这一段没有官方命令能加，只能脚本手写；官方不建议从外面改运行中的 profile，换掉已装的插件也要重启才会加载新代码，所以脚本要求先退出桌面版。客户端靠 DeepSeek Harness 轮询 `dist/client.js`；打包脚本先写临时文件再改名，保证它读到的永远是完整文件。
 
-### 发版（GitHub 和 npm 同时发）
+### 发版（先 GitHub、验过再 npm）
 
-两种装法：在 DeepSeek Harness「插件 → 添加插件」里填 `dsh-lovideo`（从 npm 装，插件页会提示新版本、可以一键更新），或填 `https://github.com/oceanz0312/dsh-lovideo`（从 GitHub 装，不会提示更新；要固定版本填 `github:oceanz0312/dsh-lovideo#v0.4.3`）。从 GitHub 安装不会构建界面，所以 `dist/client.js` 跟着仓库走。
+两种装法：在 DeepSeek Harness「插件 → 添加插件」里填带确切版本号的 `dsh-lovideo@0.5.3`（从 npm 装，插件页会提示新版本、可以一键更新），或填 `https://github.com/oceanz0312/dsh-lovideo`（从 GitHub 装，不会提示更新；要固定版本填 `github:oceanz0312/dsh-lovideo#v0.4.3`）。npm 装法要写版本号：桌面版自带的 pnpm 默认不装 24 小时内刚发布的版本（`minimumReleaseAge` 默认 1440 分钟），只填 `dsh-lovideo` 会装上上一个版本。从 GitHub 安装不会构建界面，所以 `dist/client.js` 跟着仓库走。
 
-npm 不用在本机发：每次推到 GitHub 的 main，GitHub Actions（`.github/workflows/publish-npm.yml`）看 `package.json` 的版本 npm 上有没有，没有就用 npm 的可信发布发出去（不需要登录、不需要令牌）；版本没变的推送什么都不发。npm 网站上 `dsh-lovideo` 的设置里已经绑定了本仓库和这个流程文件；改文件名要去那里同步改。发完在仓库的 Actions 页能看到结果。
+npm 不用在本机发：推 `v*` 标签时，GitHub Actions（`.github/workflows/publish-npm.yml`）先检查打包产物（`test/package.test.mjs`：界面格式、包里的文件清单、`package.json`），再用 npm 的可信发布发出去（不需要登录、不需要令牌）；这个版本 npm 上已经有了就什么都不发。只推 main 不会发 npm。npm 网站上 `dsh-lovideo` 的设置里已经绑定了本仓库和这个流程文件；改文件名要去那里同步改。发完在仓库的 Actions 页能看到结果。
 
 在开发模式下把改动在桌面版里走通之后再发：
 
 1. `npm test`
 2. 把 `package.json` 的版本号加一，提交到 main
-3. `npm run release`：用已经提交的代码构建界面，只提交 `dist/client.js`，打 `v<版本号>` 标签，推送 main 和标签。工作区里没提交的改动不会混进去；标签推上去后 npm 自动跟着发
-4. 按用户的装法再验一遍：桌面版「插件」里卸载 lovideo，再按上面的地址添加，把改到的地方点一遍；然后 `npm run dev:desktop` 回到开发模式
+3. `npm run release`：用已经提交的代码构建界面，只提交 `dist/client.js`，推送 main（不打标签，npm 还不会发）。工作区里没提交的改动不会混进去；脚本最后打印这次的提交号
+4. 按用户的装法验一遍（这时只有 GitHub 上有新版）：
+   - 桌面版「插件」里卸载 lovideo，再填 `https://github.com/oceanz0312/dsh-lovideo`（或脚本打印的 `github:oceanz0312/dsh-lovideo#<提交号>`）添加；
+   - 添加后彻底退出 DeepSeek Harness（macOS 用 Cmd+Q，不是关窗口）再打开：换掉已装的插件要重启才会加载新代码；
+   - 开一个新会话再试：改过的「lovideo 导演」模式和 Skill 只在新会话里生效，老会话还是旧的；
+   - 把改到的地方点一遍，浅色、深色主题各看一遍，再把窗口拉窄看一遍；
+   - 有问题就修好、提交，再从第 3 步来（还没打标签，npm 上没有这个版本，版本号不用再加）
+5. 验过之后 `npm run release:tag`：确认本地 main 就是刚才推上去、验过的那个提交，打 `v<版本号>` 标签并推送，npm 随后自动发布。然后 `npm run dev:desktop` 回到开发模式
 
 `npm run dev` 会改写 `dist/client.js`（开发版）。发版脚本会给它设 skip-worktree，git 不会把开发版当成改动；要看实际提交的版本用 `git show HEAD:dist/client.js`。
 
