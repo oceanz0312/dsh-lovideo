@@ -32,6 +32,7 @@ export const CSS = `
 .lv-prows{display:flex;flex-direction:column;gap:8px}
 .lv-prow{position:relative;display:flex;align-items:center;gap:10px;min-height:42px;padding:6px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px}
 .lv-prow>.k{flex:none;width:30px;font-size:12px;color:var(--dsw-alias-label-secondary)}
+html:not([lang^="zh"]) .lv-prow>.k{width:60px}
 .lv-prow>.m{flex:1;min-width:0;display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden}
 .lv-prow>.m b{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
 .lv-prow>.m .lv-why{flex:1 1 0;min-width:40px}
@@ -208,7 +209,7 @@ a.lv-btn{text-decoration:none}
 .lvc-panel{background:var(--dsw-alias-bg-layer-1,var(--dsw-alias-bg-base));color:var(--dsw-alias-label-primary);border-radius:16px;box-shadow:0 0 0 .5px var(--dsw-alias-border-l3),var(--dsw-shadow-lv3);padding:14px;font-size:13.5px}
 .lvc-h{font-size:12.5px;color:var(--dsw-alias-label-tertiary);margin-bottom:9px}
 .lvc-seg{display:flex;gap:3px;padding:3px;border-radius:10px;background:var(--dsw-alias-interactive-bg-hover)}
-.lvc-seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;height:32px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer}
+.lvc-seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;height:32px;white-space:nowrap;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer}
 .lvc-seg button.on{background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .lvc-seg button:disabled{opacity:.4;cursor:default}
 .lvc-shape{display:inline-block;border:1.6px solid currentColor;border-radius:3px}

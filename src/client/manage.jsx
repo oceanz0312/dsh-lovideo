@@ -144,11 +144,11 @@ function WorkPanel({ id, onClose }) {
         <div className="lv-card-foot"><WorkActions w={w} compact /></div>
       </div>
       <div className="lv-card"><div className="lv-card-body" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div className="lv-row"><span className="lv-subtle" style={{ width: 56 }}>{t('work.style')}</span>{w.style?.name}</div>
-        <div className="lv-row"><span className="lv-subtle" style={{ width: 56 }}>{t('work.plan')}</span>{t('work.planValue', { rev: w.plan?.revision, n: w.scenes, aspect: w.aspect })}</div>
-        {w.film ? <div className="lv-row"><span className="lv-subtle" style={{ width: 56 }}>{t('work.film')}</span>{fmtSec(w.film.duration)} · {w.film.width}×{w.film.height}</div> : null}
-        <div className="lv-row"><span className="lv-subtle" style={{ width: 56 }}>{t('work.location')}</span><span className="lv-mono lv-truncate lv-subtle" title={w.dir}>{w.dir}</span></div>
-        {w.exports?.length ? <div className="lv-row" style={{ alignItems: 'flex-start' }}><span className="lv-subtle" style={{ width: 56 }}>{t('work.exports')}</span><span className="lv-grow">{w.exports.slice(-3).reverse().map(e => <div key={e.path} className="lv-truncate lv-subtle" title={e.path}>{e.kind === 'mp4' ? `MP4 ${e.quality}` : t('work.jianyingProject')} · {e.path.split(/[\\/]/).pop()}</div>)}</span></div> : null}
+        <div className="lv-row"><span className="lv-subtle" style={{ minWidth: 56, flex: "none", marginRight: 8 }}>{t('work.style')}</span>{w.style?.name}</div>
+        <div className="lv-row"><span className="lv-subtle" style={{ minWidth: 56, flex: "none", marginRight: 8 }}>{t('work.plan')}</span>{t('work.planValue', { rev: w.plan?.revision, n: w.scenes, aspect: w.aspect })}</div>
+        {w.film ? <div className="lv-row"><span className="lv-subtle" style={{ minWidth: 56, flex: "none", marginRight: 8 }}>{t('work.film')}</span>{fmtSec(w.film.duration)} · {w.film.width}×{w.film.height}</div> : null}
+        <div className="lv-row"><span className="lv-subtle" style={{ minWidth: 56, flex: "none", marginRight: 8 }}>{t('work.location')}</span><span className="lv-mono lv-truncate lv-subtle" title={w.dir}>{w.dir}</span></div>
+        {w.exports?.length ? <div className="lv-row" style={{ alignItems: 'flex-start' }}><span className="lv-subtle" style={{ minWidth: 56, flex: "none", marginRight: 8 }}>{t('work.exports')}</span><span className="lv-grow">{w.exports.slice(-3).reverse().map(e => <div key={e.path} className="lv-truncate lv-subtle" title={e.path}>{e.kind === 'mp4' ? `MP4 ${e.quality}` : t('work.jianyingProject')} · {e.path.split(/[\\/]/).pop()}</div>)}</span></div> : null}
         <div className="lv-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
           {w.sessionId ? <Button size="sm" onClick={() => openSession(w.sessionId)}>{t('common.backToChat')}</Button> : <Button size="sm" onClick={() => startDirector(t('prompt.editWork', { title: w.title, id: w.id }))}>{t('work.editInChat')}</Button>}
           <Button size="sm" kind="ghost" onClick={() => api(`works/${id}/reveal`, {})}>{t('common.reveal')}</Button>

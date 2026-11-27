@@ -283,7 +283,7 @@ function AspectPanel({ sessionId }) {
   const t = useT()
   const [c, st] = useComposer(sessionId)
   return (
-    <div className="lvc-panel" style={{ width: 300 }}>
+    <div className="lvc-panel" style={{ width: 340 }}>
       <div className="lvc-h">{t('composer.aspect')}</div>
       <div className="lvc-seg">
         {[['16:9', t('composer.landscape'), 20, 12], ['9:16', t('composer.portrait'), 11, 18]].map(([a, label, w, h]) => (
