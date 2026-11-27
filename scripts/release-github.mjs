@@ -71,7 +71,7 @@ try {
     git('tag', '-a', tag, '-m', tag, head)
     git('push', 'origin', tag)
     console.log(`\n已推送标签 ${tag}，GitHub Actions 会把它发到 npm（仓库 Actions 页看结果）。`)
-    console.log(`要装指定版本：github:${REPO}#${tag}，或 npm 上的 ${pkg.name}@${pkg.version}（要带确切版本号，原因见 README「发版」）`)
+    console.log(`马上要用：github:${REPO}#${tag}；npm 上的 ${pkg.name}@${pkg.version} 要过 24 小时桌面版才装得到（原因见 README「发版」）`)
   }
 } finally {
   rmSync(tmp, { recursive: true, force: true })

@@ -17,7 +17,7 @@ lovideo 的 DeepSeek Harness 插件：在 DSH 的对话里用一句话做出任�
 
 ## 安装
 
-在 DeepSeek Harness「插件 → 添加插件」里填 npm 包名 `dsh-lovideo`。国内网络也建议用这个：DSH 装 npm 包时官方源连不上会自动换 npmmirror。填 GitHub 地址在国内可能装不上（Git 地址没有镜像可换）。
+在 DeepSeek Harness「插件 → 添加插件」里填 npm 包名 `dsh-lovideo`。国内网络也建议用这个：DSH 装 npm 包时官方源连不上会自动换 npmmirror。填 GitHub 地址在国内可能装不上（Git 地址没有镜像可换）。npm 上新发的版本要过 24 小时才装得到（DSH 自带的 pnpm 的默认规则），想马上用新版、而且连得上 GitHub 时，填 `github:oceanz0312/dsh-lovideo#v<版本号>`。
 
 第一次做片前点「准备」，电脑上没有的浏览器、ffmpeg、字体才会下载；每样都有国内镜像（npmmirror、jsDelivr、国内 PyPI 源），谁快用谁，一个地址卡住会自动换下一个。都下不动时会列出每个地址的原因，也可以自己装好 Chrome / Edge 或 ffmpeg 后再点一次。
 
@@ -58,7 +58,7 @@ npm run dev            # 开着：客户端改了自动重新打包
 
 ### 发版（先 GitHub、验过再 npm）
 
-两种装法：在 DeepSeek Harness「插件 → 添加插件」里填带确切版本号的 `dsh-lovideo@0.5.3`（从 npm 装，插件页会提示新版本、可以一键更新），或填 `https://github.com/oceanz0312/dsh-lovideo`（从 GitHub 装，不会提示更新；要固定版本填 `github:oceanz0312/dsh-lovideo#v0.4.3`）。npm 装法要写版本号：桌面版自带的 pnpm 默认不装 24 小时内刚发布的版本（`minimumReleaseAge` 默认 1440 分钟），只填 `dsh-lovideo` 会装上上一个版本。从 GitHub 安装不会构建界面，所以 `dist/client.js` 跟着仓库走。
+两种装法：在 DeepSeek Harness「插件 → 添加插件」里填 `dsh-lovideo`（从 npm 装，插件页会提示新版本、可以一键更新），或填 `https://github.com/oceanz0312/dsh-lovideo`（从 GitHub 装，不会提示更新；要固定版本填 `github:oceanz0312/dsh-lovideo#v<版本号>`）。npm 上新发的版本要过 24 小时才装得到：桌面版自带的 pnpm 默认不装 24 小时内刚发布的版本（`minimumReleaseAge` 默认 1440 分钟），填确切版本号 `dsh-lovideo@<版本号>` 也一样会被拦（2026-11-27 实测 0.6.0）；要马上用新版，填 GitHub 标签。从 GitHub 安装不会构建界面，所以 `dist/client.js` 跟着仓库走。
 
 npm 不用在本机发：推 `v*` 标签时，GitHub Actions（`.github/workflows/publish-npm.yml`）先检查打包产物（`test/package.test.mjs`：界面格式、包里的文件清单、`package.json`），再用 npm 的可信发布发出去（不需要登录、不需要令牌）；这个版本 npm 上已经有了就什么都不发。只推 main 不会发 npm。npm 网站上 `dsh-lovideo` 的设置里已经绑定了本仓库和这个流程文件；改文件名要去那里同步改。发完在仓库的 Actions 页能看到结果。
 
