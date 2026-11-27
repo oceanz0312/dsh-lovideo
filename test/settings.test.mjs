@@ -1,4 +1,4 @@
-// 配音、配乐设置：每家服务各存各的 key 和声音；导演用 lovideo_configure 填，结果里只露末 4 位
+// 配音、配乐设置：每家服务各存各的 key 和声音；Key 由用户在卡片上填（不经过对话），界面只露末 4 位
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
@@ -8,7 +8,7 @@ import { join } from 'node:path'
 process.env.LOVIDEO_DATA_DIR = mkdtempSync(join(tmpdir(), 'lovideo-settings-test-'))
 const { publicSettings, readSettings, updateSettings, voiceConfig } = await import('../src/host/settings.js')
 const { DOUBAO_DEFAULT, doubaoVoiceFor } = await import('../src/host/voicecatalog.js')
-const { TOOLS } = await import('../src/host/tools.js')
+const { TOOLS, notifyKeyReady } = await import('../src/host/tools.js')
 
 test('换配音服务不会冲掉另一家的 key，声音也各记各的', () => {
   updateSettings({ voice: { provider: 'elevenlabs', voices: { elevenlabs: 'voice-abc' } }, keys: { elevenlabs: 'el-key-1234' } })
@@ -41,18 +41,27 @@ test('豆包：没选声音用默认；中文声音念英文片时换成英文�
   assert.equal(doubaoVoiceFor('seed-tts-2.0/my_custom', 'en'), 'seed-tts-2.0/my_custom')
 })
 
-test('lovideo_configure：填 key、换服务，结果里只露末 4 位', async () => {
+test('lovideo_configure：Key 不能经过参数；要 Key 时出卡片，没 Key 的服务先不切；卡片填好后叫醒导演', async () => {
   const configure = TOOLS.find(t => t.name === 'lovideo_configure')
-  const r = await configure.execute({ voice_provider: 'doubao', music_provider: 'volcengine', keys: { doubao: 'secret-doubao-9999', volcengine_ak: 'AKLT-abcd', volcengine_sk: 'sk-zzzz-1111' }, test_voice: false })
+  updateSettings({ voice: { provider: 'local' }, music: { provider: 'local' }, keys: { doubao: null, volcAk: null, volcSk: null } })
+  await assert.rejects(configure.execute({ keys: { doubao: 'sk-1' } }), /keys/)
+  const told = []
+  const agent = { id: 'sess-1', followup: m => told.push(m.content[0].text) }
+  const r = await configure.execute(Object.freeze({ voice_provider: 'doubao', music_provider: 'volcengine', ask_keys: ['doubao', 'volcengine'] }), { agent })
   const s = readSettings()
-  assert.equal(s.voice.provider, 'doubao')
-  assert.equal(s.music.provider, 'volcengine')
-  assert.equal(s.keys.volcAk, 'AKLT-abcd')
-  assert.match(r.text, /••••9999/)
-  assert.equal(r.text.includes('secret-doubao-9999'), false)
-  assert.equal(r.text.includes('sk-zzzz-1111'), false)
-  // 豆包会把内置的声音列出来，导演可以照着换
-  assert.match(r.text, /zh_female_vv_uranus_bigtts ｜ Vivi/)
+  assert.equal(s.voice.provider, 'local', '还没填 Key 的服务不切过去')
+  assert.equal(s.music.provider, 'local')
+  assert.match(r.text, /session_id: sess-1/)
+  assert.match(r.text, /豆包语音、火山配乐/)
+  // 卡片上填好、试听通过：导演收到通知
+  assert.equal(notifyKeyReady('sess-1', 'doubao'), true)
+  assert.match(told[0], /\[lovideo 通知\] 用户在卡片上填好了 Key：豆包语音/)
+  assert.equal(notifyKeyReady('sess-1', 'nope'), false)
+  assert.equal(notifyKeyReady('no-such-session', 'doubao'), false)
+  // 已经有 Key 的服务照常切过去
+  updateSettings({ keys: { doubao: 'k-5678' } })
+  await configure.execute({ voice_provider: 'doubao', ask_keys: ['doubao'] }, { agent })
+  assert.equal(readSettings().voice.provider, 'doubao')
   await assert.rejects(configure.execute({ voice_provider: 'nope' }), /voice_provider 只能是/)
 })
 

@@ -65,6 +65,50 @@ export function SoundSettings({ st, onState }) {
   )
 }
 
+/* ---------- 对话里的「填 Key」卡片 ---------- */
+
+const KEY_TITLES = { doubao: '豆包语音', elevenlabs: 'ElevenLabs', openai: 'OpenAI 兼容', volcengine: '火山配乐' }
+
+/**
+ * 导演请用户填哪几家的 Key，卡片上就出哪几家的输入框。和设置页是同一套面板：保存后先试听一句，念出来了才切过去。
+ * Key 直接存进本机设置，不经过对话，导演也看不到；某家配好了就调 onReady(那一家)，由外面告诉导演。
+ */
+export function KeyCard({ services, onReady }) {
+  const [st, setSt] = React.useState(null)
+  const [err, setErr] = React.useState(null)
+  const [help, setHelp] = React.useState(null)
+  React.useEffect(() => {
+    api('state').then(setSt, e => setErr(e.message))
+  }, [])
+  const eleven = useElevenVoices(st?.settings.keys.elevenlabs)
+  const [doubao] = useLive(services.includes('doubao') ? 'voice/catalog?provider=doubao' : null, () => false)
+  if (err) return <div className="lv-err">{err}</div>
+  if (!st) return <div className="lv-subtle lv-shimmer">读取中…</div>
+  const save = async patch => {
+    const next = await api('settings', patch)
+    setSt(next)
+    // 配音服务：试听念出来了才会切过去（useVerify）；火山配乐：AK、SK 都有了才切过去
+    const ready = patch.voice?.provider || (patch.music?.provider === 'volcengine' ? 'volcengine' : null)
+    if (ready && services.includes(ready)) onReady(ready)
+    return next
+  }
+  return (
+    <>
+      <style>{CSS}</style>
+      {services.map(k => (
+        <div key={k} className="lv-panel" style={{ marginTop: 0, marginBottom: 10 }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>{KEY_TITLES[k]}</div>
+          {k === 'doubao' ? <DoubaoPanel st={st} save={save} list={doubao?.voices || []} onHelp={() => setHelp('doubao')} /> : null}
+          {k === 'elevenlabs' ? <ElevenPanel st={st} save={save} eleven={eleven} onHelp={() => setHelp('elevenlabs')} /> : null}
+          {k === 'openai' ? <OpenAIPanel st={st} save={save} /> : null}
+          {k === 'volcengine' ? <VolcPanel st={st} save={save} onHelp={() => setHelp('volcengine')} /> : null}
+        </div>
+      ))}
+      <HelpDialog which={help} onClose={() => setHelp(null)} />
+    </>
+  )
+}
+
 /* ---------- 配音 ---------- */
 
 function VoiceSettings({ st, save, refresh, onHelp }) {
@@ -639,7 +683,7 @@ const HELP = {
 1. 打开 https://console.volcengine.com/speech ，登录或注册火山引擎（实名认证要我本人来做，到这一步停下来叫我）。
 2. 开通「语音合成大模型」（有免费额度，超出按字数计费；要付费时先告诉我价格）。
 3. 进入「API Key 管理」，新建一个 API Key 并复制。新版控制台只要这一个 Key，不需要 App ID 和 Access Token。
-4. 把 Key 填进 lovideo 插件：设置 → 配音 → 豆包语音 → API Key，点保存（会自动试听一句）。如果你能调用 lovideo_configure 工具，就用它填：voice_provider 设为 doubao，keys.doubao 填这个 Key。
+4. 把 Key 填进 lovideo 插件：设置 → 配音 → 豆包语音 → API Key，点保存（会自动试听一句）。如果你能调用 lovideo_configure 工具，就带上 ask_keys: ["doubao"]，对话里会出一张卡片，请我自己把 Key 粘贴进去；不要让我把 Key 发在对话里。
 不要在回复里把完整的 Key 念出来，只说末 4 位。`,
   },
   elevenlabs: {
@@ -653,7 +697,7 @@ const HELP = {
     copy: `帮我拿到 ElevenLabs 的 API Key：
 1. 打开 https://elevenlabs.io/app/settings/api-keys ，登录（可以用 Google 账号；需要我本人登录时停下来叫我）。
 2. 点「Create API Key」，权限至少勾上 Text to Speech 和 Voices（读）；要用它做配乐再勾 Music。复制 Key（只显示一次）。
-3. 把 Key 填进 lovideo 插件：设置 → 配音 → ElevenLabs → API Key，点保存；配乐选 ElevenLabs 时会用同一个 Key。如果你能调用 lovideo_configure 工具，就用它填：voice_provider 设为 elevenlabs，keys.elevenlabs 填这个 Key。
+3. 把 Key 填进 lovideo 插件：设置 → 配音 → ElevenLabs → API Key，点保存；配乐选 ElevenLabs 时会用同一个 Key。如果你能调用 lovideo_configure 工具，就带上 ask_keys: ["elevenlabs"]，对话里会出一张卡片，请我自己把 Key 粘贴进去；不要让我把 Key 发在对话里。
 要付费升级套餐时先问我。不要在回复里把完整的 Key 念出来，只说末 4 位。`,
   },
   volcengine: {
@@ -667,7 +711,7 @@ const HELP = {
     copy: `帮我开通火山引擎的「生成纯音乐」，拿到配乐用的 AccessKey 和 SecretKey：
 1. 打开 https://console.volcengine.com ，登录或注册（实名认证要我本人来做，到这一步停下来叫我）。在顶部搜索「音乐生成」或「智能创作」，开通「生成纯音乐」（接口 GenBGMForTime，约 ¥0.002/秒，开通前告诉我价格）。
 2. 打开 https://console.volcengine.com/iam/keymanage/ ，新建访问密钥，复制 AccessKey ID 和 SecretAccessKey（SecretKey 只显示一次）。更稳妥的做法是新建一个只有编程访问的子用户，只给 imagination:GenBGMForTime 和 imagination:QuerySong 权限，用子用户的密钥。
-3. 填进 lovideo 插件：设置 → 配乐 → 火山配乐，分别粘贴 AK、SK，点保存。如果你能调用 lovideo_configure 工具，就用它填：music_provider 设为 volcengine，keys.volcengine_ak、keys.volcengine_sk 分别填两个值。
+3. 填进 lovideo 插件：设置 → 配乐 → 火山配乐，分别粘贴 AK、SK，点保存。如果你能调用 lovideo_configure 工具，就带上 ask_keys: ["volcengine"]，对话里会出一张卡片，请我自己把 AK、SK 粘贴进去；不要让我把它们发在对话里。
 不要在回复里把完整的 Key 念出来，只说末 4 位。`,
   },
 }

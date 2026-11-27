@@ -5,7 +5,7 @@ import { api, argsOf, fileUrl, loginUrl, openExternal, pick, resultText, useLive
 import { Badge, Bar, Button, Dialog, LinkButton, Mark, Media, Player, SEG, STEP, SpeedButton, Spin, StatusBadge, Styles, Switch, fmtSec, usePlaybackRate } from './ui.jsx'
 import { openManager } from './host.js'
 import { toast } from './toast.jsx'
-import { ListenButton, MUSIC_NAMES, VOICE_NAMES, jobText } from './sound-settings.jsx'
+import { KeyCard, ListenButton, MUSIC_NAMES, VOICE_NAMES, jobText } from './sound-settings.jsx'
 
 /* ---------- 外框 ---------- */
 
@@ -942,8 +942,56 @@ export function DistillCard(props) {
   )
 }
 
+/* ---------- 填 Key ---------- */
+
+const KEY_LABELS = { doubao: '豆包语音', elevenlabs: 'ElevenLabs', openai: 'OpenAI 兼容', volcengine: '火山配乐' }
+
+/** 导演请用户填 Key：卡片上直接粘贴（Key 不经过对话），配好一家就告诉导演；没要 Key 的配置调用不出卡片 */
+export function ConfigureCard(props) {
+  const services = (argsOf(props.block).ask_keys || []).filter(k => KEY_LABELS[k])
+  const sessionId = done(props) ? pick(resultText(props.block), 'session_id') : null
+  const key = `lovideo-keys-${props.callId}`
+  const [told, setTold] = React.useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(key) || '[]')
+    } catch {
+      return []
+    }
+  })
+  const [err, setErr] = React.useState(null)
+  if (!services.length) return null
+  if (!done(props)) return <Pending props={props} label="填 Key" />
+  const onReady = async service => {
+    if (told.includes(service)) return
+    setErr(null)
+    try {
+      if (sessionId) await api('configure/key-ready', { sessionId, service })
+      const next = [...told, service]
+      setTold(next)
+      try {
+        localStorage.setItem(key, JSON.stringify(next))
+      } catch {
+        // 存不了就只在这次页面里记着
+      }
+    } catch (e) {
+      setErr(e.message)
+    }
+  }
+  const left = services.filter(k => !told.includes(k))
+  return (
+    <Shell title={`填 ${services.map(k => KEY_LABELS[k]).join('、')} 的 Key`}>
+      <div className="lv-card-body">
+        <div className="lv-subtle" style={{ marginBottom: 10 }}>{left.length ? 'Key 只存在这台电脑上，不会发到对话里；保存后会先试听一句，念出来了才换过去' : '都配好了，已告诉导演接着做'}</div>
+        <KeyCard services={services} onReady={onReady} />
+        {err ? <div className="lv-err" style={{ marginTop: 6 }}>{err}</div> : null}
+      </div>
+    </Shell>
+  )
+}
+
 export const TOOL_VIEWS = {
   lovideo_setup: SetupCard,
+  lovideo_configure: ConfigureCard,
   lovideo_styles: StylesCard,
   lovideo_plan: PlanCard,
   lovideo_produce: WorkCard,

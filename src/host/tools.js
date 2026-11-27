@@ -176,7 +176,7 @@ const setup = tool({
       `lovideo 账号：${s.account ? '已登录（平台风格可用）' : '未登录（用平台风格要先登录，注册即免费；卡片上有登录按钮，用户登录后你会收到通知）'}`,
       `配音：${VOICE_NAMES[s.voice.provider] || s.voice.provider}`,
       `配乐：${MUSIC_NAMES_T[s.music.provider] || s.music.provider}`,
-      '（用户想用豆包、ElevenLabs、火山等自己的服务时，按 lovideo-setup 向导帮他开通并用 lovideo_configure 填好）',
+      '（用户想用豆包、ElevenLabs、火山等自己的服务时，按 lovideo-setup 向导带他开通，再用 lovideo_configure 的 ask_keys 让他在卡片里填 Key）',
       `我的风格：${listMine().filter(x => !x.draft).length} 个`,
     ]
     return { text: lines.join('\n'), ready: env.ready && Boolean(m), login: Boolean(s.account) }
@@ -185,26 +185,40 @@ const setup = tool({
 
 const VOICE_NAMES = { local: '离线配音', system: '系统自带语音', doubao: '豆包语音', elevenlabs: 'ElevenLabs', openai: 'OpenAI 兼容', none: '不配音（只出字幕）' }
 const MUSIC_NAMES_T = { local: '离线配乐（没下载时导演建议的配乐会跳过）', volcengine: '火山配乐', elevenlabs: 'ElevenLabs', none: '不配乐' }
-const KEY_ARG = { doubao: 'doubao', elevenlabs: 'elevenlabs', openai: 'openai', volcengine_ak: 'volcAk', volcengine_sk: 'volcSk' }
+// 卡片上能让用户填 Key 的服务
+const KEY_SERVICES = { doubao: '豆包语音', elevenlabs: 'ElevenLabs', openai: 'OpenAI 兼容', volcengine: '火山配乐' }
+
+// 等用户在卡片上填 Key 的会话（会话 id → 导演）
+const keyWaiters = new Map()
+
+/** 用户在「填 Key」卡片上填好、试听通过：叫醒这个会话的导演接着做 */
+export function notifyKeyReady(sessionId, service) {
+  if (!KEY_SERVICES[service]) return false
+  let live
+  try {
+    live = hostCtx?.get('agents')?.get(sessionId)
+  } catch {
+    live = undefined
+  }
+  const agent = live || keyWaiters.get(sessionId)
+  if (!agent) return false
+  const done = service === 'volcengine' ? '火山配乐的 AK、SK 已经保存，配乐换成了火山配乐' : `${KEY_SERVICES[service]}的 Key 已经保存，试听念出来了，配音换成了${KEY_SERVICES[service]}`
+  followup(agent, `[lovideo 通知] 用户在卡片上填好了 Key：${done}。接着做刚才要做的事（比如要用 ElevenLabs 配乐就调用 lovideo_configure 把 music_provider 设成 elevenlabs），不用再问 Key。`)
+  return true
+}
 
 const configure = tool({
   name: 'lovideo_configure',
-  description: '修改 lovideo 的配音、配乐设置：用哪家服务、各家的 API Key、配音声音。改完默认自动试听一句配音，确认能用。按 lovideo-setup 向导替用户拿到 key 后用它填进插件；只改传了的项。结果里 key 只显示末 4 位。',
+  description: '修改 lovideo 的配音、配乐设置：用哪家服务、配音声音；要用户填 API Key 时用 ask_keys 在对话里出一张卡片，用户自己把 Key 粘贴到卡片上（Key 不经过对话、你也看不到）。改完默认自动试听一句配音，确认能用；只改传了的项。',
   parameters: {
     type: 'object', additionalProperties: false,
     properties: {
       voice_provider: { type: 'string', enum: VOICE_PROVIDERS, description: '配音用什么：local 离线配音、doubao 豆包语音、elevenlabs、system 系统自带语音、openai OpenAI 兼容、none 不配音' },
       voice_id: { type: 'string', description: '配音声音的 ID（豆包形如 seed-tts-2.0/zh_female_vv_uranus_bigtts，ElevenLabs 是 voice_id）；不填用默认' },
       music_provider: { type: 'string', enum: MUSIC_PROVIDERS, description: '配乐用什么：local 离线配乐、volcengine 火山配乐、elevenlabs（每部片子要不要配乐由分镜卡上的开关定）' },
-      keys: {
-        type: 'object', additionalProperties: false, description: '要填的 key，只传要改的',
-        properties: {
-          doubao: { type: 'string', description: '豆包语音 API Key' },
-          elevenlabs: { type: 'string', description: 'ElevenLabs API Key（配音配乐共用）' },
-          openai: { type: 'string', description: 'OpenAI 兼容接口的 key' },
-          volcengine_ak: { type: 'string', description: '火山配乐 AccessKey ID' },
-          volcengine_sk: { type: 'string', description: '火山配乐 SecretAccessKey' },
-        },
+      ask_keys: {
+        type: 'array', items: { type: 'string', enum: Object.keys(KEY_SERVICES) },
+        description: '要用户填 Key 的服务：卡片上出现这些服务的输入框（doubao 豆包语音、elevenlabs ElevenLabs，配音配乐共用、openai OpenAI 兼容、volcengine 火山配乐的 AK 和 SK）。用户粘贴、保存，试听念出来了才切过去；填好后你会收到「[lovideo 通知] 用户在卡片上填好了 Key」。不要让用户把 Key 发在对话里',
       },
       openai_url: { type: 'string', description: 'OpenAI 兼容接口地址' },
       openai_model: { type: 'string', description: 'OpenAI 兼容的配音模型' },
@@ -212,9 +226,16 @@ const configure = tool({
       test_music: { type: 'boolean', description: '改完试做一首 30 秒配乐（会按配乐服务的价格计费），默认否' },
     },
   },
-  async run(args) {
-    const keys = {}
-    for (const [arg, name] of Object.entries(KEY_ARG)) if (typeof args.keys?.[arg] === 'string') keys[name] = args.keys[arg]
+  async run(frozen, exec) {
+    // 宿主交来的参数是冻结的，下面要删掉几项，先复制一份
+    const args = { ...frozen }
+    const asks = [...new Set(args.ask_keys || [])]
+    if (asks.length && exec?.agent && typeof exec.agent.followup === 'function') keyWaiters.set(exec.agent.id, exec.agent)
+    // 还等着用户填 Key 的服务先不切过去：卡片上保存、试听念出来了才切（免得切到一个没 Key 的服务）
+    const before = readSettings()
+    const keyless = p => asks.includes(p) && !(p === 'volcengine' ? before.keys.volcAk && before.keys.volcSk : before.keys[p])
+    if (keyless(args.voice_provider)) delete args.voice_provider
+    if (keyless(args.music_provider)) delete args.music_provider
     const target = args.voice_provider || readSettings().voice.provider
     updateSettings({
       voice: {
@@ -224,7 +245,6 @@ const configure = tool({
         ...(args.openai_model !== undefined ? { openaiModel: args.openai_model } : {}),
       },
       ...(args.music_provider ? { music: { provider: args.music_provider } } : {}),
-      keys,
     })
     const s = readSettings()
     const tail = k => (s.keys[k] ? `••••${s.keys[k].slice(-4)}` : '没填')
@@ -233,6 +253,11 @@ const configure = tool({
       `配乐：${MUSIC_NAMES_T[s.music.provider] || s.music.provider}`,
       `Key：豆包 ${tail('doubao')}，ElevenLabs ${tail('elevenlabs')}，火山配乐 ${tail('volcAk')} / ${tail('volcSk')}，OpenAI 兼容 ${tail('openai')}`,
     ]
+    if (asks.length) {
+      // 卡片要从结果里找到这个会话，用户填好后叫醒这里的导演
+      const session = exec?.agent?.id ? `session_id: ${exec.agent.id}\n` : ''
+      return { text: `${session}已在对话里出了填 Key 的卡片：${asks.map(k => KEY_SERVICES[k]).join('、')}。用一句话请用户把 Key 粘贴到卡片上（不要让用户发在对话里），然后停下等通知。\n${lines.join('\n')}` }
+    }
     const tmp = ensureDir(tmpDir())
     if (args.test_voice !== false && !['none', 'local'].includes(s.voice.provider)) {
       try {

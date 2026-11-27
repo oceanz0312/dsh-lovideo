@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process'
 import { dirname, extname, join, resolve } from 'node:path'
 import { assertId, isInside } from './paths.js'
 import { FILM_DURATIONS, deleteWork, events, getWork, listWorks, requireWork, updateWork, workDir } from './works.js'
-import { askDirector, pickStyle } from './tools.js'
+import { askDirector, notifyKeyReady, pickStyle } from './tools.js'
 import { generateMusic } from './music.js'
 import { switchesOf, trackOf } from './assemble.js'
 import { listStyles, mineDir, removeMine, installPlatformStyle, platformCatalog } from './styles.js'
@@ -288,6 +288,11 @@ export async function route(req, res) {
     const s = [...mine, ...platform].find(x => x.slug === slug)
     if (!s) return json(res, 404, { error: '没有这个风格' })
     if (!pickStyle(String(body.sessionId || ''), s)) return json(res, 409, { error: '这个对话已经关了，回到对话里直接说要用哪个风格' })
+    return json(res, 200, { ok: true })
+  }
+  // 「填 Key」卡片上填好、试听通过：叫醒这个会话的导演接着做（只传是哪家服务，Key 本身早已存进设置、不经过这里）
+  if (path === 'configure/key-ready') {
+    if (!notifyKeyReady(String(body.sessionId || ''), String(body.service || ''))) return json(res, 409, { error: '这个对话已经关了，回到对话里告诉导演已经填好了' })
     return json(res, 200, { ok: true })
   }
   if (path === 'runtime/setup') {
