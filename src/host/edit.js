@@ -12,6 +12,7 @@ import { ensureDir } from './paths.js'
 import { requireWork, updateWork, workDir } from './works.js'
 import { SWITCHES, assembleFilm, buildTimeline, captionCues, normalizeTimeline, syncSwitches, trackOf } from './assemble.js'
 import { startProduction } from './produce.js'
+import { producerRecord } from './lock.js'
 import { generateMusic } from './music.js'
 import { readSettings } from './settings.js'
 
@@ -89,12 +90,13 @@ export async function reviseFilm(id, ops = []) {
   }
   // 只切字幕显示：字幕不烧进成片（播放时叠上去、导出时按开关烧），不用重新拼
   if (ops.every(op => op.op === 'subtitles')) return { work: requireWork(id), done, background: false }
-  await updateWork(id, w => ((w.status = 'producing'), (w.job.state = 'assembling'), w))
+  // 重新拼接也算「在做」：记下是这个窗口，另一个窗口启动时不会把它标成暂停
+  await updateWork(id, w => ((w.status = 'producing'), (w.producer = producerRecord()), (w.job.state = 'assembling'), w))
   try {
     const film = await assembleFilm(id, tl)
-    await updateWork(id, w => ((w.film = film), (w.status = 'done'), (w.job.state = 'done'), w))
+    await updateWork(id, w => ((w.film = film), (w.status = 'done'), (w.producer = null), (w.job.state = 'done'), w))
   } catch (err) {
-    await updateWork(id, w => ((w.status = 'done'), (w.job.state = 'done'), (w.job.error = `重新拼接失败：${err.message}`), w))
+    await updateWork(id, w => ((w.status = 'done'), (w.producer = null), (w.job.state = 'done'), (w.job.error = `重新拼接失败：${err.message}`), w))
     throw err
   }
   return { work: requireWork(id), done, background: false }

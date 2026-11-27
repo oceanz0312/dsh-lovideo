@@ -22,6 +22,7 @@ import { assembleFilm, buildTimeline, syncSwitches } from './assemble.js'
 import { MUSIC_NAMES, generateMusic } from './music.js'
 import { filmLang, voicePickOf, withMusicSource } from './filmsound.js'
 import { musicReady } from './localvoice.js'
+import { busyElsewhereError, ownedElsewhere, producerRecord } from './lock.js'
 
 export const ASPECTS = { '16:9': { width: 1920, height: 1080 }, '9:16': { width: 1080, height: 1920 } }
 // 一镜最多让模型写几次。推理用中间档：DeepSeek 的档位是 关闭/低/高/最高，最低一档等于不思考，
@@ -64,16 +65,24 @@ async function setSegment(id, segId, patch) {
   })
 }
 
-/** 插件重启时，上次没做完的片子标成暂停（用户点继续再接着做） */
+/** 正在另一个还开着的 DSH 窗口（另一个进程）里做 */
+export const busyElsewhere = work => work?.status === 'producing' && !controllers.has(work.id) && ownedElsewhere(work.producer)
+
+/**
+ * 插件重启时，上次没做完的片子标成暂停（用户点继续再接着做）。
+ * 桌面版和网页版会同时开着：另一个还活着的窗口正在做的不碰，只处理做它的进程已经不在了的。
+ */
 export async function markInterrupted(works) {
   for (const w of works) {
-    if (w.status === 'producing' && !controllers.has(w.id)) {
-      await updateWork(w.id, x => {
-        x.status = 'paused'
-        if (x.job) x.job.state = 'paused'
-        return x
-      })
-    }
+    if (w.status !== 'producing' || controllers.has(w.id)) continue
+    // 在锁里按最新的 work.json 再判断一次：另一个窗口可能刚刚开拍
+    await updateWork(w.id, x => {
+      if (x.status !== 'producing' || controllers.has(x.id) || ownedElsewhere(x.producer)) return false
+      x.status = 'paused'
+      if (x.job) x.job.state = 'paused'
+      x.producer = null
+      return x
+    }).catch(() => {})
   }
 }
 
@@ -88,13 +97,18 @@ export async function startProduction(id, opts = {}) {
   const work = requireWork(id)
   if (!work.plan?.scenes?.length) throw Object.assign(new Error('还没有分镜，先让导演出分镜'), { status: 400 })
   if (controllers.has(id)) return work
+  if (busyElsewhere(work)) throw busyElsewhereError()
   const env = runtimeStatus()
   if (!env.ready) throw Object.assign(new Error('本机渲染环境还没准备好，先在 lovideo 里点「准备渲染环境」'), { status: 409, code: 'runtime_missing' })
   const ctl = new AbortController()
   controllers.set(id, ctl)
   const fresh = !work.job || work.job.planRevision !== work.plan.revision
   await updateWork(id, w => {
+    // 在锁里按最新的再看一次：两个窗口同时点开拍，只有先进来的那个做
+    if (w.status === 'producing' && ownedElsewhere(w.producer)) throw busyElsewhereError()
     w.status = 'producing'
+    // 记下谁在做：别的窗口启动时据此判断这部片子是不是还有人在做
+    w.producer = producerRecord()
     if (fresh) {
       // 新一版分镜：上一版做好的镜头先记下来，内容没变的直接沿用，只重做改了的。
       // 换了风格或画幅，上一版的镜头一个都不能用
@@ -112,6 +126,9 @@ export async function startProduction(id, opts = {}) {
       }
     }
     return w
+  }).catch(err => {
+    controllers.delete(id)
+    throw err
   })
   // run_ 自己接住所有错误并写进作品；这里只做清理，也不留没人接的 promise
   const done = () => controllers.delete(id)
@@ -126,6 +143,8 @@ export function pauseAllProductions() {
 
 export function pauseProduction(id) {
   const ctl = controllers.get(id)
+  // 别的窗口在做的，这里停不了它，明说让用户去那个窗口里点
+  if (!ctl && busyElsewhere(getWork(id))) throw busyElsewhereError()
   if (!ctl) return false
   ctl.abort()
   return true
@@ -247,6 +266,7 @@ async function run_(id, ctl) {
       w.timeline = timeline
       w.film = film
       w.status = 'done'
+      w.producer = null
       w.job.state = 'done'
       w.job.endedAt = new Date().toISOString()
       w.job.progress = 1
@@ -257,6 +277,7 @@ async function run_(id, ctl) {
     const aborted = err.name === 'AbortError' || signal.aborted
     await updateWork(id, w => {
       w.status = aborted ? 'paused' : 'failed'
+      w.producer = null
       if (w.job) {
         w.job.state = aborted ? 'paused' : 'failed'
         w.job.error = aborted ? null : err.message

@@ -16,6 +16,7 @@ import { closeBrowser } from './render.js'
 import { stopAll as stopLocalVoice } from './localvoice.js'
 import { readFrontmatter } from './styles.js'
 import { installBriefContext } from './composer.js'
+import { stopKeepAlive } from './lock.js'
 
 export const name = 'dsh-lovideo'
 export const inject = ['webServer', 'connection', 'tools', 'skills']
@@ -82,6 +83,8 @@ export function apply(ctx) {
     loginEvents.off('login', onLogin)
     // 热重载时旧代码不能在后台接着做：先暂停，新代码起来后可以「继续」
     pauseAllProductions()
+    // 不再报到：别的 DSH 窗口据此知道这里已经不在做了
+    stopKeepAlive()
     closeBrowser()
     stopLocalVoice()
   })

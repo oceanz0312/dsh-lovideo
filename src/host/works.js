@@ -10,6 +10,7 @@ import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import { assertId, ensureDir, worksDir } from './paths.js'
 import { readJson, writeJson } from './json-file.js'
+import { withFileLock } from './lock.js'
 
 export const events = new EventEmitter()
 events.setMaxListeners(100)
@@ -40,10 +41,15 @@ export function listWorks() {
     .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
 }
 
-function save(work) {
+function write(work) {
   work.updatedAt = new Date().toISOString()
   ensureDir(workDir(work.id))
   writeJson(file(work.id), work)
+  return work
+}
+
+function save(work) {
+  write(work)
   events.emit('change', { id: work.id, work })
   return work
 }
@@ -89,17 +95,23 @@ export function createWork(fields) {
   return save(work)
 }
 
-// 同一进程里对同一部作品的修改排队进行，避免两个异步步骤互相覆盖
+// 同一进程里对同一部作品的修改排队进行，避免两个异步步骤互相覆盖；
+// 跨进程（DSH 桌面版和网页版同时开着）靠 work.json 旁边的锁文件排队
 const queues = new Map()
 
-/** 读出最新的 work.json，交给 fn 修改，再写回；fn 返回 false 表示不写 */
+/** 读出最新的 work.json，交给 fn（同步）修改，再写回；fn 返回 false 表示不写 */
 export function updateWork(id, fn) {
   const prev = queues.get(id) || Promise.resolve()
   const next = prev.then(() => {
-    const work = requireWork(id)
-    const out = fn(work)
-    if (out === false) return work
-    return save(out && typeof out === 'object' ? out : work)
+    // 锁里只读、改、写，几毫秒就放；通知界面放到锁外面
+    const { work, changed } = withFileLock(file(id), () => {
+      const work = requireWork(id)
+      const out = fn(work)
+      if (out === false) return { work, changed: false }
+      return { work: write(out && typeof out === 'object' ? out : work), changed: true }
+    })
+    if (changed) events.emit('change', { id: work.id, work })
+    return work
   })
   queues.set(id, next.catch(() => {}))
   return next

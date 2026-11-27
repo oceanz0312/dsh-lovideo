@@ -2,7 +2,7 @@
 // 整个文件只存在本机（权限 0600），key 不进作品数据、不上传 lovideo。导演帮用户配置时 key 会经过对话，界面和工具结果里只显示末 4 位。
 import { join } from 'node:path'
 import { dataDir, defaultExportDir, ensureDir } from './paths.js'
-import { readJson, writeJson } from './json-file.js'
+import { readJson, updateJson, writeJson } from './json-file.js'
 
 export const VOICE_PROVIDERS = ['local', 'system', 'doubao', 'elevenlabs', 'openai', 'none']
 // 要不要配乐由每部片子的开关定，这里只选用什么来做（没有「不配乐」）
@@ -37,7 +37,11 @@ const DEFAULTS = {
 const file = () => join(ensureDir(dataDir()), 'settings.json')
 
 export function readSettings() {
-  const saved = readJson(file(), {}) || {}
+  return withDefaults(readJson(file(), {}))
+}
+
+function withDefaults(saved) {
+  saved = saved || {}
   return {
     ...DEFAULTS,
     ...saved,
@@ -52,6 +56,18 @@ export function readSettings() {
 export function writeSettings(next) {
   writeJson(file(), next, { secret: true })
   return next
+}
+
+/**
+ * 改设置：在锁里读最新的设置交给 fn 改（同步），再写回，返回改后的设置。
+ * DSH 桌面版和网页版可能同时改，各改各的项不会互相冲掉。
+ */
+export function changeSettings(fn) {
+  return updateJson(file(), saved => {
+    const s = withDefaults(saved)
+    fn(s)
+    return s
+  }, { secret: true })
 }
 
 const mask = key => (key ? `••••${String(key).slice(-4)}` : '')
@@ -92,7 +108,10 @@ const str = (v, max = 400) => (typeof v === 'string' ? v.trim().slice(0, max) : 
  *   keys:  { doubao: '…' }  空字符串或掩码表示不改，null 表示删除
  */
 export function updateSettings(patch = {}) {
-  const s = readSettings()
+  return changeSettings(s => applyPatch(s, patch))
+}
+
+function applyPatch(s, patch) {
   const pickProvider = (cur, p, providers) => {
     if (p === undefined) return cur
     if (!providers.includes(p)) throw Object.assign(new Error('不支持的服务商'), { status: 400 })
@@ -125,11 +144,10 @@ export function updateSettings(patch = {}) {
     const m = patch.model
     s.model = m && typeof m.provider === 'string' && typeof m.model === 'string' ? { provider: m.provider, model: m.model } : null
   }
-  return writeSettings(s)
 }
 
 export function setAccount(account) {
-  const s = readSettings()
-  s.account = account
-  return writeSettings(s)
+  return changeSettings(s => {
+    s.account = account
+  })
 }
