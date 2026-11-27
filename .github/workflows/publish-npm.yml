@@ -1,11 +1,14 @@
-# 每次推到 main：package.json 的版本 npm 上还没有，就自动发到 npm；版本没变的推送什么都不发。
+# 推 v* 标签时发到 npm（`npm run release:tag` 推标签）。只推 main 不发：发版先推 main，
+# 在桌面版里按 GitHub 装法验过（README「发版」第 4 步），再打标签，npm 用户才拿得到。
+# 标签对应的版本 npm 上已经有了就什么都不发。
 # 用 npm 的可信发布（Trusted Publishing）：npm 网站上 dsh-lovideo 的设置里绑定了这个仓库和这个文件，
-# 这里不需要任何令牌；npm 上还会标明这个包是由本仓库构建的（provenance）。
+# 这里不需要任何令牌；npm 上还会标明这个包是由本仓库构建的（provenance）。改文件名要去 npm 同步改。
 name: 发布到 npm
 
 on:
   push:
-    branches: [main]
+    tags: ['v*']
+  # 手动重跑：Run workflow 时在 ref 里选那个标签（选分支会在下面的检查里被拦住）
   workflow_dispatch:
 
 permissions:
@@ -27,14 +30,18 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      # 可信发布要 npm 11.5.1 以上
-      - run: npm install -g npm@latest
+      # 可信发布要 npm 11.5.1 以上。固定版本：npm 出了新版不会悄悄改变发布行为，要升级就改这里
+      - run: npm install -g npm@11.6.2
 
-      - name: 这个版本 npm 上有没有
+      - name: 标签和版本号对得上，npm 上还没有这个版本
         id: check
         run: |
           NAME=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_TYPE" != "tag" ] || [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "::error::要从标签 v$VERSION 发布，现在是 $GITHUB_REF_TYPE $GITHUB_REF_NAME"
+            exit 1
+          fi
           if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
             echo "$NAME@$VERSION 已经在 npm 上，不用发"
             echo "publish=false" >> "$GITHUB_OUTPUT"
@@ -45,6 +52,16 @@ jobs:
 
       - if: steps.check.outputs.publish == 'true'
         run: npm ci
+
+      # 构建界面并检查格式（id 等于包名、没有顶层 import/export），核对包里的文件清单和 package.json
+      - name: 检查打包产物
+        if: steps.check.outputs.publish == 'true'
+        run: node --test --test-force-exit test/package.test.mjs
+
+      # 把要发出去的文件清单留在日志里，出问题时能对照
+      - name: 列出包里的文件
+        if: steps.check.outputs.publish == 'true'
+        run: npm pack --dry-run --ignore-scripts
 
       # prepack 会重新构建界面（dist/client.js）
       - if: steps.check.outputs.publish == 'true'

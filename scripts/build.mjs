@@ -1,16 +1,20 @@
 // 打包浏览器半边：src/client → dist/client.js（DSH 的 __ModuleLoader__ 格式，React 用宿主的）。
+//
+//   --out <文件>   写到别的地方。测试用它检查产物，不去改写工作区里的开发版 dist/client.js
 import { build, context } from 'esbuild'
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const pkg = (await import(join(root, 'package.json'), { with: { type: 'json' } })).default
-mkdirSync(join(root, 'dist'), { recursive: true })
+const outIndex = process.argv.indexOf('--out')
+const outfile = outIndex >= 0 ? resolve(process.argv[outIndex + 1]) : join(root, 'dist/client.js')
+mkdirSync(dirname(outfile), { recursive: true })
 
 const options = {
   entryPoints: [join(root, 'src/client/index.jsx')],
-  outfile: join(root, 'dist/client.js'),
+  outfile,
   bundle: true,
   format: 'cjs',
   platform: 'browser',
