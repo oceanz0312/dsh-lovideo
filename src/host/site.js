@@ -86,7 +86,7 @@ async function poll(p) {
     if (Date.now() > p.expiresAt) {
       p.state = 'failed'
       p.error = '代码已过期，请重新登录'
-      notify({ kind: 'login-failed', tone: 'warning', text: `lovideo 登录没有完成：${p.error}` })
+      notify({ kind: 'login-failed', tone: 'warning', text: `lovideo 登录没有完成：${p.error}`, error: p.error })
       return
     }
     try {
@@ -103,14 +103,14 @@ async function poll(p) {
         setAccount({ token: body.access_token, email: me?.user?.email ?? null, name: me?.user?.name ?? null, at: new Date().toISOString() })
         p.state = 'done'
         loginEvents.emit('login', { email: me?.user?.email ?? null })
-        notify({ kind: 'login', tone: 'success', text: me?.user?.email ? `已登录 lovideo：${me.user.email}，平台风格都能用了` : '已登录 lovideo，平台风格都能用了' })
+        notify({ kind: 'login', tone: 'success', text: me?.user?.email ? `已登录 lovideo：${me.user.email}，平台风格都能用了` : '已登录 lovideo，平台风格都能用了', email: me?.user?.email ?? null })
         return
       }
       if (body.error === 'slow_down') p.interval += 5
       else if (body.error && body.error !== 'authorization_pending') {
         p.state = 'failed'
         p.error = body.error === 'access_denied' ? '你在网站上拒绝了登录' : body.error_description || body.error
-        notify({ kind: 'login-failed', tone: 'warning', text: `lovideo 登录没有完成：${p.error}` })
+        notify({ kind: 'login-failed', tone: 'warning', text: `lovideo 登录没有完成：${p.error}`, error: p.error })
         return
       }
     } catch {

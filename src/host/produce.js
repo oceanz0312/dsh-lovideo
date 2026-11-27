@@ -272,7 +272,7 @@ async function run_(id, ctl) {
       w.job.progress = 1
       return w
     })
-    notify({ kind: 'film-done', tone: 'success', text: `《${requireWork(id).title}》做好了`, workId: id, sessionId: requireWork(id).sessionId ?? null })
+    notify({ kind: 'film-done', tone: 'success', text: `《${requireWork(id).title}》做好了`, title: requireWork(id).title, workId: id, sessionId: requireWork(id).sessionId ?? null })
   } catch (err) {
     const aborted = err.name === 'AbortError' || signal.aborted
     await updateWork(id, w => {
@@ -284,7 +284,7 @@ async function run_(id, ctl) {
       }
       return w
     }).catch(() => {})
-    if (!aborted) notify({ kind: 'film-failed', tone: 'warning', text: `《${getWork(id)?.title || '作品'}》没做成，可以重试`, workId: id, sessionId: getWork(id)?.sessionId ?? null })
+    if (!aborted) notify({ kind: 'film-failed', tone: 'warning', text: `《${getWork(id)?.title || '作品'}》没做成，可以重试`, title: getWork(id)?.title || null, workId: id, sessionId: getWork(id)?.sessionId ?? null })
   }
 }
 

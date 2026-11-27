@@ -7,12 +7,11 @@ import { PANEL, host } from './host.js'
 import { ToastOverlay } from './toast.jsx'
 import { Mark } from './ui.jsx'
 import { ComposerPopover, DurationChip, StyleChip } from './composer.jsx'
+import { attachLocale, t } from './i18n.js'
 
 function Icon({ size = 18 }) {
   return <Mark size={size} />
 }
-
-const LABEL = { zh: 'lovideo 视频', en: 'lovideo video' }
 
 export const inject = ['slots']
 
@@ -47,18 +46,10 @@ function sessionFacts(binding) {
 
 export function apply(ctx) {
   host.ctx = ctx
-  // 每次渲染时读宿主当前语言；没有 locale 服务时看页面语言
-  const lang = () => {
-    let active = ''
-    try {
-      active = String(ctx.get?.('locale')?.getSnapshot?.()?.active || '')
-    } catch {
-      active = ''
-    }
-    return /^zh/i.test(active || document.documentElement.lang || navigator.language) ? 'zh' : 'en'
-  }
+  // 界面字典注册到宿主的语言服务；侧栏标签每次渲染时按当前语言取
+  attachLocale(ctx)
   ctx.slots.inject('sidebar.panellist', () =>
-    ctx.slots.register({ name: 'sidebar.panellist', id: PANEL, order: 7, label: () => LABEL[lang()] }, Icon))
+    ctx.slots.register({ name: 'sidebar.panellist', id: PANEL, order: 7, label: () => t('panel.label') }, Icon))
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL }, ManagePage))
   // 全局提示条：登录成功、成片做好、导出完成等，在哪个页面都能看到
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'dsh-lovideo.toast' }, ToastOverlay))

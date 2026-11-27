@@ -204,10 +204,10 @@ export async function startExport(id, opts = {}) {
       })
       const w = requireWork(id)
       const last = w.exporting.results.at(-1)
-      notify({ kind: 'export-done', tone: 'success', text: `《${w.title}》已导出${format === 'mp4' ? ' MP4' : format === 'jianying' ? '剪映工程' : ' MP4 和剪映工程'}`, workId: id, path: last?.path })
+      notify({ kind: 'export-done', tone: 'success', text: `《${w.title}》已导出${format === 'mp4' ? ' MP4' : format === 'jianying' ? '剪映工程' : ' MP4 和剪映工程'}`, title: w.title, format, workId: id, path: last?.path })
     } catch (err) {
       await updateWork(id, w => ((w.exporting = { ...w.exporting, state: 'failed', error: err.message }), w)).catch(() => {})
-      if (err.name !== 'AbortError') notify({ kind: 'export-failed', tone: 'warning', text: `《${getWork(id)?.title || '作品'}》导出没成功：${err.message}`.slice(0, 160), workId: id })
+      if (err.name !== 'AbortError') notify({ kind: 'export-failed', tone: 'warning', text: `《${getWork(id)?.title || '作品'}》导出没成功：${err.message}`.slice(0, 160), title: getWork(id)?.title || null, error: err.message, workId: id })
     } finally {
       running.delete(id)
     }

@@ -5,6 +5,7 @@
 import * as React from 'react'
 import { api, subscribe } from './api.js'
 import { openManager, openSession } from './host.js'
+import { t, useT } from './i18n.js'
 
 /* ---------- 队列 ---------- */
 
@@ -33,20 +34,40 @@ const dismiss = id => {
 
 const focused = () => document.visibilityState === 'visible' && document.hasFocus()
 
+/**
+ * 后端通知的文字：按 kind 和参数用当前语言拼；不认识的 kind（或缺参数）用后端带来的中文原文兜底。
+ * 显示时才拼（见 ToastOverlay），排着队的提示在切换语言后也是新语言。
+ */
+function noticeText(n) {
+  const title = n.title || t('notice.untitled')
+  const cut = s => s.slice(0, 160)
+  switch (n.kind) {
+    case 'film-done': return t('notice.filmDone', { title })
+    case 'film-failed': return t('notice.filmFailed', { title })
+    case 'export-done': return n.format === 'mp4' ? t('notice.exportMp4', { title }) : n.format === 'jianying' ? t('notice.exportJianying', { title }) : t('notice.exportBoth', { title })
+    case 'export-failed': return n.error ? cut(t('notice.exportFailed', { title, error: n.error })) : n.text
+    case 'login': return n.email ? t('notice.login', { email: n.email }) : t('notice.loginNoEmail')
+    case 'login-failed': return n.error ? t('notice.loginFailed', { error: n.error }) : n.text
+    case 'runtime-ready': return t('notice.runtimeReady')
+    case 'runtime-failed': return n.error ? cut(t('notice.runtimeFailed', { error: n.error })) : n.text
+    default: return n.text
+  }
+}
+
 /** 后端通知 → 提示文字和按钮 */
 function fromNotice(n) {
   const actions = []
   if (n.kind === 'film-done' || n.kind === 'film-failed') {
     actions.push(n.sessionId
-      ? { label: '回到对话', onClick: () => openSession(n.sessionId) }
-      : { label: '查看', onClick: () => openManager('works') })
+      ? { label: t('common.backToChat'), onClick: () => openSession(n.sessionId) }
+      : { label: t('toast.view'), onClick: () => openManager('works') })
   }
   if (n.kind === 'export-done' && n.path) {
-    actions.push({ label: '在文件夹中显示', onClick: () => api(`works/${n.workId}/reveal`, { path: n.path }).catch(() => {}) })
+    actions.push({ label: t('common.reveal'), onClick: () => api(`works/${n.workId}/reveal`, { path: n.path }).catch(() => {}) })
   }
-  if (n.kind === 'login') actions.push({ label: '看看官方风格', onClick: () => openManager('platform') })
+  if (n.kind === 'login') actions.push({ label: t('toast.seeStyles'), onClick: () => openManager('platform') })
   return {
-    text: n.text,
+    text: noticeText(n),
     tone: n.tone === 'warning' ? 'warning' : 'success',
     actions,
     holdMs: actions.length || n.tone === 'warning' ? 6000 : undefined,
@@ -126,6 +147,8 @@ function Toast({ text, tone, actions, holdMs = HOLD_MS, onDone }) {
 /* ---------- 挂在 shell.overlay 上的组件 ---------- */
 
 export function ToastOverlay() {
+  // 切换语言时重画：后端通知的文字和按钮在显示时按当前语言拼
+  useT()
   const [, force] = React.useReducer(x => x + 1, 0)
   const [isFocused, setFocused] = React.useState(focused)
   React.useEffect(() => {
@@ -135,7 +158,7 @@ export function ToastOverlay() {
     window.addEventListener('blur', update)
     document.addEventListener('visibilitychange', update)
     const off = subscribe(msg => {
-      if (msg?.type === 'notice' && msg.text) toast(fromNotice(msg))
+      if (msg?.type === 'notice' && msg.text) toast({ ...fromNotice(msg), notice: msg })
     })
     return () => {
       subs.delete(force)
@@ -146,9 +169,10 @@ export function ToastOverlay() {
     }
   }, [])
   // 一次只显示一条，按先后顺序；要等用户回来的那条先不显示
-  const current = queue.find(t => !t.whenFocused || isFocused)
+  const current = queue.find(q => !q.whenFocused || isFocused)
   const onDone = React.useCallback(() => current && dismiss(current.seq), [current])
   if (!current) return null
-  const actions = (current.actions || []).map(a => ({ label: a.label, onClick: () => { dismiss(current.seq); a.onClick() } }))
-  return <Toast key={current.seq} text={current.text} tone={current.tone} actions={actions} holdMs={current.holdMs} onDone={onDone} />
+  const view = current.notice ? { ...current, ...fromNotice(current.notice) } : current
+  const actions = (view.actions || []).map(a => ({ label: a.label, onClick: () => { dismiss(current.seq); a.onClick() } }))
+  return <Toast key={current.seq} text={view.text} tone={view.tone} actions={actions} holdMs={current.holdMs} onDone={onDone} />
 }

@@ -2,6 +2,7 @@
 // 类名一律 lv- 前缀，样式作为组件里的 <style> 渲染，卸载时一起移除。
 import * as React from 'react'
 import { fmtSec } from './api.js'
+import { t, useT } from './i18n.js'
 
 export const CSS = `
 .lv-switch{position:relative;flex:none;width:36px;height:20px;border-radius:999px;border:0;padding:0;cursor:pointer;background:var(--dsw-alias-border-l3);transition:background-color var(--lv-dur) var(--lv-ease)}
@@ -285,11 +286,12 @@ export function Dialog({ open, title, children, actions, onCancel }) {
 }
 
 /** 确认对话框：「取消」+ 一个确认按钮 */
-export function ConfirmDialog({ open, title, children, confirmText = '确定', danger, busy, onConfirm, onCancel }) {
+export function ConfirmDialog({ open, title, children, confirmText, danger, busy, onConfirm, onCancel }) {
+  const t = useT()
   return (
     <Dialog open={open} title={title} onCancel={onCancel} actions={<>
-      <button type="button" className="lv-btn" onClick={onCancel}>取消</button>
-      <button type="button" className={`lv-btn ${danger ? 'danger' : 'pri'}`} disabled={busy} onClick={onConfirm}>{busy ? <Spin /> : null}{confirmText}</button>
+      <button type="button" className="lv-btn" onClick={onCancel}>{t('common.cancel')}</button>
+      <button type="button" className={`lv-btn ${danger ? 'danger' : 'pri'}`} disabled={busy} onClick={onConfirm}>{busy ? <Spin /> : null}{confirmText ?? t('common.ok')}</button>
     </>}>
       {children}
     </Dialog>
@@ -382,7 +384,8 @@ export function usePlaybackRate(...refs) {
 }
 
 export function SpeedButton({ rate, onNext }) {
-  return <button type="button" className="lv-speed" title="播放速度（点一下换一档）" onClick={onNext}>{rate}×</button>
+  const t = useT()
+  return <button type="button" className="lv-speed" title={t('player.speed')} onClick={onNext}>{rate}×</button>
 }
 
 export function Player({ src, poster, subtitles, hidden, portrait, autoPlay }) {
@@ -506,20 +509,29 @@ export function HoverVideo({ src, onFail }) {
   )
 }
 
-export const STATUS = {
-  draft: ['分镜待确认', 'info'],
-  producing: ['制作中', 'warn'],
-  paused: ['已暂停', ''],
-  done: ['已完成', 'ok'],
-  failed: ['制作失败', 'err'],
+// 作品状态：[字典键, 颜色]
+const STATUS = {
+  draft: ['status.draft', 'info'],
+  producing: ['status.producing', 'warn'],
+  paused: ['status.paused', ''],
+  done: ['status.done', 'ok'],
+  failed: ['status.failed', 'err'],
 }
 
 export function StatusBadge({ status }) {
-  const [label, tone] = STATUS[status] || [status, '']
-  return <Badge tone={tone}>{label}</Badge>
+  const t = useT()
+  const [key, tone] = STATUS[status] || [null, '']
+  return <Badge tone={tone}>{key ? t(key) : status}</Badge>
 }
 
-export const STEP = { voicing: '配音中', preparing: '准备工程', drawing: '画画面', assembling: '拼成片', done: '完成', paused: '已暂停', failed: '失败' }
-export const SEG = { wait: '排队', draw: '写画法', render: '渲染中', done: '', failed: '失败' }
+const STEP = { voicing: 'step.voicing', preparing: 'step.preparing', drawing: 'step.drawing', assembling: 'step.assembling', done: 'step.done', paused: 'step.paused', failed: 'step.failed' }
+const SEG = { wait: 'seg.wait', draw: 'seg.draw', render: 'seg.render', failed: 'seg.failed' }
+
+/** 制作进行到哪一步、某一段在做什么：认不出的状态照原样显示；段做完时不写字（done 返回空） */
+export const stepLabel = s => (STEP[s] ? t(STEP[s]) : s)
+export const segLabel = s => (s === 'done' ? '' : SEG[s] ? t(SEG[s]) : s)
+
+/** 片长：30 秒、1 分 30 秒、2 分钟（输入框和分镜卡共用） */
+export const durLabel = n => (n < 60 ? t('dur.sec', { n }) : n % 60 ? t('dur.minSec', { m: Math.floor(n / 60), s: n % 60 }) : t('dur.min', { m: n / 60 }))
 
 export { fmtSec }

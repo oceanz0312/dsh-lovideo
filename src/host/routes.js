@@ -299,7 +299,7 @@ export async function route(req, res) {
     // 下载完（或失败）时给页面一条提示；正在准备时重复点不会重复提示。卡住了再点会重新开始，被顶替的那次不提示
     if (setupCanStart()) {
       setupRuntime().then(p => p.running || notify(p.error
-        ? { kind: 'runtime-failed', tone: 'warning', text: `渲染环境没准备好：${p.error}`.slice(0, 160) }
+        ? { kind: 'runtime-failed', tone: 'warning', text: `渲染环境没准备好：${p.error}`.slice(0, 160), error: p.error }
         : { kind: 'runtime-ready', tone: 'success', text: '渲染环境准备好了，可以开拍' }), () => {})
     }
     return json(res, 200, state())

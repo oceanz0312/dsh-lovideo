@@ -5,6 +5,7 @@ import { api } from './api.js'
 import { HoverVideo, Media, useHoverPreview } from './ui.jsx'
 import { toast } from './toast.jsx'
 import { coverOf } from './cards.jsx'
+import { t, useT } from './i18n.js'
 
 /* ---------- 收藏：全页共用一份，点星星先改界面再存，存失败就改回来 ---------- */
 
@@ -55,20 +56,21 @@ export async function toggleFavorite(s) {
     const r = await api('favorites', { slug: s.slug, on })
     favs = r.favorites
     emitFavs()
-    toast({ text: on ? `已收藏「${s.name}」` : `已取消收藏「${s.name}」`, holdMs: 1600 })
+    toast({ text: t(on ? 'fav.added' : 'fav.removed', { name: s.name }), holdMs: 1600 })
   } catch (e) {
     favs = was
     emitFavs()
-    toast({ text: `没存上：${e.message}`, tone: 'warning' })
+    toast({ text: t('fav.saveFailed', { error: e.message }), tone: 'warning' })
   }
 }
 
 /* ---------- 收藏星：没收藏时悬停才出现，收藏了一直显示；没有底色，只是一颗带阴影的星 ---------- */
 
 function Star({ s, on }) {
+  const t = useT()
   return (
-    <button type="button" className={`lv-star ${on ? 'on' : ''}`} aria-pressed={on} aria-label={on ? `取消收藏「${s.name}」` : `收藏「${s.name}」`}
-      title={on ? '取消收藏' : '收藏'}
+    <button type="button" className={`lv-star ${on ? 'on' : ''}`} aria-pressed={on} aria-label={t(on ? 'fav.removeAria' : 'fav.addAria', { name: s.name })}
+      title={t(on ? 'fav.remove' : 'fav.add')}
       onClick={e => {
         e.stopPropagation()
         toggleFavorite(s)
@@ -87,6 +89,7 @@ function Star({ s, on }) {
  * 卡片本身是可点的块，不是 <button>：里面还有收藏按钮，按钮不能套按钮。
  */
 export function StyleTile({ s, selected, onSelect, cover }) {
+  const t = useT()
   const { playing, stop, bind } = useHoverPreview(s.sample)
   const list = useFavorites()
   const mine = s.source === 'mine'
@@ -99,10 +102,10 @@ export function StyleTile({ s, selected, onSelect, cover }) {
           onSelect?.()
         }
       }} {...bind}>
-      <Media src={cover ?? coverOf(s)} chip={s.installed ? '已在本机' : null}>
+      <Media src={cover ?? coverOf(s)} chip={s.installed ? t('style.installed') : null}>
         {playing ? <HoverVideo src={s.sample} onFail={stop} /> : null}
-        {s.gpu ? <span className="lv-chip bl">3D 绘制</span> : null}
-        {mine ? <span className="lv-chip r">我蒸馏的</span> : <Star s={s} on={fav} />}
+        {s.gpu ? <span className="lv-chip bl">{t('style.gpu')}</span> : null}
+        {mine ? <span className="lv-chip r">{t('style.mineChip')}</span> : <Star s={s} on={fav} />}
       </Media>
       <div className="lv-tile-title lv-truncate">{s.name}</div>
       <div className="lv-subtle lv-truncate">{[s.use, (s.aspects || []).join(' · ')].filter(Boolean).join(' · ')}</div>

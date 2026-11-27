@@ -5,8 +5,8 @@ import { EventEmitter } from 'node:events'
 export const notices = new EventEmitter()
 
 /**
- * 发一条提示。
- * @param {{ kind: string, tone: 'success' | 'warning', text: string, workId?: string, sessionId?: string | null, path?: string }} notice
+ * 发一条提示。页面按 kind 和参数（title、format、error、email）用界面语言拼文字；text 是中文原文，页面不认识这个 kind 时显示它。
+ * @param {{ kind: string, tone: 'success' | 'warning', text: string, title?: string | null, format?: string, error?: string, email?: string | null, workId?: string, sessionId?: string | null, path?: string }} notice
  */
 export function notify(notice) {
   notices.emit('notice', notice)

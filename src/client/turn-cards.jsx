@@ -3,6 +3,7 @@
 // 卡片数据只从会话记录里已有的 tool/call、tool/result 事件派生，不写新的事件类型。
 import * as React from 'react'
 import { TOOL_VIEWS, isFixable } from './cards.jsx'
+import { useT } from './i18n.js'
 
 export const KIND = 'lovideo-card'
 
@@ -84,21 +85,22 @@ export function TurnCards({ turn, useCards }) {
 }
 
 const LABELS = {
-  lovideo_setup: '检查这台电脑', lovideo_configure: '配置配音配乐', lovideo_styles: '挑风格', lovideo_plan: '出分镜', lovideo_produce: '开拍',
-  lovideo_revise: '修改成片', lovideo_export: '导出', lovideo_works: '找作品', lovideo_distill: '蒸馏风格',
+  lovideo_setup: 'tool.setup', lovideo_configure: 'tool.configure', lovideo_styles: 'tool.styles', lovideo_plan: 'tool.plan', lovideo_produce: 'tool.produce',
+  lovideo_revise: 'tool.revise', lovideo_export: 'tool.export', lovideo_works: 'tool.works', lovideo_distill: 'tool.distill',
 }
 
 /** 过程区里的工具行：一行字，完整卡片在本轮末尾 */
 export function ToolRow(props) {
+  const t = useT()
   const settled = props.phase === 'result'
   // 导演自己能改好的退回不算失败，这一行照常显示
   const failed = settled && props.block.isError && !isFixable((props.block.content || []).map(c => c.text || '').join(''))
-  const label = LABELS[props.toolName] || props.toolName
+  const label = LABELS[props.toolName] ? t(LABELS[props.toolName]) : props.toolName
   return (
     <div className="lv" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--dsw-alias-label-tertiary)', padding: '2px 0' }}>
       <svg width="13" height="13" viewBox="0 0 10 10" aria-hidden><rect width="10" height="10" rx="2.5" fill="#111" /><path d="M3.3 2.4v5.2L8 5z" fill="#ff6b3d" /></svg>
       <span>lovideo · {label}</span>
-      <span>{failed ? '· 没成功' : settled ? '' : '…'}</span>
+      <span>{failed ? t('tool.failed') : settled ? '' : '…'}</span>
     </div>
   )
 }

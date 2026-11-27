@@ -2,10 +2,11 @@
 // 卡片只从工具结果里拿作品 id，内容实时读本机数据，所以和管理页、和后续的修改永远一致。
 import * as React from 'react'
 import { api, argsOf, fileUrl, loginUrl, openExternal, pick, resultText, useLive, whileProducing } from './api.js'
-import { Badge, Bar, Button, Dialog, LinkButton, Mark, Media, Player, SEG, STEP, SpeedButton, Spin, StatusBadge, Styles, Switch, fmtSec, usePlaybackRate } from './ui.jsx'
+import { Badge, Bar, Button, Dialog, LinkButton, Mark, Media, Player, SpeedButton, Spin, StatusBadge, Styles, Switch, durLabel, fmtSec, segLabel, stepLabel, usePlaybackRate } from './ui.jsx'
 import { openManager } from './host.js'
 import { toast } from './toast.jsx'
-import { KeyCard, ListenButton, MUSIC_NAMES, VOICE_NAMES, jobText } from './sound-settings.jsx'
+import { KeyCard, ListenButton, jobText, musicName, voiceName } from './sound-settings.jsx'
+import { rich, t, useT } from './i18n.js'
 
 /* ---------- 外框 ---------- */
 
@@ -27,16 +28,17 @@ function Shell({ title, right, children, foot, error }) {
 
 /** 工具还在运行或出错时的通用外观 */
 function Pending({ props, label }) {
+  const t = useT()
   if (props.phase === 'result' && props.block.isError) {
     const msg = resultText(props.block).replace(/^Error:\s*/, '')
     // 因为没登录：给用户看的是一句话加登录按钮，登录后这张卡自己变成「已登录」；给导演的话不显示
     if (needsLogin(msg)) return <LoginBlockedCard label={label} />
     // 导演自己能改好的错（分镜太长、参数不对）不给用户看，导演改好再调用会出新卡片
     if (isFixable(msg)) return null
-    return <Shell title={label} right={<Badge tone="err">没成功</Badge>} error={msg.slice(0, 400)} />
+    return <Shell title={label} right={<Badge tone="err">{t('common.failed')}</Badge>} error={msg.slice(0, 400)} />
   }
   return (
-    <Shell title={label} right={<span className="lv-subtle lv-row"><Spin /> 处理中</span>} />
+    <Shell title={label} right={<span className="lv-subtle lv-row"><Spin /> {t('card.working')}</span>} />
   )
 }
 
@@ -52,10 +54,11 @@ export const isFixable = msg => msg.includes(FIX_MARK) || /长太多|最多 \d+ 
 
 /** 因为没登录而没做成的卡片：跟着登录状态实时变，不留一张红色的失败卡 */
 function LoginBlockedCard({ label }) {
+  const t = useT()
   const [st] = useLive('state', () => false, 3000)
   const ok = Boolean(st?.login?.account)
   return (
-    <Shell title={label} right={ok ? <Badge tone="ok">已登录</Badge> : <Badge tone="warn">要先登录</Badge>}>
+    <Shell title={label} right={ok ? <Badge tone="ok">{t('settings.signedIn')}</Badge> : <Badge tone="warn">{t('card.needLogin')}</Badge>}>
       <div className="lv-card-body"><LoginAction /></div>
     </Shell>
   )
@@ -63,18 +66,19 @@ function LoginBlockedCard({ label }) {
 
 /** 原地登录：登录成功后插件会通知导演接着做，用户不用再说话 */
 export function LoginAction() {
+  const t = useT()
   const [st, , reload] = useLive('state', () => false)
   const [busy, setBusy] = React.useState(false)
   const [err, setErr] = React.useState(null)
   const pending = st?.login?.pending
   React.useEffect(() => {
     if (!pending) return
-    const t = setInterval(reload, 1000)
-    return () => clearInterval(t)
+    const timer = setInterval(reload, 1000)
+    return () => clearInterval(timer)
   }, [pending, reload])
-  if (!st) return <div className="lv-subtle lv-shimmer">正在检查…</div>
+  if (!st) return <div className="lv-subtle lv-shimmer">{t('card.checking')}</div>
   if (st.login.account) {
-    return <div className="lv-row lv-enter"><span className="lv-dot ok">✓</span><span>已登录{st.login.account.email ? ` ${st.login.account.email}` : ''}，导演正在接着做。</span></div>
+    return <div className="lv-row lv-enter"><span className="lv-dot ok">✓</span><span>{st.login.account.email ? t('login.doneEmail', { email: st.login.account.email }) : t('login.done')}</span></div>
   }
   const start = async () => {
     setBusy(true)
@@ -92,8 +96,8 @@ export function LoginAction() {
   return (
     <div className="lv-col">
       <div className="lv-row">
-        <span className="lv-grow">{pending ? <>已在浏览器打开 lovideo.ai，确认代码 <b className="lv-mono">{pending.userCode}</b> 后点「允许」，回来就会自动继续。</> : '这是官方风格，需要先登录 lovideo（注册即免费）。登录后会自动继续。'}</span>
-        {pending ? <LinkButton size="sm" href={loginUrl(pending.url)}>重新打开</LinkButton> : <Button size="sm" kind="pri" busy={busy} onClick={start}>登录</Button>}
+        <span className="lv-grow">{pending ? rich(t('login.pendingResume'), { code: <b className="lv-mono">{pending.userCode}</b> }) : t('login.needed')}</span>
+        {pending ? <LinkButton size="sm" href={loginUrl(pending.url)}>{t('common.reopen')}</LinkButton> : <Button size="sm" kind="pri" busy={busy} onClick={start}>{t('common.login')}</Button>}
       </div>
       {err || st.login.error ? <div className="lv-err">{err || st.login.error}</div> : null}
     </div>
@@ -103,11 +107,13 @@ export function LoginAction() {
 /* ---------- 环境检查 ---------- */
 
 export function SetupCard(props) {
-  if (!done(props)) return <Pending props={props} label="检查这台电脑" />
-  return <Shell title="准备好就能开拍"><div className="lv-card-body"><Doctor /></div></Shell>
+  const t = useT()
+  if (!done(props)) return <Pending props={props} label={t('tool.setup')} />
+  return <Shell title={t('setup.title')}><div className="lv-card-body"><Doctor /></div></Shell>
 }
 
 export function Doctor({ onVoiceChange } = {}) {
+  const t = useT()
   const [st, , reload] = useLive('state', () => false)
   const [busy, setBusy] = React.useState(null)
   const [err, setErr] = React.useState(null)
@@ -116,10 +122,10 @@ export function Doctor({ onVoiceChange } = {}) {
   React.useEffect(() => {
     // 下载环境、等网站确认登录时每秒刷新一次
     if (!setupRunning && !pending) return
-    const t = setInterval(reload, 1000)
-    return () => clearInterval(t)
+    const timer = setInterval(reload, 1000)
+    return () => clearInterval(timer)
   }, [setupRunning, pending, reload])
-  if (!st) return <div className="lv-subtle lv-shimmer">正在检查…</div>
+  if (!st) return <div className="lv-subtle lv-shimmer">{t('card.checking')}</div>
   const act = async (key, fn) => {
     setBusy(key)
     setErr(null)
@@ -139,15 +145,15 @@ export function Doctor({ onVoiceChange } = {}) {
   }
   return (
     <div className="lv-doctor">
-      <Row ok={Boolean(st.model)} title="模型" desc={st.model ? `跟随 DeepSeek Harness · ${st.model.label}` : 'DeepSeek Harness 里还没有可用的模型'} />
-      <Row ok={env.ready} title="渲染环境"
-        desc={env.ready ? `浏览器 · ffmpeg 已就绪${env.fonts?.ok ? ' · 字体已就绪' : ' · 字体在第一次开拍时自动下载（约 47 MB）'}` : setupRunning ? `正在下载${{ chrome: '浏览器', ffmpeg: ' ffmpeg', fonts: '字体' }[env.setup.step] || ''}… ${Math.round((env.setup.progress || 0) * 100)}%` : `缺 ${[!env.chrome.ok && '浏览器', !env.ffmpeg.ok && 'ffmpeg', !env.fonts?.ok && '字体'].filter(Boolean).join('、')}，约 ${(!env.chrome.ok || !env.ffmpeg.ok) ? 180 : 30} MB，点了才下载`}
+      <Row ok={Boolean(st.model)} title={t('common.model')} desc={st.model ? t('setup.modelFollow', { label: st.model.label }) : t('setup.noModel')} />
+      <Row ok={env.ready} title={t('setup.runtime')}
+        desc={env.ready ? t('setup.ready', { fonts: env.fonts?.ok ? t('setup.fontsReady') : t('setup.fontsLater') }) : setupRunning ? t('setup.downloading', { what: { chrome: t('setup.browser'), ffmpeg: t('setup.ffmpegStep'), fonts: t('setup.fonts') }[env.setup.step] || '', pct: Math.round((env.setup.progress || 0) * 100) }) : t('setup.missing', { list: [!env.chrome.ok && t('setup.browser'), !env.ffmpeg.ok && 'ffmpeg', !env.fonts?.ok && t('setup.fonts')].filter(Boolean).join(t('common.listSep')), mb: (!env.chrome.ok || !env.ffmpeg.ok) ? 180 : 30 })}
         extra={setupRunning ? <div style={{ marginTop: 6 }}><Bar value={env.setup.progress} /></div> : env.setup?.error ? <div className="lv-err">{env.setup.error}</div> : null}
-        action={env.ready ? null : <Button size="sm" kind="pri" busy={busy === 'setup' || setupRunning} onClick={() => act('setup', () => api('runtime/setup', {}))}>准备</Button>} />
-      <Row ok={Boolean(st.login.account)} title="lovideo 账号"
-        desc={st.login.account ? `已登录 ${st.login.account.email || ''} · 平台风格可用` : pending ? '已在浏览器打开 lovideo.ai，核对下面的代码后点「允许」' : '登录后可以用平台上的 100 多种风格，注册即免费'}
+        action={env.ready ? null : <Button size="sm" kind="pri" busy={busy === 'setup' || setupRunning} onClick={() => act('setup', () => api('runtime/setup', {}))}>{t('setup.prepare')}</Button>} />
+      <Row ok={Boolean(st.login.account)} title={t('settings.account')}
+        desc={st.login.account ? t('setup.loggedIn', { email: st.login.account.email || '' }) : pending ? t('setup.loginPending') : t('setup.loginHint')}
         extra={pending ? <div className="lv-code" style={{ marginTop: 8 }}>{pending.userCode}</div> : st.login.error ? <div className="lv-err">{st.login.error}</div> : null}
-        action={st.login.account ? null : pending ? <LinkButton size="sm" href={loginUrl(pending.url)}>重新打开</LinkButton> : <Button size="sm" kind={env.ready ? 'pri' : ''} busy={busy === 'login'} onClick={() => act('login', login)}>登录</Button>} />
+        action={st.login.account ? null : pending ? <LinkButton size="sm" href={loginUrl(pending.url)}>{t('common.reopen')}</LinkButton> : <Button size="sm" kind={env.ready ? 'pri' : ''} busy={busy === 'login'} onClick={() => act('login', login)}>{t('common.login')}</Button>} />
       <SoundRow settings={st.settings} onChange={() => { reload(); onVoiceChange?.() }} />
       {err ? <div className="lv-err">{err}</div> : null}
     </div>
@@ -159,19 +165,21 @@ export function Doctor({ onVoiceChange } = {}) {
  * 装好自动用上；换服务、换模型、换声音去设置页。
  */
 function SoundRow({ settings, onChange }) {
+  const t = useT()
   const voice = useLocalStatus('voice', onChange)
   const music = useLocalStatus('music', onChange)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState(null)
-  const settingsBtn = <Button size="sm" kind="ghost" onClick={() => openManager('settings')}>设置</Button>
+  const settingsBtn = <Button size="sm" kind="ghost" onClick={() => openManager('settings')}>{t('manage.tab.settings')}</Button>
   const vp = settings.voice.provider
   const mp = settings.music.provider
   const keys = settings.keys || {}
   const activeName = d => d?.models.find(m => m.id === d.active)?.name
-  const voiceDesc = vp === 'local' ? (activeName(voice) ? `离线配音 · ${activeName(voice)}` : '系统自带语音（离线配音还没下载）')
-    : vp === 'doubao' || vp === 'elevenlabs' || vp === 'openai' ? `${VOICE_NAMES[vp]}${keys[vp] ? '' : '（还没填 Key）'}` : VOICE_NAMES[vp] || vp
-  const musicDesc = mp === 'local' ? (activeName(music) ? `离线配乐 · ${activeName(music)}` : '离线配乐还没下载')
-    : mp === 'volcengine' ? `火山配乐${keys.volcAk && keys.volcSk ? '' : '（还没填 Key）'}` : mp === 'elevenlabs' ? `ElevenLabs${keys.elevenlabs ? '' : '（还没填 Key）'}` : MUSIC_NAMES[mp] || mp
+  const noKey = name => t('sound.noKey', { name })
+  const voiceDesc = vp === 'local' ? (activeName(voice) ? `${voiceName('local')} · ${activeName(voice)}` : t('soundRow.voiceNotDownloaded'))
+    : vp === 'doubao' || vp === 'elevenlabs' || vp === 'openai' ? (keys[vp] ? voiceName(vp) : noKey(voiceName(vp))) : voiceName(vp)
+  const musicDesc = mp === 'local' ? (activeName(music) ? `${musicName('local')} · ${activeName(music)}` : t('soundRow.musicNotDownloaded'))
+    : mp === 'volcengine' ? (keys.volcAk && keys.volcSk ? musicName('volcengine') : noKey(musicName('volcengine'))) : mp === 'elevenlabs' ? (keys.elevenlabs ? 'ElevenLabs' : noKey('ElevenLabs')) : musicName(mp)
   // 一键下载会下哪些：用得上（选的是离线或系统语音）、还没装、这台电脑跑得动的默认模型
   const want = (d, wanted) => {
     if (!d || !wanted || !d.minimum.ok || d.models.some(m => m.installed)) return null
@@ -180,7 +188,7 @@ function SoundRow({ settings, onChange }) {
   }
   const needs = [['voice', want(voice, vp === 'local' || vp === 'system')], ['music', want(music, mp === 'local')]].filter(([, m]) => m)
   const jobs = [voice, music].flatMap(d => (d?.models || []).filter(m => m.job?.running).map(m => ({ kind: d.kind, m })))
-  const failed = [voice, music].flatMap(d => (d?.models || []).filter(m => !m.job?.running && m.job?.error).map(m => `${m.name}：${m.job.error}`))
+  const failed = [voice, music].flatMap(d => (d?.models || []).filter(m => !m.job?.running && m.job?.error).map(m => t('soundRow.failed', { name: m.name, error: m.job.error })))
   const download = async () => {
     setBusy(true)
     setError(null)
@@ -195,15 +203,15 @@ function SoundRow({ settings, onChange }) {
     }
   }
   const gb = Math.round(needs.reduce((n, [, m]) => n + (m.downloadGB || 0), 0) * 10) / 10
-  const what = needs.length === 2 ? '离线配音和配乐' : needs[0]?.[0] === 'music' ? '离线配乐' : '离线配音'
+  const dl = needs.length === 2 ? 'soundRow.downloadBoth' : needs[0]?.[0] === 'music' ? 'soundRow.downloadMusic' : 'soundRow.downloadVoice'
   return (
-    <Row ok title="配音和配乐"
-      desc={`配音：${voiceDesc}；配乐：${musicDesc}${needs.length && !jobs.length ? '。下载离线的会更自然，不联网、不用 key' : ''}`}
+    <Row ok title={t('soundRow.title')}
+      desc={t('soundRow.desc', { voice: voiceDesc, music: musicDesc, hint: needs.length && !jobs.length ? t('soundRow.hint') : '' })}
       extra={jobs.length || failed.length || error ? (
         <div className="lv-col" style={{ marginTop: 6, gap: 6 }}>
           {jobs.map(({ kind, m }) => (
             <div key={m.id}>
-              <div className="lv-subtle">{kind === 'music' ? '离线配乐' : '离线配音'}（{m.name}）：{jobText(m.job)}</div>
+              <div className="lv-subtle">{t('soundRow.job', { what: kind === 'music' ? musicName('local') : voiceName('local'), name: m.name, step: jobText(m.job) })}</div>
               {m.job.step === 'model' ? <Bar value={m.job.progress} /> : null}
             </div>
           ))}
@@ -211,7 +219,7 @@ function SoundRow({ settings, onChange }) {
           {error ? <div className="lv-err">{error}</div> : null}
         </div>
       ) : null}
-      action={<div className="lv-row" style={{ gap: 6 }}>{needs.length && !jobs.length ? <Button size="sm" kind="pri" busy={busy} onClick={download}>下载{what}（约 {gb}GB）</Button> : null}{settingsBtn}</div>} />
+      action={<div className="lv-row" style={{ gap: 6 }}>{needs.length && !jobs.length ? <Button size="sm" kind="pri" busy={busy} onClick={download}>{t(dl, { gb })}</Button> : null}{settingsBtn}</div>} />
   )
 }
 
@@ -251,32 +259,33 @@ export function coverOf(s) {
 }
 
 export function StylesCard(props) {
+  const t = useT()
   const args = argsOf(props.block)
   const [data] = useLive(done(props) ? 'styles' : null, () => false)
   const { chosen, busy, err, choose } = useStylePick(props.callId, done(props) ? pick(resultText(props.block), 'session_id') : null)
-  if (!done(props)) return <Pending props={props} label="挑风格" />
+  if (!done(props)) return <Pending props={props} label={t('tool.styles')} />
   const all = data ? [...data.mine, ...data.platform] : []
   const picks = (args.recommend || []).map(slug => all.find(s => s.slug === slug)).filter(Boolean)
   const sessionId = pick(resultText(props.block), 'session_id')
   if (!picks.length) {
-    return <Shell title="风格库" right={<Button size="sm" kind="ghost" onClick={() => openManager('platform')}>看全部风格</Button>}>
-      <div className="lv-card-body lv-subtle">{data ? `导演看过了全部 ${all.length} 个风格的封面和介绍，正在按你的内容挑` : '正在读取风格…'}</div>
+    return <Shell title={t('styles.library')} right={<Button size="sm" kind="ghost" onClick={() => openManager('platform')}>{t('styles.all')}</Button>}>
+      <div className="lv-card-body lv-subtle">{data ? t('styles.looking', { n: all.length }) : t('styles.loading')}</div>
     </Shell>
   }
   return (
-    <Shell title={`推荐 ${picks.length} 个风格`} right={<Button size="sm" kind="ghost" onClick={() => openManager('platform')}>看全部风格</Button>}>
+    <Shell title={t('styles.recommended', { n: picks.length })} right={<Button size="sm" kind="ghost" onClick={() => openManager('platform')}>{t('styles.all')}</Button>}>
       <div className="lv-card-body">
         <div className="lv-grid" style={{ '--lv-min': '150px' }}>
           {picks.map((s, i) => (
-            <button key={s.slug} type="button" className={`lv-tile ${chosen === s.slug ? 'on' : ''}`} disabled={!sessionId || busy} onClick={() => choose(s)} title={sessionId ? `用「${s.name}」出分镜` : undefined}>
-              <Media src={coverOf(s)} chip={chosen === s.slug ? '已选' : i === 0 ? '最推荐' : null} chipRight={s.gpu ? '3D 绘制' : null} />
+            <button key={s.slug} type="button" className={`lv-tile ${chosen === s.slug ? 'on' : ''}`} disabled={!sessionId || busy} onClick={() => choose(s)} title={sessionId ? t('styles.useTitle', { name: s.name }) : undefined}>
+              <Media src={coverOf(s)} chip={chosen === s.slug ? t('styles.chosen') : i === 0 ? t('styles.top') : null} chipRight={s.gpu ? t('style.gpu') : null} />
               <div className="lv-tile-title">{s.name}</div>
-              <div className="lv-subtle lv-truncate">{s.source === 'mine' ? '我的风格' : s.use || (s.aspects || []).join(' · ')}</div>
+              <div className="lv-subtle lv-truncate">{s.source === 'mine' ? t('style.mineBadge') : s.use || (s.aspects || []).join(' · ')}</div>
               {args.why?.[i] ? <div className="lv-style-why">{args.why[i]}</div> : null}
             </button>
           ))}
         </div>
-        {sessionId ? <div className="lv-subtle" style={{ marginTop: 10 }}>{chosen ? `已告诉导演用「${picks.find(s => s.slug === chosen)?.name || chosen}」，分镜马上出来；想换可以再点一个` : '点一个风格，导演就用它出分镜'}</div> : null}
+        {sessionId ? <div className="lv-subtle" style={{ marginTop: 10 }}>{chosen ? t('styles.told', { name: picks.find(s => s.slug === chosen)?.name || chosen }) : t('styles.pickHint')}</div> : null}
         {err ? <div className="lv-err" style={{ marginTop: 6 }}>{err}</div> : null}
       </div>
     </Shell>
@@ -319,14 +328,15 @@ function useStylePick(callId, sessionId) {
 /* ---------- 分镜 ---------- */
 
 export function PlanCard(props) {
+  const t = useT()
   const id = done(props) ? pick(resultText(props.block), 'work_id') : null
   const myRev = Number((/分镜 v(\d+)/.exec(resultText(props.block)) || [])[1] || 0)
   const [w] = useLive(id ? `works/${id}` : null, m => m.id === id, whileProducing)
   const [busy, setBusy] = React.useState(false)
   const [err, setErr] = React.useState(null)
   const [open, setOpen] = React.useState(false)
-  if (!done(props)) return <Pending props={props} label={argsOf(props.block).work_id ? '改分镜' : '出分镜'} />
-  if (!w) return <Shell title="分镜" right={<span className="lv-subtle lv-shimmer">读取中…</span>} />
+  if (!done(props)) return <Pending props={props} label={argsOf(props.block).work_id ? t('plan.revising') : t('tool.plan')} />
+  if (!w) return <Shell title={t('work.plan')} right={<span className="lv-subtle lv-shimmer">{t('common.loading')}</span>} />
   const latest = w.plan?.revision === myRev
   const scenes = latest ? w.plan.scenes : null
   const secs = w.plan.scenes.reduce((n, s) => n + (s.seconds || 0), 0)
@@ -337,23 +347,23 @@ export function PlanCard(props) {
     try {
       await api(`works/${id}/produce`, { action: 'start' })
     } catch (e) {
-      setErr(e.code === 'runtime_missing' ? '这台电脑的渲染环境还没准备好，先在下面的检查里点「准备」' : e.message)
+      setErr(e.code === 'runtime_missing' ? t('plan.runtimeMissing') : e.message)
     } finally {
       setBusy(false)
     }
   }
   return (
     <Shell
-      title={<span className="lv-row">{w.title}<Badge>分镜 v{myRev}</Badge>{latest && w.plan.note ? <Badge tone="info">{w.plan.note}</Badge> : null}{latest && started ? <StatusBadge status={w.status} /> : null}</span>}
-      right={<span className="lv-subtle lv-mono">{w.plan.scenes.length} 镜 · 约 {secs} 秒 · {w.aspect}</span>}
+      title={<span className="lv-row">{w.title}<Badge>{t('plan.version', { rev: myRev })}</Badge>{latest && w.plan.note ? <Badge tone="info">{w.plan.note}</Badge> : null}{latest && started ? <StatusBadge status={w.status} /> : null}</span>}
+      right={<span className="lv-subtle lv-mono">{t('plan.summary', { n: w.plan.scenes.length, secs, aspect: w.aspect })}</span>}
       foot={latest ? (
         <>
           {err
             ? <span className="lv-grow lv-err">{err}</span>
-            : <span className="lv-grow lv-subtle lv-truncate">风格「{w.style?.name}」 · 在这台电脑上制作，约 {Math.max(2, Math.round(w.plan.scenes.length * 1.2))} 分钟</span>}
-          {started ? null : <Button kind="pri" busy={busy} onClick={confirm}>确认开拍</Button>}
+            : <span className="lv-grow lv-subtle lv-truncate">{t('plan.foot', { name: w.style?.name || '', min: Math.max(2, Math.round(w.plan.scenes.length * 1.2)) })}</span>}
+          {started ? null : <Button kind="pri" busy={busy} onClick={confirm}>{t('plan.confirm')}</Button>}
         </>
-      ) : <span className="lv-subtle">已经有新版本（v{w.plan.revision}），看下面最新的分镜卡</span>}
+      ) : <span className="lv-subtle">{t('plan.outdated', { rev: w.plan.revision })}</span>}
     >
       {latest && started ? (
         <div className="lv-card-body" style={{ borderBottom: '1px solid var(--dsw-alias-border-l2)' }}>
@@ -363,7 +373,7 @@ export function PlanCard(props) {
       ) : null}
       {latest && !started ? <PlanOptions w={w} /> : null}
       {scenes && started ? (
-        <button type="button" className="lv-btn ghost sm" style={{ margin: '8px 10px' }} onClick={() => setOpen(o => !o)}>{open ? '收起分镜' : `看分镜（${scenes.length} 镜）`}</button>
+        <button type="button" className="lv-btn ghost sm" style={{ margin: '8px 10px' }} onClick={() => setOpen(o => !o)}>{open ? t('plan.collapse') : t('plan.expand', { n: scenes.length })}</button>
       ) : null}
       {scenes && (!started || open) ? (
         // 只有用户点「看分镜」展开时才淡入；卡片本身出现时不播动画（对话滚动时卡片会反复挂载）
@@ -372,7 +382,7 @@ export function PlanCard(props) {
             <div className="lv-scene" key={s.id}>
               <span className="n lv-mono">{String(i + 1).padStart(2, '0')}</span>
               <span className="t">{s.title}</span>
-              <span className="lv-subtle lv-mono">约 {s.seconds} 秒</span>
+              <span className="lv-subtle lv-mono">{t('plan.sceneSecs', { s: s.seconds })}</span>
               <span className="d">{s.description}</span>
               {s.narration ? <span className="v">{s.narration}</span> : null}
             </div>
@@ -390,6 +400,7 @@ export function PlanCard(props) {
  * 拼好播放器接着原来的位置播。这部片子还没有配乐时，打开配乐就按导演写的描述现做一首。
  */
 function FilmSwitches({ w }) {
+  const t = useT()
   const [busy, setBusy] = React.useState(null)
   const [err, setErr] = React.useState(null)
   const sw = w.switches || {}
@@ -407,10 +418,10 @@ function FilmSwitches({ w }) {
     }
   }
   const items = [
-    ['voice', '配音', sw.voice],
-    ['subtitles', '字幕', sw.subtitles],
+    ['voice', t('common.voice'), sw.voice],
+    ['subtitles', t('common.subtitles'), sw.subtitles],
     // 没配乐的片子也给开关：打开就现做一首
-    ['music', '配乐', sw.music],
+    ['music', t('common.music'), sw.music],
   ].filter(([k]) => k === 'music' || sw[k] !== undefined)
   return (
     <div className="lv-switches">
@@ -420,7 +431,7 @@ function FilmSwitches({ w }) {
           <Switch checked={Boolean(on)} busy={busy === k || (working && remix.keys?.includes(k))} disabled={Boolean(working) && !remix.keys?.includes(k)} label={label} onChange={v => set(k, v)} />
         </label>
       ))}
-      {working ? <span className="lv-subtle"><Spin /> {remix.state === 'music' ? '正在做配乐…' : '正在重新拼成片…'}</span> : null}
+      {working ? <span className="lv-subtle"><Spin /> {remix.state === 'music' ? t('film.makingMusic') : t('film.remixing')}</span> : null}
       {remix?.state === 'failed' ? <span className="lv-err">{remix.error}</span> : err ? <span className="lv-err">{err}</span> : null}
     </div>
   )
@@ -434,6 +445,7 @@ const nearestIdx = n => DURATIONS.reduce((best, d, i) => (Math.abs(d - n) < Math
 
 /** 片长拖动条：拖的时候只改显示，松手（或键盘调完）才提交，免得一路叫导演重出分镜 */
 function DurationSlider({ value, busy, onCommit }) {
+  const t = useT()
   const [idx, setIdx] = React.useState(() => nearestIdx(value))
   // 输入框里可以填不在档位上的秒数（比如 45）：没拖过时照实显示，拖了才换成档位
   const [moved, setMoved] = React.useState(false)
@@ -448,7 +460,7 @@ function DurationSlider({ value, busy, onCommit }) {
   return (
     <div className="lv-dur">
       <input type="range" min={0} max={DURATIONS.length - 1} step={1} value={idx} disabled={busy}
-        aria-label="目标片长" aria-valuetext={durLabel(shown)}
+        aria-label={t('plan.targetDuration')} aria-valuetext={durLabel(shown)}
         style={{ '--p': `${(idx / (DURATIONS.length - 1)) * 100}%` }}
         onChange={e => {
           setIdx(Number(e.target.value))
@@ -458,7 +470,6 @@ function DurationSlider({ value, busy, onCommit }) {
     </div>
   )
 }
-const durLabel = n => (n < 60 ? `${n} 秒` : n % 60 ? `${Math.floor(n / 60)} 分 ${n % 60} 秒` : `${n / 60} 分钟`)
 
 /**
  * 导演给的建议，用户在这里直接改（开拍前）。改过的记在作品上，导演再出分镜时照用户的来；
@@ -473,6 +484,7 @@ const EN_LINE = 'Hi, this is a lovideo narration preview.'
  * 配乐能换来源、开关。都是开拍前改，记进这部片子的 choices。
  */
 function PlanOptions({ w }) {
+  const t = useT()
   const [sound, soundErr, reloadSound] = useLive(`works/${w.id}/sound`, msg => msg?.id === w.id)
   const [busy, setBusy] = React.useState(null)
   const [err, setErr] = React.useState(null)
@@ -508,32 +520,32 @@ function PlanOptions({ w }) {
       return null
     }
   }
-  const toSettings = <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>去设置</a>
-  const langName = v?.lang === 'en' ? '英文' : '中文'
+  const toSettings = <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>{t('plan.toSettings')}</a>
+  const langName = v?.lang === 'en' ? t('common.english') : t('common.chinese')
   return (
     <div className="lv-card-body lv-prows" style={{ paddingBottom: 0 }}>
       <div className="lv-prow">
-        <span className="k">时长</span>
+        <span className="k">{t('plan.duration')}</span>
         <div className="m">
           <DurationSlider value={w.duration || 30} busy={busy === 'duration'} onCommit={n => set('duration', { duration: n })} />
-          <span className="lv-subtle lv-truncate">{replan > 0 ? `已经请导演按 ${durLabel(replan)} 重出分镜…` : replan === -1 ? '会话已经关了，回到对话里请导演按新时长重出' : '素材撑不满时会短一点'}</span>
+          <span className="lv-subtle lv-truncate">{replan > 0 ? t('plan.replanning', { dur: durLabel(replan) }) : replan === -1 ? t('plan.sessionClosed') : t('plan.durationHint')}</span>
         </div>
-        <span className="lv-mini">字幕<Switch checked={subsOn} busy={busy === 'subtitles'} label="字幕" onChange={x => set('subtitles', { subtitles: x })} /></span>
+        <span className="lv-mini">{t('common.subtitles')}<Switch checked={subsOn} busy={busy === 'subtitles'} label={t('common.subtitles')} onChange={x => set('subtitles', { subtitles: x })} /></span>
       </div>
 
       <div className={`lv-prow ${voiceOn ? '' : 'off'}`}>
-        <span className="k">配音</span>
+        <span className="k">{t('common.voice')}</span>
         <div className="m">
-          {!v ? <span className="lv-subtle lv-shimmer">读取声音…</span> : voiceOn ? (
+          {!v ? <span className="lv-subtle lv-shimmer">{t('plan.loadingVoice')}</span> : voiceOn ? (
             <>
               {v.current ? <ListenButton size="round" kind="plain" label="" load={preview(v.current)} /> : null}
               <b>{v.current?.name || v.service}</b>
               <span className="lv-subtle lv-truncate">{[langName, v.current?.gender, v.current?.note, v.service].filter(Boolean).join(' · ')}</span>
             </>
           ) : (
-            <><b>不配音</b><span className="lv-subtle">只出字幕和画面</span></>
+            <><b>{t('voice.none')}</b><span className="lv-subtle">{t('plan.noVoiceDesc')}</span></>
           )}
-          {w.voice?.why ? <span className="lv-subtle lv-truncate lv-why">· 导演{w.voice.suggested === false ? '建议不配音' : '建议'}：{w.voice.why}</span> : null}
+          {w.voice?.why ? <span className="lv-subtle lv-truncate lv-why">{t(w.voice.suggested === false ? 'plan.whyNoVoice' : 'plan.whyVoice', { why: w.voice.why })}</span> : null}
         </div>
         {v ? <VoiceMenu v={v} on={voiceOn} busy={busy === 'voice'} preview={preview} langName={langName}
           onPick={o => set('voice', { voice: true, voicePick: { provider: v.provider, id: o.id, model: o.model, lang: v.lang } })}
@@ -542,21 +554,21 @@ function PlanOptions({ w }) {
       </div>
 
       <div className={`lv-prow ${musicOn ? '' : 'off'}`}>
-        <span className="k">配乐</span>
+        <span className="k">{t('common.music')}</span>
         <div className="m">
-          <b>{w.music?.brief || '配乐'}</b>
-          <span className="lv-subtle lv-why">· {w.music?.suggested ? '导演建议配乐' : '导演建议不配乐'}</span>
+          <b>{w.music?.brief || t('common.music')}</b>
+          <span className="lv-subtle lv-why">{w.music?.suggested ? t('plan.musicSuggested') : t('plan.noMusicSuggested')}</span>
         </div>
         {m ? (
-          <select className="lv-select lv-src" aria-label="配乐来源" value={m.source} disabled={busy === 'music'} onChange={e => set('music', { musicSource: e.target.value })}>
-            {m.sources.map(x => <option key={x.id} value={x.id}>{x.name}{x.ok ? '' : x.code === 'no-key' ? '（没填 Key）' : x.code === 'not-installed' ? '（没下载）' : '（用不了）'}</option>)}
+          <select className="lv-select lv-src" aria-label={t('plan.musicSource')} value={m.source} disabled={busy === 'music'} onChange={e => set('music', { musicSource: e.target.value })}>
+            {m.sources.map(x => <option key={x.id} value={x.id}>{x.name}{x.ok ? '' : x.code === 'no-key' ? t('plan.srcNoKey') : x.code === 'not-installed' ? t('plan.srcNotInstalled') : t('plan.srcUnavailable')}</option>)}
           </select>
         ) : null}
-        <Switch checked={musicOn} busy={busy === 'music'} label="配乐" onChange={x => set('music', { music: x })} />
+        <Switch checked={musicOn} busy={busy === 'music'} label={t('common.music')} onChange={x => set('music', { music: x })} />
       </div>
 
       {voiceOn && v?.note ? <div className="lv-warn-text lv-pnote">{v.note} · {toSettings}</div> : null}
-      {musicOn && src && !src.ok ? <div className="lv-warn-text lv-pnote">{src.reason}，现在开拍这部片子不会有配乐 · {toSettings}</div> : null}
+      {musicOn && src && !src.ok ? <div className="lv-warn-text lv-pnote">{t('plan.noMusicWarn', { reason: src.reason })} · {toSettings}</div> : null}
       {err || soundErr ? <div className="lv-err">{err || soundErr.message}</div> : null}
     </div>
   )
@@ -564,6 +576,7 @@ function PlanOptions({ w }) {
 
 /** 「更换」：现在的配音服务里这部片子语言的声音（只改这部片子），最后是「不配音」 */
 function VoiceMenu({ v, on, busy, preview, langName, onPick, onDefault, onOff }) {
+  const t = useT()
   const [open, setOpen] = React.useState(false)
   const box = React.useRef(null)
   React.useEffect(() => {
@@ -583,10 +596,10 @@ function VoiceMenu({ v, on, busy, preview, langName, onPick, onDefault, onOff })
   }
   return (
     <span className="lv-vwrap" ref={box}>
-      <Button size="sm" busy={busy} aria-expanded={open} onClick={() => setOpen(o => !o)}>更换 ▾</Button>
+      <Button size="sm" busy={busy} aria-expanded={open} onClick={() => setOpen(o => !o)}>{t('plan.change')} ▾</Button>
       {open ? (
         <div className="lv-vmenu" role="menu">
-          <h5>{v.service} · {langName}（只改这部片子）</h5>
+          <h5>{t('plan.menuHead', { service: v.service, lang: langName })}</h5>
           {v.options.length ? v.options.map(o => {
             const cur = on && v.current?.id === o.id
             return (
@@ -598,12 +611,12 @@ function VoiceMenu({ v, on, busy, preview, langName, onPick, onDefault, onOff })
                 {cur ? <span className="chk">✓</span> : null}
               </div>
             )
-          }) : <div className="lv-subtle" style={{ padding: '6px 8px' }}>{v.provider === 'system' ? '系统自带语音没有别的声音可选' : v.provider === 'openai' ? 'OpenAI 兼容的声音在设置里填' : '这个配音服务现在没有可选的声音'}</div>}
-          {v.picked ? <div role="menuitem" tabIndex={0} className="lv-vopt" onClick={() => choose(onDefault)} onKeyDown={e => e.key === 'Enter' && choose(onDefault)}><b>用设置里的默认声音</b></div> : null}
+          }) : <div className="lv-subtle" style={{ padding: '6px 8px' }}>{v.provider === 'system' ? t('plan.systemNoChoice') : v.provider === 'openai' ? t('plan.openaiInSettings') : t('plan.noVoices')}</div>}
+          {v.picked ? <div role="menuitem" tabIndex={0} className="lv-vopt" onClick={() => choose(onDefault)} onKeyDown={e => e.key === 'Enter' && choose(onDefault)}><b>{t('plan.useDefault')}</b></div> : null}
           <div role="menuitemradio" aria-checked={!on} tabIndex={0} className={`lv-vopt ${on ? '' : 'on'}`} onClick={() => choose(onOff)} onKeyDown={e => e.key === 'Enter' && choose(onOff)}>
-            <b>不配音</b><span className="lv-subtle">只出字幕和画面</span>{on ? null : <span className="chk">✓</span>}
+            <b>{t('voice.none')}</b><span className="lv-subtle">{t('plan.noVoiceDesc')}</span>{on ? null : <span className="chk">✓</span>}
           </div>
-          <div className="lv-vfoot"><span className="lv-subtle">换配音服务（离线 / 豆包 / ElevenLabs）</span><a href="#" onClick={e => { e.preventDefault(); setOpen(false); openManager('settings') }}>去设置</a></div>
+          <div className="lv-vfoot"><span className="lv-subtle">{t('plan.switchService')}</span><a href="#" onClick={e => { e.preventDefault(); setOpen(false); openManager('settings') }}>{t('plan.toSettings')}</a></div>
         </div>
       ) : null}
     </span>
@@ -613,15 +626,17 @@ function VoiceMenu({ v, on, busy, preview, langName, onPick, onDefault, onOff })
 /* ---------- 制作进度和成片 ---------- */
 
 export function WorkCard(props) {
+  const t = useT()
   const id = done(props) ? pick(resultText(props.block), 'work_id') : null
-  if (!done(props)) return <Pending props={props} label={props.toolName === 'lovideo_revise' ? '修改成片' : '开拍'} />
+  if (!done(props)) return <Pending props={props} label={props.toolName === 'lovideo_revise' ? t('tool.revise') : t('tool.produce')} />
   return <LiveWork id={id} />
 }
 
 export function LiveWork({ id, compact }) {
+  const t = useT()
   const [w, error] = useLive(id ? `works/${id}` : null, m => m.id === id, whileProducing)
-  if (error) return <Shell title="作品" error={error.message} />
-  if (!w) return <Shell title="作品" right={<span className="lv-subtle lv-shimmer">读取中…</span>} />
+  if (error) return <Shell title={t('card.work')} error={error.message} />
+  if (!w) return <Shell title={t('card.work')} right={<span className="lv-subtle lv-shimmer">{t('common.loading')}</span>} />
   return (
     <Shell title={w.title} right={<span className="lv-row"><StatusBadge status={w.status} />{w.film ? <span className="lv-subtle lv-mono">{fmtSec(w.film.duration)}</span> : null}</span>}
       foot={<WorkActions w={w} compact={compact} />}>
@@ -631,6 +646,7 @@ export function LiveWork({ id, compact }) {
 }
 
 export function WorkBody({ w }) {
+  const t = useT()
   // 做好的段可以先点开看（成片还没拼好时）
   const [preview, setPreview] = React.useState(null)
   const job = w.job
@@ -642,16 +658,16 @@ export function WorkBody({ w }) {
       </div>
     )
   }
-  if (!job) return <div className="lv-subtle">分镜还没确认开拍。</div>
+  if (!job) return <div className="lv-subtle">{t('work.notStarted')}</div>
   const segs = job.segments || []
   const shown = segs.find(s => s.id === preview && s.state === 'done' && s.video) || null
   return (
     <div className="lv" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div className="lv-row">
-        <span style={{ fontWeight: 500 }}>{STEP[job.state] || job.state}</span>
-        {segs.length ? <span className="lv-subtle">{segs.filter(s => s.state === 'done').length}/{segs.length} 段</span> : null}
+        <span style={{ fontWeight: 500 }}>{stepLabel(job.state)}</span>
+        {segs.length ? <span className="lv-subtle">{t('work.segments', { done: segs.filter(s => s.state === 'done').length, n: segs.length })}</span> : null}
         <span className="lv-grow" />
-        {job.modelCalls ? <span className="lv-subtle">模型调用 {job.modelCalls} 次</span> : null}
+        {job.modelCalls ? <span className="lv-subtle">{t('work.modelCalls', { n: job.modelCalls })}</span> : null}
       </div>
       <Bar value={job.progress} />
       {shown ? <SegmentPreview key={shown.id} seg={shown} portrait={w.aspect === '9:16'} onClose={() => setPreview(null)} /> : null}
@@ -668,23 +684,23 @@ export function WorkBody({ w }) {
             return (
             <div key={s.id}>
               {ready ? (
-                <button type="button" className={`lv-seg-tile ${preview === s.id ? 'on' : ''}`} title={`播放第 ${s.idx} 镜`}
+                <button type="button" className={`lv-seg-tile ${preview === s.id ? 'on' : ''}`} title={t('work.playScene', { n: s.idx })}
                   onClick={() => setPreview(p => (p === s.id ? null : s.id))}>{media}</button>
               ) : media}
               <div className="lv-subtle lv-row" style={{ marginTop: 3, fontSize: 11.5 }}>
                 {s.state === 'render' || s.state === 'draw' ? <Spin /> : null}
-                {s.state === 'done' ? `${(s.frames / (job.fps || 30)).toFixed(1)}s${s.carried ? ' · 沿用' : ''}` : s.state === 'render' ? `渲染 ${Math.round(((s.rendered || 0) / s.frames) * 100)}%` : SEG[s.state] || s.state}
-                {s.attempts > 1 && s.state !== 'done' ? ` · 第 ${s.attempts} 次` : ''}
+                {s.state === 'done' ? `${(s.frames / (job.fps || 30)).toFixed(1)}s${s.carried ? t('work.carried') : ''}` : s.state === 'render' ? t('work.rendering', { pct: Math.round(((s.rendered || 0) / s.frames) * 100) }) : segLabel(s.state)}
+                {s.attempts > 1 && s.state !== 'done' ? t('work.attempt', { n: s.attempts }) : ''}
               </div>
             </div>
             )
           })}
         </div>
       ) : null}
-      {job.music ? <div className="lv-subtle">{job.music.state === 'making' ? <><Spin /> 配乐生成中…</> : job.music.state === 'done' ? '配乐已做好' : job.music.note}{job.music.code === 'not-installed' ? <> · <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>下载离线配乐</a></> : null}</div> : null}
-      {job.voiceNote ? <div className="lv-subtle">{job.voiceNote}{job.voiceNoteCode === 'not-installed' ? <> · <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>下载离线配音</a></> : null}</div> : null}
+      {job.music ? <div className="lv-subtle">{job.music.state === 'making' ? <><Spin /> {t('work.musicMaking')}</> : job.music.state === 'done' ? t('work.musicDone') : job.music.note}{job.music.code === 'not-installed' ? <> · <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>{t('work.downloadMusic')}</a></> : null}</div> : null}
+      {job.voiceNote ? <div className="lv-subtle">{job.voiceNote}{job.voiceNoteCode === 'not-installed' ? <> · <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>{t('work.downloadVoice')}</a></> : null}</div> : null}
       {job.error ? <div className="lv-err">{job.error}</div> : null}
-      {w.status === 'producing' ? <div className="lv-subtle">做好一段显示一段。关掉 DeepSeek Harness 会自动暂停，下次打开接着做。</div> : null}
+      {w.status === 'producing' ? <div className="lv-subtle">{t('work.producingHint')}</div> : null}
     </div>
   )
 }
@@ -695,6 +711,7 @@ export function WorkBody({ w }) {
  */
 const VOICE_DELAY = 0.3
 function SegmentPreview({ seg, portrait, onClose }) {
+  const t = useT()
   const video = React.useRef(null)
   const audio = React.useRef(null)
   const timer = React.useRef(null)
@@ -723,10 +740,10 @@ function SegmentPreview({ seg, portrait, onClose }) {
   return (
     <div className="lv-preview">
       <div className="lv-row">
-        <span style={{ fontWeight: 500 }}>第 {seg.idx} 镜 · {seg.title}</span>
-        <span className="lv-subtle">单段预览，字幕和配乐在拼成片时加上</span>
+        <span style={{ fontWeight: 500 }}>{t('preview.head', { n: seg.idx, title: seg.title })}</span>
+        <span className="lv-subtle">{t('preview.hint')}</span>
         <span className="lv-grow" />
-        <Button size="sm" kind="ghost" onClick={onClose}>收起</Button>
+        <Button size="sm" kind="ghost" onClick={onClose}>{t('preview.collapse')}</Button>
       </div>
       <div className={`lv-player ${portrait ? 'p' : ''}`}>
         <video ref={video} src={fileUrl(seg.video)} poster={fileUrl(seg.poster)} controls autoPlay playsInline
@@ -743,6 +760,7 @@ function SegmentPreview({ seg, portrait, onClose }) {
  * 没问题就生成草稿、导入剪映草稿目录、打开剪映。macOS 和 Windows 一样。
  */
 function OpenInJianying({ w, disabled, onExportFolder }) {
+  const t = useT()
   const [busy, setBusy] = React.useState(false)
   const [dialog, setDialog] = React.useState(null) // { kind:'problem'|'running', status }
   const [note, setNote] = React.useState(null)
@@ -754,7 +772,7 @@ function OpenInJianying({ w, disabled, onExportFolder }) {
     setNote(null)
     try {
       const r = await api(`works/${w.id}/open-jianying`, { restart })
-      setNote(r.launched ? `已在剪映中打开，草稿「${r.name}」在草稿列表最上面。` : `已放进剪映草稿列表「${r.name}」，关掉剪映重新打开就能看到。`)
+      setNote(t(r.launched ? 'jy.opened' : 'jy.imported', { name: r.name }))
     } catch (e) {
       setErr(e.message)
     } finally {
@@ -777,31 +795,32 @@ function OpenInJianying({ w, disabled, onExportFolder }) {
   const st = dialog?.status
   return (
     <>
-      <Button size="sm" busy={busy} disabled={disabled || busy} onClick={start}>{busy ? '正在放进剪映…' : '在剪映中打开'}</Button>
+      <Button size="sm" busy={busy} disabled={disabled || busy} onClick={start}>{busy ? t('jy.busy') : t('jy.open')}</Button>
       {note ? <span className="lv-subtle lv-enter">{note}</span> : null}
       {err ? <span className="lv-err">{err}</span> : null}
-      <Dialog open={dialog?.kind === 'problem'} title={st?.code === 'missing' ? '没有找到剪映专业版' : st?.code === 'unsupported' ? '这台电脑用不了剪映专业版' : '剪映还没准备好'} onCancel={close}
+      <Dialog open={dialog?.kind === 'problem'} title={st?.code === 'missing' ? t('jy.missing') : st?.code === 'unsupported' ? t('jy.unsupported') : t('jy.notReady')} onCancel={close}
         actions={<>
-          <button type="button" className="lv-btn" onClick={close}>关闭</button>
-          {st?.code === 'missing' || st?.code === 'unsupported' ? <button type="button" className="lv-btn" onClick={() => { close(); onExportFolder() }}>改为导出工程文件夹</button> : null}
-          {st?.code === 'missing' ? <a className="lv-btn pri" href={st.downloadUrl} target="_blank" rel="noopener noreferrer" onClick={close}>下载剪映专业版</a> : null}
-          {st?.code === 'not-initialized' || st?.code === 'no-permission' ? <button type="button" className="lv-btn pri" onClick={start}>我弄好了，再试一次</button> : null}
+          <button type="button" className="lv-btn" onClick={close}>{t('common.close')}</button>
+          {st?.code === 'missing' || st?.code === 'unsupported' ? <button type="button" className="lv-btn" onClick={() => { close(); onExportFolder() }}>{t('jy.exportFolder')}</button> : null}
+          {st?.code === 'missing' ? <a className="lv-btn pri" href={st.downloadUrl} target="_blank" rel="noopener noreferrer" onClick={close}>{t('jy.download')}</a> : null}
+          {st?.code === 'not-initialized' || st?.code === 'no-permission' ? <button type="button" className="lv-btn pri" onClick={start}>{t('jy.retry')}</button> : null}
         </>}>
         <p>{st?.problem}</p>
       </Dialog>
-      <Dialog open={dialog?.kind === 'running'} title="剪映正开着" onCancel={close}
+      <Dialog open={dialog?.kind === 'running'} title={t('jy.running')} onCancel={close}
         actions={<>
-          <button type="button" className="lv-btn" onClick={close}>取消</button>
-          <button type="button" className="lv-btn" onClick={() => run(false)}>只导入，我自己重开</button>
-          <button type="button" className="lv-btn pri" onClick={() => run(true)}>关掉剪映并打开</button>
+          <button type="button" className="lv-btn" onClick={close}>{t('common.cancel')}</button>
+          <button type="button" className="lv-btn" onClick={() => run(false)}>{t('jy.importOnly')}</button>
+          <button type="button" className="lv-btn pri" onClick={() => run(true)}>{t('jy.restart')}</button>
         </>}>
-        <p>新草稿要重新打开剪映才会出现在列表里。可以让我先把剪映正常关掉（它会自己保存正在编辑的草稿），导入后再打开。</p>
+        <p>{t('jy.runningBody')}</p>
       </Dialog>
     </>
   )
 }
 
 export function WorkActions({ w, compact }) {
+  const t = useT()
   const [busy, setBusy] = React.useState(null)
   const [err, setErr] = React.useState(null)
   const act = (key, path, body) => async () => {
@@ -819,20 +838,20 @@ export function WorkActions({ w, compact }) {
   const exporting = exp?.state === 'running'
   return (
     <div className="lv-row lv-grow" style={{ flexWrap: 'wrap' }}>
-      {w.status === 'producing' ? <Button size="sm" busy={busy === 'pause'} onClick={act('pause', `works/${w.id}/produce`, { action: 'pause' })}>暂停</Button> : null}
-      {w.status === 'paused' || w.status === 'failed' ? <Button size="sm" kind="pri" busy={busy === 'resume'} onClick={act('resume', `works/${w.id}/produce`, { action: 'start' })}>{w.status === 'failed' ? '重试' : '继续'}</Button> : null}
+      {w.status === 'producing' ? <Button size="sm" busy={busy === 'pause'} onClick={act('pause', `works/${w.id}/produce`, { action: 'pause' })}>{t('actions.pause')}</Button> : null}
+      {w.status === 'paused' || w.status === 'failed' ? <Button size="sm" kind="pri" busy={busy === 'resume'} onClick={act('resume', `works/${w.id}/produce`, { action: 'start' })}>{w.status === 'failed' ? t('common.retry') : t('actions.resume')}</Button> : null}
       {w.status === 'done' ? (
         <>
-          <Button size="sm" kind="pri" busy={exporting && exp.format !== 'jianying'} disabled={exporting} onClick={act('mp4', `works/${w.id}/export`, { format: 'mp4', quality: '1080', burn: true })}>导出 MP4</Button>
+          <Button size="sm" kind="pri" busy={exporting && exp.format !== 'jianying'} disabled={exporting} onClick={act('mp4', `works/${w.id}/export`, { format: 'mp4', quality: '1080', burn: true })}>{t('actions.exportMp4')}</Button>
           <OpenInJianying w={w} disabled={exporting} onExportFolder={act('jy', `works/${w.id}/export`, { format: 'jianying' })} />
         </>
       ) : null}
       <span className="lv-grow" />
       {exp?.state === 'done' && exp.results?.length ? (
-        exp.results.map(r => <Button key={r.path} size="sm" kind="ghost" onClick={act('reveal', `works/${w.id}/reveal`, { path: r.path })}>{r.kind === 'mp4' ? '在文件夹中显示 MP4' : '打开剪映工程文件夹'}</Button>)
+        exp.results.map(r => <Button key={r.path} size="sm" kind="ghost" onClick={act('reveal', `works/${w.id}/reveal`, { path: r.path })}>{r.kind === 'mp4' ? t('actions.revealMp4') : t('actions.revealJianying')}</Button>)
       ) : null}
       {exp?.state === 'failed' ? <span className="lv-err">{exp.error}</span> : null}
-      {!compact ? <Button size="sm" kind="ghost" onClick={() => openManager('works')}>作品库</Button> : null}
+      {!compact ? <Button size="sm" kind="ghost" onClick={() => openManager('works')}>{t('actions.library')}</Button> : null}
       {err ? <span className="lv-err" style={{ width: '100%' }}>{err}</span> : null}
     </div>
   )
@@ -841,13 +860,14 @@ export function WorkActions({ w, compact }) {
 /* ---------- 导出 ---------- */
 
 export function ExportCard(props) {
+  const t = useT()
   const id = done(props) ? pick(resultText(props.block), 'work_id') : null
   const [w] = useLive(id ? `works/${id}` : null, m => m.id === id)
-  if (!done(props)) return <Pending props={props} label="导出中" />
+  if (!done(props)) return <Pending props={props} label={t('export.running')} />
   const said = resultText(props.block)
   if (/已在剪映中打开|已导入剪映草稿/.test(said)) {
     return (
-      <Shell title="在剪映中打开" right={<Badge tone="ok">剪映草稿</Badge>}>
+      <Shell title={t('jy.open')} right={<Badge tone="ok">{t('export.jyDraft')}</Badge>}>
         <div className="lv-card-body">{said.split('\n').slice(1).join(' ')}</div>
       </Shell>
     )
@@ -855,16 +875,16 @@ export function ExportCard(props) {
   const results = (w?.exports || []).filter(e => e.kind !== 'jianying-open').slice(-((w?.exporting?.results || []).length || 1))
   const reveal = path => api(`works/${id}/reveal`, { path })
   return (
-    <Shell title="导出完成" right={<Badge tone="ok">在这台电脑上</Badge>}>
+    <Shell title={t('export.done')} right={<Badge tone="ok">{t('export.local')}</Badge>}>
       <div className="lv-card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {results.map(r => (
           <div key={r.path} className="lv-row">
             <span className="lv-grow">
-              <div style={{ fontWeight: 500 }}>{r.kind === 'mp4' ? `MP4 · ${r.quality}${r.burned ? ' · 字幕已烧进画面' : ''}` : '剪映工程'}</div>
+              <div style={{ fontWeight: 500 }}>{r.kind === 'mp4' ? `MP4 · ${r.quality}${r.burned ? t('export.burned') : ''}` : t('work.jianyingProject')}</div>
               <div className="lv-subtle lv-mono lv-truncate" title={r.path}>{r.path}</div>
-              {r.kind === 'jianying' ? <div className="lv-subtle">在装了剪映的电脑上，退出剪映后双击文件夹里的导入脚本（macOS：install_mac.command，Windows：install_windows.bat），再打开剪映就能看到。</div> : null}
+              {r.kind === 'jianying' ? <div className="lv-subtle">{t('export.jyHint')}</div> : null}
             </span>
-            <Button size="sm" onClick={() => reveal(r.path)}>在文件夹中显示</Button>
+            <Button size="sm" onClick={() => reveal(r.path)}>{t('common.reveal')}</Button>
           </div>
         ))}
       </div>
@@ -875,11 +895,12 @@ export function ExportCard(props) {
 /* ---------- 作品列表 ---------- */
 
 export function WorksCard(props) {
+  const t = useT()
   const [data] = useLive(done(props) ? 'works' : null, () => true)
-  if (!done(props)) return <Pending props={props} label="找作品" />
+  if (!done(props)) return <Pending props={props} label={t('tool.works')} />
   const list = (data?.works || []).slice(0, 4)
   return (
-    <Shell title="最近的作品" right={<Button size="sm" kind="ghost" onClick={() => openManager('works')}>全部作品</Button>}>
+    <Shell title={t('worksCard.title')} right={<Button size="sm" kind="ghost" onClick={() => openManager('works')}>{t('worksCard.all')}</Button>}>
       <div className="lv-card-body">
         <div className="lv-grid" style={{ '--lv-min': '140px' }}>
           {list.map(w => (
@@ -898,21 +919,22 @@ export function WorksCard(props) {
 /* ---------- 蒸馏 ---------- */
 
 export function DistillCard(props) {
+  const t = useT()
   const slug = done(props) ? pick(resultText(props.block), 'style_slug') : null
   const [data, , reload] = useLive(slug ? 'styles' : null, () => false, 2000)
   const [busy, setBusy] = React.useState(false)
-  if (!done(props)) return <Pending props={props} label="蒸馏风格" />
+  if (!done(props)) return <Pending props={props} label={t('tool.distill')} />
   const s = data?.mine.find(x => x.slug === slug)
-  if (!s) return <Shell title="蒸馏风格" right={<span className="lv-subtle lv-shimmer">读取中…</span>} />
+  if (!s) return <Shell title={t('tool.distill')} right={<span className="lv-subtle lv-shimmer">{t('common.loading')}</span>} />
   const d = s.distill || {}
-  const STEPS = [['look', '看参考'], ['write', '写画法'], ['sample', '出样片'], ['done', '完成']]
+  const STEPS = [['look', t('distill.look')], ['write', t('distill.write')], ['sample', t('distill.sample')], ['done', t('step.done')]]
   const at = STEPS.findIndex(x => x[0] === d.step)
   const file = rel => fileUrl(`styles/mine/${slug}/file/${rel}`)
   const save = async () => {
     setBusy(true)
     try {
       await api(`styles/mine/${slug}/save`, {})
-      toast({ text: `「${s.name}」已保存到我的风格` })
+      toast({ text: t('mine.saved', { name: s.name }) })
       reload()
     } catch (e) {
       toast({ text: e.message, tone: 'warning' })
@@ -921,8 +943,8 @@ export function DistillCard(props) {
     }
   }
   return (
-    <Shell title={s.name} right={d.state === 'failed' ? <Badge tone="err">没成功</Badge> : s.draft === false ? <Badge tone="ok">已保存到我的风格</Badge> : d.state === 'done' ? <Badge tone="ok">样片好了</Badge> : <Badge tone="warn">蒸馏中</Badge>}
-      foot={d.state === 'done' && s.draft !== false ? <><span className="lv-grow lv-subtle">满意就保存，以后出分镜时可以直接用它。</span><Button kind="pri" busy={busy} onClick={save}>保存为我的风格</Button></> : s.draft === false ? <><span className="lv-grow lv-subtle">以后做视频时说「用{s.name}」就行。</span><Button size="sm" kind="ghost" onClick={() => openManager('mine')}>我的风格</Button></> : null}
+    <Shell title={s.name} right={d.state === 'failed' ? <Badge tone="err">{t('common.failed')}</Badge> : s.draft === false ? <Badge tone="ok">{t('distill.savedBadge')}</Badge> : d.state === 'done' ? <Badge tone="ok">{t('distill.samplesReady')}</Badge> : <Badge tone="warn">{t('mine.distilling')}</Badge>}
+      foot={d.state === 'done' && s.draft !== false ? <><span className="lv-grow lv-subtle">{t('distill.saveHint')}</span><Button kind="pri" busy={busy} onClick={save}>{t('mine.save')}</Button></> : s.draft === false ? <><span className="lv-grow lv-subtle">{t('distill.useHint', { name: s.name })}</span><Button size="sm" kind="ghost" onClick={() => openManager('mine')}>{t('style.mineBadge')}</Button></> : null}
       error={d.state === 'failed' ? d.error : null}>
       <div className="lv-card-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div className="lv-row" style={{ gap: 6, flexWrap: 'wrap' }}>
@@ -932,9 +954,9 @@ export function DistillCard(props) {
             </Badge>
           ))}
         </div>
-        {d.features ? <div className="lv-row" style={{ gap: 4 }}>{d.features.palette.map(p => <span key={p.hex} title={p.hex} style={{ width: 22, height: 22, borderRadius: 6, background: p.hex, border: '1px solid var(--dsw-alias-border-l2)' }} />)}<span className="lv-subtle" style={{ marginLeft: 6 }}>参考里的主色</span></div> : null}
+        {d.features ? <div className="lv-row" style={{ gap: 4 }}>{d.features.palette.map(p => <span key={p.hex} title={p.hex} style={{ width: 22, height: 22, borderRadius: 6, background: p.hex, border: '1px solid var(--dsw-alias-border-l2)' }} />)}<span className="lv-subtle" style={{ marginLeft: 6 }}>{t('distill.palette')}</span></div> : null}
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 96px', gap: 10, alignItems: 'start' }}>
-          {d.samples?.[0] ? <video className="lv-media" src={file(d.samples[0].file)} poster={file(d.samples[0].poster)} controls muted loop style={{ width: '100%', borderRadius: 8 }} /> : d.sheet ? <Media src={file(d.sheet)} chip="参考" /> : <Media />}
+          {d.samples?.[0] ? <video className="lv-media" src={file(d.samples[0].file)} poster={file(d.samples[0].poster)} controls muted loop style={{ width: '100%', borderRadius: 8 }} /> : d.sheet ? <Media src={file(d.sheet)} chip={t('distill.reference')} /> : <Media />}
           {d.samples?.[1] ? <video src={file(d.samples[1].file)} poster={file(d.samples[1].poster)} controls muted loop style={{ width: '100%', borderRadius: 8, aspectRatio: '9/16', background: '#000' }} /> : <Media portrait />}
         </div>
       </div>
@@ -944,10 +966,11 @@ export function DistillCard(props) {
 
 /* ---------- 填 Key ---------- */
 
-const KEY_LABELS = { doubao: '豆包语音', elevenlabs: 'ElevenLabs', openai: 'OpenAI 兼容', volcengine: '火山配乐' }
+const KEY_LABELS = { doubao: () => voiceName('doubao'), elevenlabs: () => 'ElevenLabs', openai: () => voiceName('openai'), volcengine: () => musicName('volcengine') }
 
 /** 导演请用户填 Key：卡片上直接粘贴（Key 不经过对话），配好一家就告诉导演；没要 Key 的配置调用不出卡片 */
 export function ConfigureCard(props) {
+  const t = useT()
   const services = (argsOf(props.block).ask_keys || []).filter(k => KEY_LABELS[k])
   const sessionId = done(props) ? pick(resultText(props.block), 'session_id') : null
   const key = `lovideo-keys-${props.callId}`
@@ -960,7 +983,7 @@ export function ConfigureCard(props) {
   })
   const [err, setErr] = React.useState(null)
   if (!services.length) return null
-  if (!done(props)) return <Pending props={props} label="填 Key" />
+  if (!done(props)) return <Pending props={props} label={t('configure.pending')} />
   const onReady = async service => {
     if (told.includes(service)) return
     setErr(null)
@@ -979,9 +1002,9 @@ export function ConfigureCard(props) {
   }
   const left = services.filter(k => !told.includes(k))
   return (
-    <Shell title={`填 ${services.map(k => KEY_LABELS[k]).join('、')} 的 Key`}>
+    <Shell title={t('configure.title', { list: services.map(k => KEY_LABELS[k]()).join(t('common.listSep')) })}>
       <div className="lv-card-body">
-        <div className="lv-subtle" style={{ marginBottom: 10 }}>{left.length ? 'Key 只存在这台电脑上，不会发到对话里；保存后会先试听一句，念出来了才换过去' : '都配好了，已告诉导演接着做'}</div>
+        <div className="lv-subtle" style={{ marginBottom: 10 }}>{left.length ? t('configure.hint') : t('configure.done')}</div>
         <KeyCard services={services} onReady={onReady} />
         {err ? <div className="lv-err" style={{ marginTop: 6 }}>{err}</div> : null}
       </div>

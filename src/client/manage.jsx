@@ -7,6 +7,7 @@ import { StyleTile, seedFavorites } from './tiles.jsx'
 import { host, openSession, startDirector, watchPanel } from './host.js'
 import { toast } from './toast.jsx'
 import { SoundSettings } from './sound-settings.jsx'
+import { rich, t, useT } from './i18n.js'
 
 const PAGE_CSS = `
 .lv-page{height:100%;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base)}
@@ -37,9 +38,10 @@ const PAGE_CSS = `
 .lv-banner{animation:lv-in var(--lv-slow) var(--lv-ease-out);display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--dsw-alias-card-fill);margin-bottom:16px}
 `
 
-const TABS = [['works', '作品'], ['platform', '官方风格'], ['mine', '我的风格'], ['settings', '设置']]
+const TABS = [['works', 'manage.tab.works'], ['platform', 'manage.tab.platform'], ['mine', 'manage.tab.mine'], ['settings', 'manage.tab.settings']]
 
 export function ManagePage() {
+  const t = useT()
   const [tab, setTab] = React.useState(host.tab || 'works')
   // 从哪个对话跳过来的；用户离开管理页就清掉，下次从侧栏直接进来时不会冒出旧的来源
   const [from, setFrom] = React.useState(host.from)
@@ -62,15 +64,15 @@ export function ManagePage() {
       <div className="lv-top">
         {from ? (
           <Button size="sm" kind="ghost" onClick={() => openSession(from.sessionId)}>
-            ← 返回对话{from.title ? <span className="lv-truncate" style={{ display: 'inline-block', maxWidth: 200, verticalAlign: 'bottom' }}>《{from.title}》</span> : null}
+            {t('manage.back')}{from.title ? <span className="lv-truncate" style={{ display: 'inline-block', maxWidth: 200, verticalAlign: 'bottom' }}>{t('manage.backTitle', { title: from.title })}</span> : null}
           </Button>
         ) : null}
         <span className="lv-brand"><Mark />lovideo</span>
         <nav className="lv-tabs" aria-label="lovideo">
-          {TABS.map(([id, label]) => <button key={id} type="button" className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>)}
+          {TABS.map(([id, label]) => <button key={id} type="button" className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{t(label)}</button>)}
         </nav>
         <span className="lv-grow" />
-        <Button kind="pri" onClick={() => startDirector('我想做一个视频：')}>做一部新片</Button>
+        <Button kind="pri" onClick={() => startDirector(t('prompt.newFilm'))}>{t('manage.newFilm')}</Button>
       </div>
       <div className="lv-body">
         <div key={tab} className="lv-pane">{tab === 'works' ? <Works /> : tab === 'platform' ? <Platform /> : tab === 'mine' ? <Mine /> : <Settings />}</div>
@@ -82,6 +84,7 @@ export function ManagePage() {
 /* ---------- 作品 ---------- */
 
 function Works() {
+  const t = useT()
   const [data] = useLive('works', () => true)
   const [sel, setSel] = React.useState(null)
   const works = data?.works || []
@@ -90,14 +93,14 @@ function Works() {
     <div className={current ? 'lv-split' : ''}>
       <div>
         <div className="lv-head">
-          <h1 className="lv-h1">作品</h1>
-          <span className="lv-subtle">{works.length} 部 · 都在这台电脑上</span>
+          <h1 className="lv-h1">{t('works.title')}</h1>
+          <span className="lv-subtle">{t('works.count', { n: works.length })}</span>
         </div>
-        {!data ? <div className="lv-subtle lv-shimmer">读取中…</div> : !works.length ? (
+        {!data ? <div className="lv-subtle lv-shimmer">{t('common.loading')}</div> : !works.length ? (
           <div className="lv-empty">
-            <div style={{ fontSize: 15, color: 'var(--dsw-alias-label-primary)', marginBottom: 6 }}>还没有作品</div>
-            <div style={{ marginBottom: 14 }}>说一句想做什么，导演帮你选风格、出分镜，在这台电脑上做出来。</div>
-            <Button kind="pri" onClick={() => startDirector('我想做一个视频：')}>做第一部片子</Button>
+            <div style={{ fontSize: 15, color: 'var(--dsw-alias-label-primary)', marginBottom: 6 }}>{t('works.empty')}</div>
+            <div style={{ marginBottom: 14 }}>{t('works.emptyDesc')}</div>
+            <Button kind="pri" onClick={() => startDirector(t('prompt.newFilm'))}>{t('works.first')}</Button>
           </div>
         ) : (
           <div className="lv-grid" style={{ '--lv-min': '210px' }}>
@@ -120,12 +123,13 @@ function Works() {
 }
 
 function WorkPanel({ id, onClose }) {
+  const t = useT()
   const [w] = useLive(`works/${id}`, m => m.id === id)
   const [confirm, setConfirm] = React.useState(false)
-  if (!w) return <div className="lv-side lv-subtle lv-shimmer">读取中…</div>
+  if (!w) return <div className="lv-side lv-subtle lv-shimmer">{t('common.loading')}</div>
   const del = async () => {
     await api(`works/${id}/delete`, {})
-    toast({ text: `已删除《${w.title}》` })
+    toast({ text: t('works.deleted', { title: w.title }) })
     onClose()
   }
   return (
@@ -134,22 +138,22 @@ function WorkPanel({ id, onClose }) {
         <div className="lv-card-head">
           <span className="lv-card-title lv-grow lv-truncate">{w.title}</span>
           <StatusBadge status={w.status} />
-          <Button size="sm" kind="ghost" onClick={onClose} aria-label="关闭">✕</Button>
+          <Button size="sm" kind="ghost" onClick={onClose} aria-label={t('common.close')}>✕</Button>
         </div>
         <div className="lv-card-body"><WorkBody w={w} /></div>
         <div className="lv-card-foot"><WorkActions w={w} compact /></div>
       </div>
       <div className="lv-card"><div className="lv-card-body" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div className="lv-row"><span className="lv-subtle" style={{ width: 56 }}>风格</span>{w.style?.name}</div>
-        <div className="lv-row"><span className="lv-subtle" style={{ width: 56 }}>分镜</span>v{w.plan?.revision} · {w.scenes} 镜 · {w.aspect}</div>
-        {w.film ? <div className="lv-row"><span className="lv-subtle" style={{ width: 56 }}>成片</span>{fmtSec(w.film.duration)} · {w.film.width}×{w.film.height}</div> : null}
-        <div className="lv-row"><span className="lv-subtle" style={{ width: 56 }}>位置</span><span className="lv-mono lv-truncate lv-subtle" title={w.dir}>{w.dir}</span></div>
-        {w.exports?.length ? <div className="lv-row" style={{ alignItems: 'flex-start' }}><span className="lv-subtle" style={{ width: 56 }}>导出</span><span className="lv-grow">{w.exports.slice(-3).reverse().map(e => <div key={e.path} className="lv-truncate lv-subtle" title={e.path}>{e.kind === 'mp4' ? `MP4 ${e.quality}` : '剪映工程'} · {e.path.split(/[\\/]/).pop()}</div>)}</span></div> : null}
+        <div className="lv-row"><span className="lv-subtle" style={{ width: 56 }}>{t('work.style')}</span>{w.style?.name}</div>
+        <div className="lv-row"><span className="lv-subtle" style={{ width: 56 }}>{t('work.plan')}</span>{t('work.planValue', { rev: w.plan?.revision, n: w.scenes, aspect: w.aspect })}</div>
+        {w.film ? <div className="lv-row"><span className="lv-subtle" style={{ width: 56 }}>{t('work.film')}</span>{fmtSec(w.film.duration)} · {w.film.width}×{w.film.height}</div> : null}
+        <div className="lv-row"><span className="lv-subtle" style={{ width: 56 }}>{t('work.location')}</span><span className="lv-mono lv-truncate lv-subtle" title={w.dir}>{w.dir}</span></div>
+        {w.exports?.length ? <div className="lv-row" style={{ alignItems: 'flex-start' }}><span className="lv-subtle" style={{ width: 56 }}>{t('work.exports')}</span><span className="lv-grow">{w.exports.slice(-3).reverse().map(e => <div key={e.path} className="lv-truncate lv-subtle" title={e.path}>{e.kind === 'mp4' ? `MP4 ${e.quality}` : t('work.jianyingProject')} · {e.path.split(/[\\/]/).pop()}</div>)}</span></div> : null}
         <div className="lv-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
-          {w.sessionId ? <Button size="sm" onClick={() => openSession(w.sessionId)}>回到对话</Button> : <Button size="sm" onClick={() => startDirector(`继续改我的作品《${w.title}》（work_id: ${w.id}）：`)}>在对话里改</Button>}
-          <Button size="sm" kind="ghost" onClick={() => api(`works/${id}/reveal`, {})}>在文件夹中显示</Button>
+          {w.sessionId ? <Button size="sm" onClick={() => openSession(w.sessionId)}>{t('common.backToChat')}</Button> : <Button size="sm" onClick={() => startDirector(t('prompt.editWork', { title: w.title, id: w.id }))}>{t('work.editInChat')}</Button>}
+          <Button size="sm" kind="ghost" onClick={() => api(`works/${id}/reveal`, {})}>{t('common.reveal')}</Button>
           <span className="lv-grow" />
-          {confirm ? <><span className="lv-subtle">删除后不能恢复</span><Button size="sm" onClick={() => setConfirm(false)}>取消</Button><Button size="sm" kind="pri" onClick={del}>删除</Button></> : <Button size="sm" kind="ghost" onClick={() => setConfirm(true)}>删除</Button>}
+          {confirm ? <><span className="lv-subtle">{t('work.deleteWarn')}</span><Button size="sm" onClick={() => setConfirm(false)}>{t('common.cancel')}</Button><Button size="sm" kind="pri" onClick={del}>{t('common.delete')}</Button></> : <Button size="sm" kind="ghost" onClick={() => setConfirm(true)}>{t('common.delete')}</Button>}
         </div>
       </div></div>
     </div>
@@ -160,11 +164,12 @@ function WorkPanel({ id, onClose }) {
 
 /** 「AI 帮你推荐」的草稿：带上页面上已选的画幅和搜索词，用户在冒号后面补一句想做什么再发出 */
 function recommendPrompt(q, aspect) {
-  const want = [aspect === '9:16' ? '竖版 9:16' : aspect === '16:9' ? '横版 16:9' : '', q.trim() ? `和「${q.trim()}」有关` : ''].filter(Boolean).join('，')
-  return `不知道用哪个风格，帮我从官方风格里推荐几个${want ? `（${want}）` : ''}。我想做的视频是：`
+  const want = [aspect === '9:16' ? t('prompt.portrait') : aspect === '16:9' ? t('prompt.landscape') : '', q.trim() ? t('prompt.about', { q: q.trim() }) : ''].filter(Boolean).join(t('prompt.sep'))
+  return t('prompt.recommend', { want: want ? t('prompt.recommendWant', { list: want }) : '' })
 }
 
 function Platform() {
+  const t = useT()
   const [data, , reload] = useLive('styles', () => false)
   const [st] = useLive('state', () => false)
   React.useEffect(() => seedFavorites(data?.favorites), [data])
@@ -200,24 +205,24 @@ function Platform() {
     <div className={current ? 'lv-split' : ''}>
       <div ref={top}>
         <div className="lv-head">
-          <h1 className="lv-h1">官方风格</h1>
-          <span className="lv-subtle">{data?.platform?.length || 0} 个 · 注册即免费 · 用到时下载到本机</span>
+          <h1 className="lv-h1">{t('platform.title')}</h1>
+          <span className="lv-subtle">{t('platform.count', { n: data?.platform?.length || 0 })}</span>
           <span className="lv-grow" />
-          <Button onClick={() => startDirector(recommendPrompt(q, aspect))} title="说说你想做什么视频，导演从官方风格里挑几个给你选">
+          <Button onClick={() => startDirector(recommendPrompt(q, aspect))} title={t('platform.recommendTitle')}>
             <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.2 6.3 6.3 2.2-6.3 2.2L12 19.5l-2.2-6.3L3.5 11l6.3-2.2z" fill="#ff6b3d" /></svg>
-            不知道选哪个？AI 帮你推荐
+            {t('platform.recommend')}
           </Button>
-          <input className="lv-input" style={{ width: 200 }} placeholder="搜风格、用途…" value={q} onChange={e => filter(setQ)(e.target.value)} />
-          <div className="lv-seg">{[['all', '全部'], ['16:9', '16:9'], ['9:16', '9:16']].map(([k, l]) => <button key={k} type="button" className={aspect === k ? 'on' : ''} onClick={() => filter(setAspect)(k)}>{l}</button>)}</div>
+          <input className="lv-input" style={{ width: 200 }} placeholder={t('lib.searchStyles')} value={q} onChange={e => filter(setQ)(e.target.value)} />
+          <div className="lv-seg">{[['all', t('platform.all')], ['16:9', '16:9'], ['9:16', '9:16']].map(([k, l]) => <button key={k} type="button" className={aspect === k ? 'on' : ''} onClick={() => filter(setAspect)(k)}>{l}</button>)}</div>
         </div>
         {st && !st.login.account ? <LoginBanner onDone={reload} /> : null}
-        {data?.offline ? <div className="lv-banner"><span className="lv-grow">现在连不上 lovideo.ai，显示的是上次的风格列表。</span><Button size="sm" onClick={reload}>重试</Button></div> : null}
-        {!data ? <div className="lv-subtle lv-shimmer">读取中…</div> : (
+        {data?.offline ? <div className="lv-banner"><span className="lv-grow">{t('platform.offline')}</span><Button size="sm" onClick={reload}>{t('common.retry')}</Button></div> : null}
+        {!data ? <div className="lv-subtle lv-shimmer">{t('common.loading')}</div> : (
           <>
             <div className="lv-grid">
               {shown.map(s => <StyleTile key={s.slug} s={s} selected={sel === s.slug} onSelect={() => setSel(sel === s.slug ? null : s.slug)} />)}
             </div>
-            {!list.length ? <div className="lv-subtle">没有符合的风格。</div> : null}
+            {!list.length ? <div className="lv-subtle">{t('platform.none')}</div> : null}
             {more ? <div ref={end} className="lv-end" aria-hidden="true" /> : null}
           </>
         )}
@@ -231,12 +236,13 @@ function Platform() {
 const BATCH = 24
 
 function LoginBanner({ onDone }) {
+  const t = useT()
   const [st, , reload] = useLive('state', () => false)
   const pending = st?.login?.pending
   React.useEffect(() => {
     if (!pending) return
-    const t = setInterval(reload, 1000)
-    return () => clearInterval(t)
+    const timer = setInterval(reload, 1000)
+    return () => clearInterval(timer)
   }, [pending, reload])
   React.useEffect(() => {
     if (st?.login?.account) onDone?.()
@@ -248,28 +254,29 @@ function LoginBanner({ onDone }) {
   }
   return (
     <div className="lv-banner">
-      <span className="lv-grow">{pending ? <>已在浏览器打开 lovideo.ai，确认页面上的代码是 <b className="lv-mono">{pending.userCode}</b> 后点「允许」。</> : '登录 lovideo 后就能用这些风格（注册即免费）。'}</span>
-      {pending ? <LinkButton size="sm" kind="pri" href={loginUrl(pending.url)}>重新打开</LinkButton> : <Button size="sm" kind="pri" onClick={login}>登录</Button>}
+      <span className="lv-grow">{pending ? rich(t('login.pending'), { code: <b className="lv-mono">{pending.userCode}</b> }) : t('login.banner')}</span>
+      {pending ? <LinkButton size="sm" kind="pri" href={loginUrl(pending.url)}>{t('common.reopen')}</LinkButton> : <Button size="sm" kind="pri" onClick={login}>{t('common.login')}</Button>}
     </div>
   )
 }
 
 function StylePanel({ s, onClose }) {
+  const t = useT()
   return (
     <div className="lv-side">
       <div className="lv-card">
         {s.sample ? <video src={s.sample} poster={coverOf(s) || undefined} controls muted loop style={{ width: '100%', display: 'block', background: '#000' }} /> : <Media src={coverOf(s)} style={{ borderRadius: 0 }} />}
         <div className="lv-card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div className="lv-row"><span className="lv-card-title lv-grow">{s.name}</span><Button size="sm" kind="ghost" onClick={onClose} aria-label="关闭">✕</Button></div>
+          <div className="lv-row"><span className="lv-card-title lv-grow">{s.name}</span><Button size="sm" kind="ghost" onClick={onClose} aria-label={t('common.close')}>✕</Button></div>
           {s.description ? <div className="lv-muted">{s.description}</div> : null}
           <div className="lv-row" style={{ flexWrap: 'wrap', gap: 6 }}>
             {(s.aspects || []).map(a => <Badge key={a}>{a}</Badge>)}
             {s.fps ? <Badge>{s.fps} fps</Badge> : null}
-            {s.gpu ? <Badge>3D 绘制</Badge> : null}
-            {s.source === 'mine' ? <Badge tone="info">我的风格</Badge> : s.installed ? <Badge tone="ok">已在本机</Badge> : null}
+            {s.gpu ? <Badge>{t('style.gpu')}</Badge> : null}
+            {s.source === 'mine' ? <Badge tone="info">{t('style.mineBadge')}</Badge> : s.installed ? <Badge tone="ok">{t('style.installed')}</Badge> : null}
           </div>
-          <Button kind="pri" size="lg" onClick={() => startDirector('我想做一个视频：', { style: s.slug })}>用这个风格开拍</Button>
-          <span className="lv-subtle">会开一个「lovideo 导演」对话，把你想讲的说给导演就行。</span>
+          <Button kind="pri" size="lg" onClick={() => startDirector(t('prompt.newFilm'), { style: s.slug })}>{t('style.start')}</Button>
+          <span className="lv-subtle">{t('style.startHint')}</span>
         </div>
       </div>
     </div>
@@ -279,6 +286,7 @@ function StylePanel({ s, onClose }) {
 /* ---------- 我的风格 ---------- */
 
 function Mine() {
+  const t = useT()
   const [data, , reload] = useLive('styles', () => false, 3000)
   const [sel, setSel] = React.useState(null)
   const mine = data?.mine || []
@@ -287,21 +295,21 @@ function Mine() {
     <div className={current ? 'lv-split' : ''}>
       <div>
         <div className="lv-head">
-          <h1 className="lv-h1">我的风格</h1>
-          <span className="lv-subtle">从喜欢的视频蒸馏出来的风格，只在这台电脑上</span>
+          <h1 className="lv-h1">{t('mine.title')}</h1>
+          <span className="lv-subtle">{t('mine.desc')}</span>
           <span className="lv-grow" />
-          <Button kind="pri" onClick={() => startDirector('把这段视频蒸馏成我的风格（把参考视频拖进来），想保留的特点是：')}>蒸馏新风格</Button>
+          <Button kind="pri" onClick={() => startDirector(t('prompt.distill'))}>{t('mine.new')}</Button>
         </div>
-        {!data ? <div className="lv-subtle lv-shimmer">读取中…</div> : !mine.length ? (
+        {!data ? <div className="lv-subtle lv-shimmer">{t('common.loading')}</div> : !mine.length ? (
           <div className="lv-empty">
-            <div style={{ fontSize: 15, color: 'var(--dsw-alias-label-primary)', marginBottom: 6 }}>还没有自己的风格</div>
-            <div>把一段喜欢的视频拖进对话，说「蒸馏成我的风格」，导演会在这台电脑上看参考、写画法、出样片。</div>
+            <div style={{ fontSize: 15, color: 'var(--dsw-alias-label-primary)', marginBottom: 6 }}>{t('mine.empty')}</div>
+            <div>{t('mine.emptyDesc')}</div>
           </div>
         ) : (
           <div className="lv-grid">
             {mine.map(s => (
               <button key={s.slug} type="button" className={`lv-tile ${sel === s.slug ? 'on' : ''}`} onClick={() => setSel(sel === s.slug ? null : s.slug)}>
-                <Media src={coverOf(s) || (s.distill?.sheet ? fileUrl(`styles/mine/${s.slug}/file/${s.distill.sheet}`) : null)} chip={s.draft ? (s.distill?.state === 'failed' ? '没成功' : s.distill?.state === 'done' ? '待保存' : '蒸馏中') : null} />
+                <Media src={coverOf(s) || (s.distill?.sheet ? fileUrl(`styles/mine/${s.slug}/file/${s.distill.sheet}`) : null)} chip={s.draft ? (s.distill?.state === 'failed' ? t('common.failed') : s.distill?.state === 'done' ? t('mine.toSave') : t('mine.distilling')) : null} />
                 <div className="lv-tile-title lv-truncate">{s.name}</div>
                 <div className="lv-subtle lv-truncate">{(s.aspects || []).join(' · ')}</div>
               </button>
@@ -315,6 +323,7 @@ function Mine() {
 }
 
 function MinePanel({ s, onClose, reload }) {
+  const t = useT()
   const file = rel => fileUrl(`styles/mine/${s.slug}/file/${rel}`)
   const samples = s.distill?.samples || []
   const [confirm, setConfirm] = React.useState(false)
@@ -323,15 +332,15 @@ function MinePanel({ s, onClose, reload }) {
       <div className="lv-card">
         {samples[0] ? <video src={file(samples[0].file)} poster={file(samples[0].poster)} controls muted loop style={{ width: '100%', display: 'block', background: '#000' }} /> : <Media src={coverOf(s)} style={{ borderRadius: 0 }} />}
         <div className="lv-card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div className="lv-row"><span className="lv-card-title lv-grow">{s.name}</span><Button size="sm" kind="ghost" onClick={onClose} aria-label="关闭">✕</Button></div>
+          <div className="lv-row"><span className="lv-card-title lv-grow">{s.name}</span><Button size="sm" kind="ghost" onClick={onClose} aria-label={t('common.close')}>✕</Button></div>
           {s.description ? <div className="lv-muted">{s.description}</div> : null}
           {s.distill?.error ? <div className="lv-err">{s.distill.error}</div> : null}
           {samples[1] ? <video src={file(samples[1].file)} poster={file(samples[1].poster)} controls muted loop style={{ width: 120, borderRadius: 8, background: '#000' }} /> : null}
-          {s.draft && s.distill?.state === 'done' ? <Button kind="pri" onClick={() => api(`styles/mine/${s.slug}/save`, {}).then(() => { toast({ text: `「${s.name}」已保存到我的风格` }); reload() }, e => toast({ text: e.message, tone: 'warning' }))}>保存为我的风格</Button> : null}
-          {!s.draft ? <Button kind="pri" size="lg" onClick={() => startDirector('我想做一个视频：', { style: s.slug })}>用它开拍</Button> : null}
+          {s.draft && s.distill?.state === 'done' ? <Button kind="pri" onClick={() => api(`styles/mine/${s.slug}/save`, {}).then(() => { toast({ text: t('mine.saved', { name: s.name }) }); reload() }, e => toast({ text: e.message, tone: 'warning' }))}>{t('mine.save')}</Button> : null}
+          {!s.draft ? <Button kind="pri" size="lg" onClick={() => startDirector(t('prompt.newFilm'), { style: s.slug })}>{t('mine.use')}</Button> : null}
           <div className="lv-row">
             <span className="lv-grow" />
-            {confirm ? <><Button size="sm" onClick={() => setConfirm(false)}>取消</Button><Button size="sm" kind="pri" onClick={() => api(`styles/mine/${s.slug}/delete`, {}).then(() => { toast({ text: `已删除风格「${s.name}」` }); onClose(); reload() }, e => toast({ text: e.message, tone: 'warning' }))}>删除</Button></> : <Button size="sm" kind="ghost" onClick={() => setConfirm(true)}>删除</Button>}
+            {confirm ? <><Button size="sm" onClick={() => setConfirm(false)}>{t('common.cancel')}</Button><Button size="sm" kind="pri" onClick={() => api(`styles/mine/${s.slug}/delete`, {}).then(() => { toast({ text: t('mine.deleted', { name: s.name }) }); onClose(); reload() }, e => toast({ text: e.message, tone: 'warning' }))}>{t('common.delete')}</Button></> : <Button size="sm" kind="ghost" onClick={() => setConfirm(true)}>{t('common.delete')}</Button>}
           </div>
         </div>
       </div>
@@ -342,6 +351,7 @@ function MinePanel({ s, onClose, reload }) {
 /* ---------- 设置 ---------- */
 
 function Settings() {
+  const t = useT()
   const [st, , reload, setSt] = useLive('state', () => false)
   const [models] = useLive('models', () => false)
   const [form, setForm] = React.useState(null)
@@ -353,7 +363,7 @@ function Settings() {
     try {
       await api('logout', {})
       setAskLogout(false)
-      toast({ text: '已退出 lovideo' })
+      toast({ text: t('settings.loggedOut') })
       reload()
     } finally {
       setLoggingOut(false)
@@ -362,7 +372,7 @@ function Settings() {
   React.useEffect(() => {
     if (st && !form) setForm({ exportDir: st.settings.exportDir, parallel: st.settings.parallel, model: st.settings.model })
   }, [st, form])
-  if (!st || !form) return <div className="lv-subtle lv-shimmer">读取中…</div>
+  if (!st || !form) return <div className="lv-subtle lv-shimmer">{t('common.loading')}</div>
   // 在「这台电脑」里一键下载完离线配音、配乐时，配音配乐会在后台切过去：重新读一次
   const syncVoice = async () => {
     setSt(await api('state'))
@@ -371,7 +381,7 @@ function Settings() {
   const save = async patch => {
     try {
       setSt(await api('settings', patch))
-      toast({ text: '设置已保存' })
+      toast({ text: t('settings.saved') })
     } catch (e) {
       toast({ text: e.message, tone: 'warning' })
     }
@@ -384,29 +394,29 @@ function Settings() {
   }
   return (
     <div style={{ maxWidth: 760 }}>
-      <div className="lv-head"><h1 className="lv-h1">设置</h1><span className="lv-subtle">电脑上有的用你自己的；key 只存在这台电脑上，不上传 lovideo。</span></div>
+      <div className="lv-head"><h1 className="lv-h1">{t('settings.title')}</h1><span className="lv-subtle">{t('settings.desc')}</span></div>
 
       <div className="lv-section">
-        <h3>lovideo 账号</h3>
+        <h3>{t('settings.account')}</h3>
         <div className="lv-srow">
-          <div className="l"><b>{st.login.account ? st.login.account.email || '已登录' : '未登录'}</b><span className="lv-subtle">{st.login.account ? '平台风格免费使用' : '登录后可以用平台上的风格（注册即免费）'}</span></div>
-          {st.login.account ? <Button size="sm" onClick={() => setAskLogout(true)}>退出</Button> : null}
+          <div className="l"><b>{st.login.account ? st.login.account.email || t('settings.signedIn') : t('settings.signedOut')}</b><span className="lv-subtle">{st.login.account ? t('settings.accountOn') : t('settings.accountOff')}</span></div>
+          {st.login.account ? <Button size="sm" onClick={() => setAskLogout(true)}>{t('settings.logout')}</Button> : null}
         </div>
         {!st.login.account ? <LoginBanner onDone={reload} /> : null}
       </div>
 
       <div className="lv-section">
-        <h3>这台电脑</h3>
+        <h3>{t('settings.computer')}</h3>
         <div style={{ padding: '8px 0 12px' }}><Doctor onVoiceChange={syncVoice} /></div>
       </div>
 
       <div className="lv-section">
-        <h3>模型</h3>
+        <h3>{t('common.model')}</h3>
         <div className="lv-srow">
-          <div className="l"><b>导演和制作用的模型</b><span className="lv-subtle">默认跟随 DeepSeek Harness 当前选的模型</span></div>
+          <div className="l"><b>{t('settings.modelLabel')}</b><span className="lv-subtle">{t('settings.modelDesc')}</span></div>
           <select className="lv-select" style={{ width: 300 }} value={form.model ? JSON.stringify(form.model) : ''} onChange={pickModel}>
-            <option value="">跟随 DeepSeek Harness{st.model && !form.model ? `（${st.model.label}）` : ''}</option>
-            {(models?.models || []).map(m => <option key={`${m.provider}/${m.model}`} value={JSON.stringify({ provider: m.provider, model: m.model })}>{m.label}（{m.provider}）</option>)}
+            <option value="">{t('settings.followHost', { current: st.model && !form.model ? t('settings.followCurrent', { label: st.model.label }) : '' })}</option>
+            {(models?.models || []).map(m => <option key={`${m.provider}/${m.model}`} value={JSON.stringify({ provider: m.provider, model: m.model })}>{t('settings.modelOption', { label: m.label, provider: m.provider })}</option>)}
           </select>
         </div>
       </div>
@@ -414,21 +424,21 @@ function Settings() {
       <SoundSettings key={voiceRev} st={st} onState={setSt} />
 
       <div className="lv-section">
-        <h3>制作和导出</h3>
+        <h3>{t('settings.production')}</h3>
         <div className="lv-srow">
-          <div className="l"><b>最多同时渲染几段</b><span className="lv-subtle">越多越快，也越占电脑；默认 4 段</span></div>
+          <div className="l"><b>{t('settings.parallel')}</b><span className="lv-subtle">{t('settings.parallelDesc')}</span></div>
           <select className="lv-select" style={{ width: 'auto' }} value={form.parallel || 4} onChange={e => { const n = Number(e.target.value); setForm(f => ({ ...f, parallel: n })); save({ parallel: n }) }}>
-            {Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n} 段{n === 4 ? '（默认）' : ''}</option>)}
+            {Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{t('settings.parallelOption', { n })}{n === 4 ? t('settings.default') : ''}</option>)}
           </select>
         </div>
         <div className="lv-srow">
-          <div className="l"><b>导出位置</b><span className="lv-subtle lv-mono">{st.settings.exportDir}</span></div>
+          <div className="l"><b>{t('settings.exportDir')}</b><span className="lv-subtle lv-mono">{st.settings.exportDir}</span></div>
           <input className="lv-input lv-mono" style={{ width: 280 }} value={form.exportDir} onChange={e => setForm(f => ({ ...f, exportDir: e.target.value }))} onBlur={() => form.exportDir !== st.settings.exportDir && save({ exportDir: form.exportDir })} />
         </div>
       </div>
 
-      <ConfirmDialog open={askLogout} title="退出 lovideo 账号？" confirmText="退出" danger busy={loggingOut} onConfirm={logout} onCancel={() => setAskLogout(false)}>
-        <p>退出后不能再用官方风格开新片，要用时重新登录就行。这台电脑上的作品、你自己的风格和已经下载的风格都会保留。</p>
+      <ConfirmDialog open={askLogout} title={t('settings.logoutTitle')} confirmText={t('settings.logout')} danger busy={loggingOut} onConfirm={logout} onCancel={() => setAskLogout(false)}>
+        <p>{t('settings.logoutBody')}</p>
       </ConfirmDialog>
     </div>
   )

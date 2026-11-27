@@ -1,5 +1,6 @@
 // 和插件 Host 半边说话：同源的 lovideo/api/*（DSH 页面的登录凭证自动带上）。
 import * as React from 'react'
+import { t } from './i18n.js'
 
 // 用站点根路径：会话页的地址带子路径，相对路径会被解析到错误的位置
 export const API = new URL('/lovideo/api/', location.href).pathname
@@ -15,7 +16,7 @@ export async function api(path, body) {
   } catch {
     data = null
   }
-  if (!res.ok) throw Object.assign(new Error(data?.error || `请求失败（${res.status}）`), { status: res.status, code: data?.code })
+  if (!res.ok) throw Object.assign(new Error(data?.error || t('api.failed', { status: res.status })), { status: res.status, code: data?.code })
   // 对作品的改动请求成功后，立刻让本页的卡片重新读一遍，不等后端的变化推送：
   // 推送要是晚到或没到，点完按钮的卡片也不会停在旧状态上
   if (body !== undefined) {
