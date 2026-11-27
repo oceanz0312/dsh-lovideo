@@ -759,7 +759,7 @@ export function ListenButton({ load, size, kind, label = '试听', trigger = 0, 
   return (
     <Button className={`lv-btn lv-listen ${kind || 'ghost'} ${size || ''}`} busy={state === 'loading'} onClick={click} aria-label={label || (state === 'playing' ? '停止' : '试听')}>
       {state === 'playing' ? <Wave audio={audio.current} /> : state === 'idle' ? <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 1.3v7.4L8.7 5z" fill="currentColor" /></svg> : null}
-      {label ? (state === 'playing' ? '停止' : label) : null}
+      {label ? (state === 'playing' ? '停止' : state === 'loading' ? '准备中' : label) : null}
     </Button>
   )
 }

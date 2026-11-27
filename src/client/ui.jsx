@@ -36,7 +36,7 @@ export const CSS = `
 .lv-prow.off>.m{opacity:.55}
 .lv-prow .lv-dur{width:min(240px,40%)}
 .lv-mini{flex:none;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-secondary)}
-.lv-prow .lv-select.lv-src{flex:none;width:auto;max-width:200px;height:26px;font-size:12px;padding:0 6px}
+.lv-prow .lv-select.lv-src{flex:none;width:auto;max-width:200px;height:26px;font-size:12px;padding:0 24px 0 8px;background-position:right 7px center;background-size:10px 10px}
 .lv-pnote{font-size:12px;padding:0 4px}
 .lv-pnote a,.lv-vfoot a{color:var(--dsw-alias-state-business-primary);text-decoration:none}
 .lv-card:has(.lv-vmenu){overflow:visible}
@@ -49,6 +49,7 @@ export const CSS = `
 .lv-vopt .chk{margin-left:auto;font-size:12px}
 .lv-vfoot{display:flex;justify-content:space-between;gap:8px;margin-top:4px;padding:8px 8px 2px;border-top:1px solid var(--dsw-alias-border-l2);font-size:12px}
 .lv-listen{position:relative;overflow:hidden;min-width:64px;justify-content:center}
+.lv-line>.lv-btn{height:32px}
 .lv-listen svg{width:10px;height:10px;flex:none}
 .lv-wave{display:inline-flex;align-items:center;gap:2px;height:12px;flex:none}
 .lv-wave i{display:block;width:2px;height:3px;border-radius:1px;background:currentColor;transition:height 80ms linear}
@@ -129,6 +130,9 @@ a.lv-btn{text-decoration:none}
 .lv-tile-title{font-weight:500;margin-top:7px;font-size:13px}
 .lv-input,.lv-select{height:32px;width:100%;border-radius:8px;border:1px solid var(--dsw-alias-border-l4);background:var(--dsw-alias-bg-base);color:inherit;font:inherit;padding:0 10px}
 .lv-input,.lv-select{transition:border-color var(--lv-dur) var(--lv-ease),box-shadow var(--lv-dur) var(--lv-ease)}
+.lv-select{appearance:none;-webkit-appearance:none;padding-right:32px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%23888' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:12px 12px;text-overflow:ellipsis;white-space:nowrap;overflow:hidden;cursor:pointer}
+.lv-input:hover:not(:disabled):not(:focus),.lv-select:hover:not(:disabled):not(:focus){border-color:var(--dsw-alias-label-tertiary)}
+.lv-select:disabled{cursor:default;opacity:.6}
 .lv-input:focus,.lv-select:focus{outline:0;box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-state-business-primary) 25%,transparent);border-color:var(--dsw-alias-state-business-primary)}
 .lv-field{display:flex;flex-direction:column;gap:5px}
 .lv-field>label{font-size:12px;color:var(--dsw-alias-label-secondary)}
@@ -155,7 +159,7 @@ a.lv-btn{text-decoration:none}
 .lv-play i::before{content:'';margin-left:3px;border-left:10px solid #111;border-top:6px solid transparent;border-bottom:6px solid transparent}
 .lv-preview{display:flex;flex-direction:column;gap:6px;animation:lv-in var(--lv-slow) var(--lv-ease-out)}
 .lv-empty{padding:40px 16px;text-align:center;color:var(--dsw-alias-label-tertiary)}
-.lv-spin{width:12px;height:12px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:lv-spin .8s linear infinite;display:inline-block}
+.lv-spin{flex:none;width:11px;height:11px;border-radius:50%;border:1.5px solid color-mix(in srgb,currentColor 25%,transparent);border-top-color:currentColor;animation:lv-spin .8s linear infinite;display:inline-block}
 @keyframes lv-spin{to{transform:rotate(360deg)}}
 .lv-shimmer{animation:lv-pulse 1.4s ease-in-out infinite}
 @keyframes lv-pulse{50%{opacity:.45}}
