@@ -17,7 +17,7 @@ import { jianyingStatus } from './jianying.js'
 import { localVoiceStatus, musicReady, speakLocal, startDefaultSetup, startSetup as startLocalVoiceSetup, useModel as useLocalVoice, worker as localWorker } from './localvoice.js'
 import { voiceCatalog } from './voicecatalog.js'
 import { saveDistilled, startDistill } from './distill.js'
-import { mediaSeconds, runtimeStatus, setupProgress, setupRuntime } from './runtime.js'
+import { mediaSeconds, runtimeStatus, setupCanStart, setupProgress, setupRuntime } from './runtime.js'
 import { MUSIC_PROVIDERS, VOICE_PROVIDERS, publicSettings, readSettings, updateSettings, voiceConfig } from './settings.js'
 import { listModels, modelInfo } from './llm.js'
 import { loginState, logout, startLogin, siteUrl } from './site.js'
@@ -291,9 +291,9 @@ export async function route(req, res) {
     return json(res, 200, { ok: true })
   }
   if (path === 'runtime/setup') {
-    // 下载完（或失败）时给页面一条提示；正在准备时重复点不会重复提示
-    if (!setupProgress().running) {
-      setupRuntime().then(p => notify(p.error
+    // 下载完（或失败）时给页面一条提示；正在准备时重复点不会重复提示。卡住了再点会重新开始，被顶替的那次不提示
+    if (setupCanStart()) {
+      setupRuntime().then(p => p.running || notify(p.error
         ? { kind: 'runtime-failed', tone: 'warning', text: `渲染环境没准备好：${p.error}`.slice(0, 160) }
         : { kind: 'runtime-ready', tone: 'success', text: '渲染环境准备好了，可以开拍' }), () => {})
     }

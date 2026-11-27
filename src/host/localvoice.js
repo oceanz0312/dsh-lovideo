@@ -4,11 +4,12 @@
 // 后端两种：Apple 芯片的 Mac 用 mlx-audio；Windows、Linux、Intel Mac 用 PyTorch（有 NVIDIA 显卡用显卡，没有就用 CPU）。
 // Python 环境用 uv 单独装一份 3.12（DSH 自带的 Python 加载不了这类原生库，macOS 系统 Python 又太旧），放在插件目录里。
 import { spawn, spawnSync } from 'node:child_process'
-import { chmodSync, copyFileSync, createWriteStream, existsSync, readFileSync, readdirSync, renameSync, rmSync, statSync, statfsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { chmodSync, copyFileSync, existsSync, readFileSync, readdirSync, renameSync, rmSync, statSync, statfsSync } from 'node:fs'
 import { cpus, platform as osPlatform, totalmem } from 'node:os'
 import { delimiter, join } from 'node:path'
-import { pipeline } from 'node:stream/promises'
-import { Readable } from 'node:stream'
+import extractZip from 'extract-zip'
+import { download, downloadError, fasterFirst } from './download.js'
 import { PLUGIN_ROOT, dataDir, ensureDir, runtimeDir } from './paths.js'
 import { changeSettings, readSettings } from './settings.js'
 
@@ -299,10 +300,33 @@ const UV_ASSET = {
   'win32-x64': 'uv-x86_64-pc-windows-msvc.zip',
   'win32-arm64': 'uv-aarch64-pc-windows-msvc.zip',
 }
+/*
+ * uv 的 PyPI wheel：同一个 uv 打成的 zip，二进制在 uv-<版本>.data/scripts/ 里。GitHub 下不动时从国内 PyPI 镜像下它。
+ * 这里是 PyPI 上的文件路径（各镜像一样）和 sha256，升级 UV_VERSION 时一起换（从 https://pypi.org/simple/uv/ 查）。
+ */
+const UV_WHEEL = {
+  'darwin-arm64': ['a9/8d/ddec2493ee930ebf32676f7b3715d75915eda45c981f6621ce3e99b69254/uv-0.12.12-py3-none-macosx_11_0_arm64.whl', 'e29bf70f889e801f7dc440b51b859f005311416aa3b5c42ba9dc387c7e877c00'],
+  'darwin-x64': ['c5/49/1e5c867d088fd6641f15db3f50e07770a466f54309b818242bfd21e11469/uv-0.12.12-py3-none-macosx_10_12_x86_64.whl', 'd3fa745404dd52a1763bc159073deacc5c0d501cb5e5c0baeeb53bf26f6d3482'],
+  'linux-x64': ['be/c2/e8ff20e5f0bf1011995688784bc71ed7edbc7ccd3836e4967895680b2968/uv-0.12.12-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl', 'fa5df02fc619a3cc7a58810d6ffeb80ca1e01404b8ef7239bd1cf2103c02cacf'],
+  'linux-arm64': ['77/27/b7b7486ebc998ab0893169a02d87d540c47bc6dd821de7e11156e343697a/uv-0.12.12-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.musllinux_1_1_aarch64.whl', 'bff88c94d0b09149c1017b87b9eeca16764df37e1a6717f2b64a4104e3fb6795'],
+  'win32-x64': ['a6/b7/aebd3504d559315be6137ebfe1f6d2258e8e2f48e528d7cc799aea3441ef/uv-0.12.12-py3-none-win_amd64.whl', '4a5acd0c6087970bdf210eeb1203835117f6fb8b84828604205de510f68aa6a7'],
+  'win32-arm64': ['34/f5/70f1cb8ad7dba238489a86a341000c133db54aa12cdd81e67c98ebe9a59a/uv-0.12.12-py3-none-win_arm64.whl', '3577343756d8bf686c92eaca89a79fb0c1b6a85c2f0b579d535db22a1b49eb4b'],
+}
+const UV_WHEEL_HOSTS = ['https://mirrors.aliyun.com/pypi/packages/', 'https://pypi.tuna.tsinghua.edu.cn/packages/', 'https://files.pythonhosted.org/packages/']
 // 国内访问不了 GitHub / PyPI / Hugging Face 时换镜像
 const PYPI_MIRROR = 'https://mirrors.aliyun.com/pypi/simple/'
 const PYTHON_MIRROR = 'https://registry.npmmirror.com/-/binary/python-build-standalone/'
 const HF_MIRROR = 'https://hf-mirror.com'
+// uv 每次请求的超时（秒）：连接 10 秒；读数据是「多久没有新数据」，不是总时长，大包慢慢下也不会被切断
+const UV_NET = { UV_HTTP_CONNECT_TIMEOUT: '10', UV_HTTP_TIMEOUT: '30', UV_HTTP_RETRIES: '2' }
+// huggingface_hub 每次请求的超时（秒）：同样是多久没回应，不限总时长
+const HF_NET = { HF_HUB_ETAG_TIMEOUT: '15', HF_HUB_DOWNLOAD_TIMEOUT: '30' }
+
+/** 官方源探测时比镜像慢（或不通）就先走镜像，省掉官方那次的超时和重试；都没回应时还是先试官方 */
+async function mirrorFirst(official, mirror) {
+  const [first] = await fasterFirst([official, mirror])
+  return first === mirror
+}
 
 const ttsDir = () => ensureDir(join(runtimeDir(), 'tts'))
 
@@ -382,21 +406,49 @@ async function ensureUv() {
   const onPath = spawnSync(WIN ? 'where' : 'which', ['uv'], { encoding: 'utf8' })
   const found = onPath.status === 0 && onPath.stdout.split(/\r?\n/).find(Boolean)
   if (found) return found.trim()  // 用户自己装的 uv：pyEnv 里的 PATH 会带上当前 PATH，能找到它
-  const asset = UV_ASSET[`${process.platform}-${process.arch}`]
-  if (!asset) throw new Error(`这台电脑（${process.platform}-${process.arch}）装不了离线配音`)
-  const tmp = ensureDir(join(ttsDir(), 'tmp'))
-  const file = join(tmp, asset)
-  const res = await fetch(`https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${asset}`, { redirect: 'follow' })
-  if (!res.ok || !res.body) throw new Error(`下载 uv 失败：HTTP ${res.status}（可以先自己安装 uv，再点一次）`)
-  await pipeline(Readable.fromWeb(res.body), createWriteStream(file))
-  const r = await sh('tar', ['-xf', file, '-C', tmp])
-  if (r.code !== 0) throw new Error(`解压 uv 失败：${r.out.slice(-200)}`)
-  const bin = findFile(tmp, exe('uv'))
-  if (!bin) throw new Error('uv 压缩包里没有找到 uv')
-  renameSync(bin, mine)
-  if (!WIN) chmodSync(mine, 0o755)
-  rmSync(tmp, { recursive: true, force: true })
-  return mine
+  const key = `${process.platform}-${process.arch}`
+  const asset = UV_ASSET[key]
+  if (!asset || !UV_WHEEL[key]) throw new Error(`这台电脑（${key}）装不了离线配音`)
+  const [wheelPath, sha256] = UV_WHEEL[key]
+  const sources = [
+    { urls: [`https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${asset}`], file: asset },
+    { urls: UV_WHEEL_HOSTS.map(h => h + wheelPath), file: wheelPath.split('/').pop(), sha256 },
+  ]
+  // GitHub 探测时比国内 PyPI 镜像慢，就先下 wheel
+  if (await mirrorFirst(sources[0].urls[0], sources[1].urls[0])) sources.reverse()
+  const tried = []
+  for (const src of sources) {
+    const tmp = join(ttsDir(), 'tmp')
+    rmSync(tmp, { recursive: true, force: true })
+    ensureDir(tmp)
+    try {
+      const file = join(tmp, src.file)
+      try {
+        await download(src.urls, file, { label: 'uv ' })
+      } catch (e) {
+        tried.push(...(e.tried || [{ url: src.urls[0], reason: e.message }]))
+        continue
+      }
+      if (src.sha256 && createHash('sha256').update(readFileSync(file)).digest('hex') !== src.sha256) {
+        tried.push({ url: src.urls[0], reason: '下载的文件校验不对' })
+        continue
+      }
+      const dir = join(tmp, 'x')
+      if (file.endsWith('.tar.gz')) {
+        ensureDir(dir)
+        const r = await sh('tar', ['-xf', file, '-C', dir])
+        if (r.code !== 0) throw new Error(`解压 uv 失败：${r.out.slice(-200)}`)
+      } else await extractZip(file, { dir })
+      const bin = findFile(dir, exe('uv'))
+      if (!bin) throw new Error('uv 压缩包里没有找到 uv')
+      renameSync(bin, mine)
+      if (!WIN) chmodSync(mine, 0o755)
+      return mine
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  }
+  throw downloadError('uv（离线配音的安装工具）', tried, '请检查网络后再点一次；也可以先自己安装 uv，再点一次')
 }
 
 function findFile(dir, name) {
@@ -413,9 +465,11 @@ function findFile(dir, name) {
 
 /** 跑一个 uv 命令；失败时换国内镜像再试一次 */
 async function uvRun(uv, args) {
-  const env = { UV_PYTHON_INSTALL_DIR: join(ttsDir(), 'python'), UV_CACHE_DIR: join(ttsDir(), 'uv-cache') }
-  let r = await sh(uv, args, { env })
-  if (r.code !== 0) r = await sh(uv, args, { env: { ...env, UV_INDEX_URL: PYPI_MIRROR, UV_PYTHON_INSTALL_MIRROR: PYTHON_MIRROR } })
+  const env = { UV_PYTHON_INSTALL_DIR: join(ttsDir(), 'python'), UV_CACHE_DIR: join(ttsDir(), 'uv-cache'), ...UV_NET }
+  const mirror = { ...env, UV_INDEX_URL: PYPI_MIRROR, UV_PYTHON_INSTALL_MIRROR: PYTHON_MIRROR }
+  const [first, second] = (await mirrorFirst('https://pypi.org/simple/pip/', `${PYPI_MIRROR}pip/`)) ? [mirror, env] : [env, mirror]
+  let r = await sh(uv, args, { env: first })
+  if (r.code !== 0) r = await sh(uv, args, { env: second })
   if (r.code !== 0) throw new Error(r.out.trim().split('\n').slice(-3).join(' ').slice(0, 300))
 }
 
@@ -452,8 +506,12 @@ async function downloadModel(py, b, job) {
     job.progress = Math.min(0.99, (size() - before) / total)
   }, 1000)
   try {
-    let r = await sh(py, ['-c', script, ...b.repos], { env: { HF_HOME: hfHome() } })
-    if (r.code !== 0) r = await sh(py, ['-c', script, ...b.repos], { env: { HF_HOME: hfHome(), HF_ENDPOINT: HF_MIRROR } })
+    const env = { HF_HOME: hfHome(), ...HF_NET }
+    const mirror = { ...env, HF_ENDPOINT: HF_MIRROR }
+    const api = `/api/models/${b.repos[0]}`
+    const [first, second] = (await mirrorFirst(`https://huggingface.co${api}`, `${HF_MIRROR}${api}`)) ? [mirror, env] : [env, mirror]
+    let r = await sh(py, ['-c', script, ...b.repos], { env: first })
+    if (r.code !== 0) r = await sh(py, ['-c', script, ...b.repos], { env: second })
     if (r.code !== 0) throw new Error(`下载模型失败：${r.out.trim().split('\n').slice(-2).join(' ').slice(0, 300)}`)
   } finally {
     clearInterval(tick)

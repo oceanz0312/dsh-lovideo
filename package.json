@@ -68,6 +68,7 @@
   },
   "dependencies": {
     "@puppeteer/browsers": "^2.10.0",
+    "extract-zip": "^2.0.1",
     "puppeteer-core": "^24.20.0",
     "tar": "^7.4.3"
   },
