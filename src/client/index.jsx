@@ -8,6 +8,7 @@ import { ToastOverlay } from './toast.jsx'
 import { Mark } from './ui.jsx'
 import { ComposerPopover, DurationChip, StyleChip } from './composer.jsx'
 import { attachLocale, t } from './i18n.js'
+import { UpdateOverlay } from './update.jsx'
 
 function Icon({ size = 18 }) {
   return <Mark size={size} />
@@ -53,6 +54,8 @@ export function apply(ctx) {
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL }, ManagePage))
   // 全局提示条：登录成功、成片做好、导出完成等，在哪个页面都能看到
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'dsh-lovideo.toast' }, ToastOverlay))
+  // 新版本提醒：每次启动 DeepSeek Harness 后弹一次，「去更新」的说明框也画在全局浮层上
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'dsh-lovideo.update' }, UpdateOverlay))
   // 输入框里风格、片长的弹出层：工具栏在会裁切的容器里，弹出层画在全局浮层上
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'dsh-lovideo.composer-popover' }, ComposerPopover))
   // 过程区里的工具行只占一行；完整卡片挂在本轮末尾（不会被折叠）

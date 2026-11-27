@@ -26,6 +26,7 @@ import { tmpDir, ensureDir } from './paths.js'
 import { notices, notify } from './notices.js'
 import { listFavorites, setFavorite } from './favorites.js'
 import { COMPOSER_MAX_SEC, COMPOSER_MIN_SEC, composerDefaults, getBrief, normalizeBrief, setBrief } from './composer.js'
+import { checkUpdate } from './update.js'
 
 export const BASE = '/lovideo/api'
 const MAX_JSON = 2_000_000
@@ -150,6 +151,8 @@ export async function route(req, res) {
 
   if (method === 'GET' || method === 'HEAD') {
     if (path === 'state') return json(res, 200, state())
+    // 有没有新版本：这次启动查一次的结果（startId 让界面一次启动只提醒一次）
+    if (path === 'update') return json(res, 200, await checkUpdate())
     if (path === 'models') return json(res, 200, { models: await listModels(), current: modelInfo() })
     if (path === 'works') return json(res, 200, { works: listWorks().filter(w => !w.hidden).map(summary) })
     if ((m = /^works\/([\w-]+)$/.exec(path))) {

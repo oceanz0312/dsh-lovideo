@@ -86,6 +86,18 @@ export function startDirector(prompt, { style } = {}) {
   }
 }
 
+/** 打开 DeepSeek Harness 的「插件」页（插件列表）；宿主没给这个能力时返回 false */
+export function openPluginList() {
+  try {
+    const nav = svc('pluginNavigation')
+    if (typeof nav?.openList !== 'function') return false
+    nav.openList()
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function openSession(id) {
   try {
     if (id) svc('uiWorkspace')?.openSession(id)

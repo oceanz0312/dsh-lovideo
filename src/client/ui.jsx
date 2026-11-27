@@ -171,7 +171,7 @@ a.lv-btn{text-decoration:none}
 @keyframes lv-in{from{opacity:0;transform:translateY(4px)}}
 @keyframes lv-fade{from{opacity:0}}
 @keyframes lv-pop{from{opacity:0;transform:translateY(6px) scale(.97)}}
-.lv-modal{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:24px;background:var(--dsw-alias-bg-overlay,rgba(0,0,0,.32));animation:lv-fade var(--lv-dur) var(--lv-ease)}
+.lv-modal{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:24px;background:var(--dsw-alias-bg-mask-1,rgba(0,0,0,.24));backdrop-filter:var(--dsw-mask-blur);animation:lv-fade var(--lv-dur) var(--lv-ease)}
 .lv-modal.out{opacity:0;transition:opacity var(--lv-dur) var(--lv-ease)}
 .lv-dialog{width:min(380px,100%);border-radius:14px;padding:20px 20px 16px;background:var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-base));border:1px solid var(--dsw-alias-border-l2);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family,system-ui);font-size:13px;line-height:1.55;animation:lv-pop var(--lv-slow) var(--lv-ease-out)}
 .lv-modal.out .lv-dialog{transform:translateY(4px) scale(.98);transition:transform var(--lv-dur) var(--lv-ease)}

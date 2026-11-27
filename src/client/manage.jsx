@@ -8,6 +8,7 @@ import { host, openSession, startDirector, watchPanel } from './host.js'
 import { toast } from './toast.jsx'
 import { SoundSettings } from './sound-settings.jsx'
 import { rich, t, useT } from './i18n.js'
+import { UpdateBadge } from './update.jsx'
 
 const PAGE_CSS = `
 .lv-page{height:100%;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base)}
@@ -72,6 +73,7 @@ export function ManagePage() {
           {TABS.map(([id, label]) => <button key={id} type="button" className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{t(label)}</button>)}
         </nav>
         <span className="lv-grow" />
+        <UpdateBadge />
         <Button kind="pri" onClick={() => startDirector(t('prompt.newFilm'))}>{t('manage.newFilm')}</Button>
       </div>
       <div className="lv-body">

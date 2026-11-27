@@ -16,6 +16,7 @@ import { closeBrowser } from './render.js'
 import { stopAll as stopLocalVoice } from './localvoice.js'
 import { readFrontmatter } from './styles.js'
 import { installBriefContext } from './composer.js'
+import { checkUpdate } from './update.js'
 import { stopKeepAlive } from './lock.js'
 
 export const name = 'dsh-lovideo'
@@ -66,6 +67,8 @@ export function apply(ctx) {
   // 输入框里选好的风格、画幅、片长：用户发出第一句话时交给导演
   installBriefContext(ctx)
 
+  // 随 DeepSeek Harness 启动在后台查一次新版本，界面打开时结果多半已经好了
+  checkUpdate().catch(() => {})
   // 上次没做完的片子标成暂停；之后做完时通知导演
   markInterrupted(listWorks()).catch(() => {})
   const last = new Map(listWorks().map(w => [w.id, w.status]))

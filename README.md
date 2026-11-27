@@ -65,7 +65,7 @@ npm 不用在本机发：推 `v*` 标签时，GitHub Actions（`.github/workflow
 在开发模式下把改动在桌面版里走通之后再发：
 
 1. `npm test`
-2. 把 `package.json` 的版本号加一，提交到 main
+2. 把 `package.json` 的版本号加一，并改写 `lovideo.whatsNew`（这一版更新了什么，中英各一句，用户启动时的新版本提醒里会显示），提交到 main
 3. `npm run release`：用已经提交的代码构建界面，只提交 `dist/client.js`，推送 main（不打标签，npm 还不会发）。工作区里没提交的改动不会混进去；脚本最后打印这次的提交号
 4. 按用户的装法验一遍（这时只有 GitHub 上有新版）：
    - 桌面版「插件」里卸载 lovideo，再填 `https://github.com/oceanz0312/dsh-lovideo`（或脚本打印的 `github:oceanz0312/dsh-lovideo#<提交号>`）添加；
