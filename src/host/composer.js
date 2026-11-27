@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { dataDir, ensureDir } from './paths.js'
-import { readJson, writeJson } from './json-file.js'
+import { readJson, updateJson } from './json-file.js'
 
 /** 输入框里能选的片长：10 秒到 5 分钟，可以拖动也可以直接输入秒数 */
 export const COMPOSER_MIN_SEC = 10
@@ -16,15 +16,24 @@ export const ASPECTS = ['16:9', '9:16']
 const file = () => join(ensureDir(dataDir()), 'composer.json')
 
 /** { defaults: { slug, aspect, duration }, briefs: { 会话 id: { slug, name, aspect, duration, at, sent } } } */
+const shape = d => ({ defaults: d?.defaults || null, briefs: d?.briefs || {} })
+
 function load() {
-  const d = readJson(file(), {}) || {}
-  return { defaults: d.defaults || null, briefs: d.briefs || {} }
+  return shape(readJson(file(), {}))
 }
 
-function save(d) {
-  // 只留最近 50 个会话的开局条件，够用且文件不会越长越大
-  const entries = Object.entries(d.briefs).sort((a, b) => String(b[1].at).localeCompare(String(a[1].at))).slice(0, 50)
-  writeJson(file(), { defaults: d.defaults, briefs: Object.fromEntries(entries) })
+/** 在锁里读最新的交给 fn 改（返回 false 表示不写）：DSH 桌面版和网页版可能同时在改 */
+function change(fn) {
+  let out
+  updateJson(file(), raw => {
+    const d = shape(raw)
+    out = fn(d)
+    if (out === false) return undefined
+    // 只留最近 50 个会话的开局条件，够用且文件不会越长越大
+    const entries = Object.entries(d.briefs).sort((a, b) => String(b[1].at).localeCompare(String(a[1].at))).slice(0, 50)
+    return { defaults: d.defaults, briefs: Object.fromEntries(entries) }
+  })
+  return out
 }
 
 const bad = msg => Object.assign(new Error(msg), { status: 400 })
@@ -52,14 +61,14 @@ export function getBrief(sessionId) {
 /** 存一个会话的开局条件（brief 为 null 表示这个会话不用了，比如切回了标准模式） */
 export function setBrief(sessionId, brief) {
   if (!/^[\w-]{1,120}$/.test(sessionId || '')) throw bad('会话 id 不对')
-  const d = load()
-  if (!brief) delete d.briefs[sessionId]
-  else {
-    d.briefs[sessionId] = { ...brief, at: new Date().toISOString(), sent: false }
-    d.defaults = { slug: brief.slug, aspect: brief.aspect, duration: brief.duration }
-  }
-  save(d)
-  return d.briefs[sessionId] || null
+  return change(d => {
+    if (!brief) delete d.briefs[sessionId]
+    else {
+      d.briefs[sessionId] = { ...brief, at: new Date().toISOString(), sent: false }
+      d.defaults = { slug: brief.slug, aspect: brief.aspect, duration: brief.duration }
+    }
+    return d.briefs[sessionId] || null
+  })
 }
 
 function briefText(b) {
@@ -82,11 +91,14 @@ export function installBriefContext(ctx) {
     const decision = await next()
     if (decision.kind !== 'enter' || payload.step !== 1) return decision
     const id = payload.agent?.id
-    const d = load()
-    const b = id ? d.briefs[id] : null
-    if (!b || b.sent) return decision
-    b.sent = true
-    save(d)
+    // 标成「已交」和读出来在同一把锁里：两个窗口不会把同一份交两次
+    const b = id ? change(d => {
+      const x = d.briefs[id]
+      if (!x || x.sent) return false
+      x.sent = true
+      return x
+    }) : false
+    if (!b) return decision
     const message = Object.freeze({ id: randomUUID(), role: 'user', content: [{ type: 'text', text: briefText(b) }], source: { kind: 'dsh-lovideo' } })
     const last = decision.messages.findLastIndex(m => payload.messages.includes(m))
     return { ...decision, messages: decision.messages.toSpliced(last + 1, 0, message) }

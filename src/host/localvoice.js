@@ -10,7 +10,7 @@ import { delimiter, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { Readable } from 'node:stream'
 import { PLUGIN_ROOT, dataDir, ensureDir, runtimeDir } from './paths.js'
-import { readSettings, writeSettings } from './settings.js'
+import { changeSettings, readSettings } from './settings.js'
 
 const WIN = process.platform === 'win32'
 const exe = name => (WIN ? `${name}.exe` : name)
@@ -216,16 +216,16 @@ export function activeModel(s = readSettings(), kind = 'voice') {
 
 /** 用户选定用哪个离线模型（配音的还能选声音）；同时把配音或配乐切到离线 */
 export function useModel(modelId, voices = {}) {
-  const s = readSettings()
   const model = byId(modelId)
-  if (!model || !s.local?.models?.[modelId]) throw Object.assign(new Error('这个模型还没下载'), { status: 409 })
-  const kind = kindOf(model)
-  s.local = { ...s.local, [ACTIVE_KEY[kind]]: modelId }
-  if (kind === 'voice') {
-    s.local.voices = { ...(s.local.voices || {}), [modelId]: { ...voicesFor(modelId, s), ...voices } }
-    s.voice = { ...s.voice, provider: 'local' }
-  } else s.music = { ...s.music, provider: 'local' }
-  writeSettings(s)
+  const kind = model && kindOf(model)
+  changeSettings(s => {
+    if (!model || !s.local?.models?.[modelId]) throw Object.assign(new Error('这个模型还没下载'), { status: 409 })
+    s.local = { ...s.local, [ACTIVE_KEY[kind]]: modelId }
+    if (kind === 'voice') {
+      s.local.voices = { ...(s.local.voices || {}), [modelId]: { ...voicesFor(modelId, s), ...voices } }
+      s.voice = { ...s.voice, provider: 'local' }
+    } else s.music = { ...s.music, provider: 'local' }
+  })
   return localVoiceStatus(kind)
 }
 
@@ -505,17 +505,17 @@ export function startSetup(modelId) {
       job.step = 'test'
       job.progress = 0
       const r = await benchmark(modelId)
-      const s = readSettings()
-      s.local = { ...(s.local || {}), models: { ...(s.local?.models || {}), [modelId]: { rtf: r.rtf, load: r.load, backend: hw.backend, at: new Date().toISOString() } } }
-      // 这一类还没选过离线模型（第一次装、或从会话里一键下载）：装好就用上
-      const kind = kindOf(model)
-      const cur = s.local[ACTIVE_KEY[kind]]
-      if (!cur || !s.local.models[cur]) {
-        s.local[ACTIVE_KEY[kind]] = modelId
-        if (kind === 'voice') s.voice = { ...s.voice, provider: 'local' }
-        else s.music = { ...s.music, provider: 'local' }
-      }
-      writeSettings(s)
+      changeSettings(s => {
+        s.local = { ...(s.local || {}), models: { ...(s.local?.models || {}), [modelId]: { rtf: r.rtf, load: r.load, backend: hw.backend, at: new Date().toISOString() } } }
+        // 这一类还没选过离线模型（第一次装、或从会话里一键下载）：装好就用上
+        const kind = kindOf(model)
+        const cur = s.local[ACTIVE_KEY[kind]]
+        if (!cur || !s.local.models[cur]) {
+          s.local[ACTIVE_KEY[kind]] = modelId
+          if (kind === 'voice') s.voice = { ...s.voice, provider: 'local' }
+          else s.music = { ...s.music, provider: 'local' }
+        }
+      })
       Object.assign(job, { running: false, step: 'done', progress: 1, error: null })
     } catch (e) {
       Object.assign(job, { running: false, error: e.message })

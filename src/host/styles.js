@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { assertId, ensureDir, stylesDir, tmpDir } from './paths.js'
-import { readJson, writeJson } from './json-file.js'
+import { readJson, updateJson, writeJson } from './json-file.js'
 import { siteFetch, siteJson } from './site.js'
 
 const platformRoot = () => join(stylesDir(), 'platform')
@@ -118,10 +118,7 @@ export const mineDir = slug => join(mineRoot(), assertId(slug, '风格'))
 export function saveMine(meta) {
   const dir = ensureDir(mineDir(meta.slug))
   const now = new Date().toISOString()
-  const prev = readJson(join(dir, 'style.json'), {})
-  const out = { createdAt: now, ...prev, ...meta, updatedAt: now }
-  writeJson(join(dir, 'style.json'), out)
-  return out
+  return updateJson(join(dir, 'style.json'), prev => ({ createdAt: now, ...prev, ...meta, updatedAt: now }), { fallback: {} })
 }
 
 export function removeMine(slug) {
