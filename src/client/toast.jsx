@@ -1,6 +1,7 @@
 // 插件的提示条（Toast）：挂在 DeepSeek Harness 的 shell.overlay 上，不管用户在对话还是管理页都能看到。
 // 来源有两个：后端推来的通知（登录成功、环境准备好、成片做好、导出完成及失败），和页面上操作的结果（退出、删除、保存）。
-// 样式用宿主自带的 Toast（@deepseek-ai/dsh-client-ui-primitives），和 DeepSeek Harness 自己的提示一模一样；拿不到时用一个简单的替身。
+// 样式照着 DeepSeek Harness 自己的 Toast 写（位置、圆角、阴影、出现和淡出的动画、停留时长），颜色全用宿主的主题变量，
+// 深色浅色跟着宿主走。不直接用宿主的界面组件包：官方规定插件不能加载它（组件会不打招呼地改，一出错我们这块就整块空白）。
 import * as React from 'react'
 import { api, subscribe } from './api.js'
 import { openManager, openSession } from './host.js'
@@ -53,43 +54,73 @@ function fromNotice(n) {
   }
 }
 
-/* ---------- 宿主的 Toast ---------- */
+/* ---------- 提示条本身 ---------- */
 
-let primitives
-function hostToast() {
-  if (primitives === undefined) {
-    try {
-      // 由 DeepSeek Harness 的模块加载器提供（打包时不打进来）
-      primitives = require('@deepseek-ai/dsh-client-ui-primitives')
-    } catch {
-      primitives = null
-    }
-  }
-  return primitives?.Toast ? primitives : null
+// 和宿主一样：默认停 3 秒，再用 1 秒淡出，淡出结束才算这条结束
+const HOLD_MS = 3000
+const FADE_MS = 1000
+
+// 宿主页面里的 react-dom（和宿主共用同一个 React）：提示条画到 body 上，不受所在容器的裁切和层级影响
+let portal = null
+try {
+  // eslint-disable-next-line global-require
+  portal = require('react-dom').createPortal
+} catch {
+  portal = null
 }
 
-/** 宿主没有 Toast 时的替身：底部居中的一条，几秒后自己消失 */
-function FallbackToast({ text, tone, actions, holdMs = 4000, onDone }) {
-  React.useEffect(() => {
-    const t = setTimeout(onDone, holdMs)
-    return () => clearTimeout(t)
-  }, [holdMs, onDone])
+const TOAST_CSS = `
+.lv-toast{position:fixed;top:40px;left:50%;z-index:1100;pointer-events:none;display:flex;align-items:center;gap:10px;width:max-content;max-width:min(640px,calc(100vw - 48px));padding:12px 16px;border-radius:var(--dsw-radius-lg,12px);background:var(--dsw-alias-toast-bg);color:var(--dsw-alias-toast-label);font-size:14px;line-height:22px;box-shadow:var(--dsw-shadow-lv3);transform:translate(-50%);animation:lv-toast-in .16s ease-out,lv-toast-fade ${FADE_MS}ms ease var(--lv-toast-hold,${HOLD_MS}ms) forwards}
+.lv-toast-icon{display:grid;place-items:center;flex:none;color:var(--dsw-alias-state-warn-label)}
+.lv-toast-icon.ok{color:var(--dsw-alias-state-success-primary)}
+.lv-toast-text{min-width:0}
+.lv-toast-action{display:inline;padding:0;border:0;background:none;color:var(--dsw-alias-toast-action);font:inherit;cursor:pointer;margin-inline:3px;pointer-events:auto}
+@media (hover:hover){.lv-toast-action:hover{opacity:.8}}
+@keyframes lv-toast-in{from{opacity:0;transform:translate(-50%,-6px)}to{opacity:1;transform:translate(-50%)}}
+@keyframes lv-toast-fade{to{opacity:0;visibility:hidden}}
+@media (prefers-reduced-motion:reduce){.lv-toast{animation:lv-toast-fade ${FADE_MS}ms ease var(--lv-toast-hold,${HOLD_MS}ms) forwards}}
+`
+
+function IconOk() {
   return (
-    <div role="status" style={{
-      position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', gap: 12, maxWidth: 'min(560px, calc(100vw - 32px))',
-      padding: '10px 16px', borderRadius: 12, fontSize: 13, lineHeight: 1.5,
-      background: 'var(--dsw-alias-bg-layer-3, #1f1f1f)', color: 'var(--dsw-alias-label-primary, #fff)',
-      border: '1px solid var(--dsw-alias-border-l2, rgba(255,255,255,.12))', boxShadow: '0 8px 24px rgba(0,0,0,.18)',
-    }}>
-      <span aria-hidden style={{ color: tone === 'warning' ? 'var(--dsw-alias-state-warn-primary, #f5a524)' : 'var(--dsw-alias-state-success-primary, #22c55e)' }}>{tone === 'warning' ? '!' : '✓'}</span>
-      <span style={{ flex: 1 }}>{text}</span>
-      {(actions || []).map(a => (
-        <button key={a.label} type="button" onClick={a.onClick}
-          style={{ border: 0, background: 'transparent', color: 'inherit', font: 'inherit', fontWeight: 600, cursor: 'pointer', padding: 0 }}>{a.label}</button>
-      ))}
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M5.2 8.2l1.9 1.9 3.7-4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function IconWarn() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M8 4.6v4.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <circle cx="8" cy="11.1" r=".85" fill="currentColor" />
+    </svg>
+  )
+}
+
+/** 一条提示：顶部居中，停 holdMs 后淡出，淡出结束调用 onDone */
+function Toast({ text, tone, actions, holdMs = HOLD_MS, onDone }) {
+  const done = React.useRef(onDone)
+  React.useLayoutEffect(() => {
+    done.current = onDone
+  }, [onDone])
+  React.useEffect(() => {
+    const t = setTimeout(() => done.current(), holdMs + FADE_MS)
+    return () => clearTimeout(t)
+  }, [holdMs])
+  const node = (
+    <div className="lv-toast" role="alert" style={{ '--lv-toast-hold': `${holdMs}ms` }}>
+      <style>{TOAST_CSS}</style>
+      <span className={`lv-toast-icon ${tone === 'warning' ? '' : 'ok'}`} aria-hidden="true">{tone === 'warning' ? <IconWarn /> : <IconOk />}</span>
+      <span className="lv-toast-text">
+        {text}
+        {(actions || []).map(a => <button key={a.label} type="button" className="lv-toast-action" onClick={a.onClick}>{a.label}</button>)}
+      </span>
     </div>
   )
+  return portal ? portal(node, document.body) : node
 }
 
 /* ---------- 挂在 shell.overlay 上的组件 ---------- */
@@ -119,15 +150,5 @@ export function ToastOverlay() {
   const onDone = React.useCallback(() => current && dismiss(current.seq), [current])
   if (!current) return null
   const actions = (current.actions || []).map(a => ({ label: a.label, onClick: () => { dismiss(current.seq); a.onClick() } }))
-  const prim = hostToast()
-  if (prim) {
-    const Icon = prim.IconWarningOutlineRegular
-    return (
-      <prim.Toast key={current.seq} text={current.text} onDone={onDone}
-        {...current.tone === 'warning' ? (Icon ? { icon: <Icon /> } : {}) : { tone: 'success' }}
-        {...current.holdMs ? { holdMs: current.holdMs } : {}}
-        {...actions.length ? { actions } : {}} />
-    )
-  }
-  return <FallbackToast key={current.seq} text={current.text} tone={current.tone} actions={actions} holdMs={current.holdMs} onDone={onDone} />
+  return <Toast key={current.seq} text={current.text} tone={current.tone} actions={actions} holdMs={current.holdMs} onDone={onDone} />
 }

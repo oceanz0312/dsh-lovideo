@@ -18,7 +18,7 @@ try {
 } catch {
   portal = null
 }
-export const hasPortal = () => typeof portal === 'function'
+
 
 export const LOVIDEO_PRESET = 'lovideo'
 const MIN = 10
@@ -235,7 +235,9 @@ export function StyleChip(props) {
     // 在空白会话里切回别的模式：这个会话不再带开局条件
     else if (facts.blank && facts.preset && facts.preset !== LOVIDEO_PRESET) st.clear()
   }, [active, facts.blank, facts.preset, st])
-  // 风格墙放在输入框下面的那一栏里（宿主在空白首页不给插件留位置，所以画到那一栏里去）
+  // 风格墙放在输入框下面的那一栏里。宿主在空白首页（输入框是 hero 形态）不渲染输入框下方的展位
+  // conversation.composer.dock，首页也没有别的能放一整面风格墙的展位，所以画到那一栏的容器里去。
+  // 那一栏用宿主源码里写明的 data-composer-dock 标记找（不认会随版本变的类名）；找不到就不画风格墙，输入框照常可用
   const [dock, setDock] = React.useState(null)
   React.useEffect(() => {
     if (!active || !c.ready) return
@@ -243,12 +245,13 @@ export function StyleChip(props) {
     while (el && !el.querySelector?.('[data-composer-dock]')) el = el.parentElement
     setDock(el?.querySelector('[data-composer-dock]') || null)
   }, [active, c.ready, anchor])
-  // 切模式时输入框要从中间移到顶部（或移回去）：不硬跳，用动画滑过去
+  // 切模式时输入框要从中间移到顶部（或移回去）：不硬跳，用动画滑过去。
+  // 输入框所在的那一格同样用宿主写明的 data-composer-seat 标记找；找不到就不播动画，别的照常
   const probe = React.useRef(null)
   const last = React.useRef({ docked: null, top: null })
   const docked = Boolean(active && c.ready && dock)
   React.useLayoutEffect(() => {
-    const seat = probe.current?.closest('[class*="composerSeat"]')
+    const seat = probe.current?.closest('[data-composer-seat]')
     if (!seat) return
     const top = seat.getBoundingClientRect().top
     const prev = last.current
@@ -262,7 +265,7 @@ export function StyleChip(props) {
   return (
     <span ref={probe} className="lv">
       <Styles />
-      {dock && hasPortal() ? portal(<Library {...props} />, dock) : null}
+      {dock && portal ? portal(<Library {...props} />, dock) : null}
       <button ref={anchor} type="button" className={`lvc-chip lvc-style ${open ? 'on' : ''}`} aria-haspopup="dialog" aria-expanded={open}
         title="风格和画幅" onClick={() => toggle(panel)}>
         {c.cover ? <img src={c.cover} alt="" /> : c.slug ? <i className="lvc-ph" /> : <Sparkle />}
@@ -418,31 +421,24 @@ export function Library(props) {
     return () => tabSubs.delete(sessionId)
   }, [sessionId])
   // 风格墙铺满首页剩下的高度：首页是上下居中的，墙把空白占满，输入框就贴到顶部。
+  // 只量风格墙自己（离窗口底部还有多远），不读宿主的页面结构：墙变高后整块会往上挪，所以量几轮直到不再变。
   // 高度固定下来（不跟着内容多少变），读完风格、换标签时页面都不会再动；窗口变了重新算
+  const visible = active && c.ready
   React.useLayoutEffect(() => {
     const el = scroller.current
-    if (!el) return undefined
-    const body = el.closest('[class*="scrollBody"]')
-    const seat = el.closest('[class*="composerSeat"]')
+    if (!visible || !el) return undefined
     const fit = () => {
-      if (!body || !seat) {
-        el.style.setProperty('--lvc-h', `${Math.max(240, Math.round(window.innerHeight * 0.55))}px`)
-        return
+      for (let i = 0; i < 4; i++) {
+        const free = window.innerHeight - el.getBoundingClientRect().bottom - 20
+        const next = Math.max(240, Math.round(el.offsetHeight + free))
+        if (Math.abs(next - el.offsetHeight) <= 1) break
+        el.style.setProperty('--lvc-h', `${next}px`)
       }
-      const cs = getComputedStyle(body)
-      const free = body.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - seat.offsetHeight
-      const next = Math.max(240, Math.round(el.offsetHeight + free - 16))
-      if (Math.abs(next - el.offsetHeight) > 1) el.style.setProperty('--lvc-h', `${next}px`)
     }
     fit()
-    const ro = typeof ResizeObserver === 'function' && body ? new ResizeObserver(fit) : null
-    ro?.observe(body)
     window.addEventListener('resize', fit)
-    return () => {
-      window.removeEventListener('resize', fit)
-      ro?.disconnect()
-    }
-  }, [])
+    return () => window.removeEventListener('resize', fit)
+  }, [visible])
   const hit = text => !q.trim() || text.toLowerCase().includes(q.trim().toLowerCase())
   const platform = styles?.platform || []
   const mine = (styles?.mine || []).filter(s => !s.draft)

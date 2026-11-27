@@ -4,10 +4,11 @@ import * as React from 'react'
 import { fmtSec } from './api.js'
 
 export const CSS = `
-.lv-switch{position:relative;flex:none;width:32px;height:18px;border-radius:999px;border:0;padding:0;cursor:pointer;background:var(--dsw-alias-border-l4,rgba(0,0,0,.2));transition:background-color var(--lv-dur) var(--lv-ease)}
-.lv-switch i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform var(--lv-dur) var(--lv-ease)}
-.lv-switch.on{background:var(--dsw-alias-label-primary,#111)}
-.lv-switch.on i{transform:translateX(14px)}
+.lv-switch{position:relative;flex:none;width:36px;height:20px;border-radius:999px;border:0;padding:0;cursor:pointer;background:var(--dsw-alias-border-l3);transition:background-color var(--lv-dur) var(--lv-ease)}
+.lv-switch i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--dsw-alias-switch-thumb);transition:transform var(--lv-dur) var(--lv-ease)}
+.lv-switch.on{background:var(--dsw-alias-brand-primary)}
+.lv-switch.on i{background:var(--dsw-alias-label-primary-foreground)}
+.lv-switch.on i{transform:translateX(16px)}
 .lv-switch:disabled{cursor:default;opacity:.55}
 .lv-switch.busy i{animation:lv-pulse 0.9s var(--lv-ease) infinite alternate}
 @keyframes lv-pulse{from{opacity:1}to{opacity:.35}}
@@ -168,14 +169,14 @@ a.lv-btn{text-decoration:none}
 @keyframes lv-in{from{opacity:0;transform:translateY(4px)}}
 @keyframes lv-fade{from{opacity:0}}
 @keyframes lv-pop{from{opacity:0;transform:translateY(6px) scale(.97)}}
-.lv-modal{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:24px;background:rgba(0,0,0,.32);animation:lv-fade var(--lv-dur) var(--lv-ease)}
+.lv-modal{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:24px;background:var(--dsw-alias-bg-overlay,rgba(0,0,0,.32));animation:lv-fade var(--lv-dur) var(--lv-ease)}
 .lv-modal.out{opacity:0;transition:opacity var(--lv-dur) var(--lv-ease)}
-.lv-dialog{width:min(380px,100%);border-radius:14px;padding:20px 20px 16px;background:var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-base));border:1px solid var(--dsw-alias-border-l2);box-shadow:0 20px 50px -12px rgba(0,0,0,.35);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family,system-ui);font-size:13px;line-height:1.55;animation:lv-pop var(--lv-slow) var(--lv-ease-out)}
+.lv-dialog{width:min(380px,100%);border-radius:14px;padding:20px 20px 16px;background:var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-base));border:1px solid var(--dsw-alias-border-l2);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family,system-ui);font-size:13px;line-height:1.55;animation:lv-pop var(--lv-slow) var(--lv-ease-out)}
 .lv-modal.out .lv-dialog{transform:translateY(4px) scale(.98);transition:transform var(--lv-dur) var(--lv-ease)}
 .lv-dialog h3{margin:0 0 6px;font-size:15px;font-weight:600}
 .lv-dialog p{margin:0;color:var(--dsw-alias-label-secondary)}
 .lv-dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
-.lv-btn.danger{background:var(--dsw-alias-state-error-primary);border-color:transparent;color:#fff}
+.lv-btn.danger{background:var(--dsw-alias-state-error-primary);border-color:transparent;color:var(--dsw-alias-label-on-color)}
 .lv-btn.danger:hover{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 88%,#000)}
 @media (prefers-reduced-motion:reduce){.lv *,.lv-page *,.lv-modal,.lv-modal *{animation:none!important;transition:none!important}}
 .lv-code{font-family:var(--ds-font-family-code,ui-monospace,monospace);font-size:22px;letter-spacing:.25em;padding:10px 14px;border-radius:10px;border:1px solid var(--dsw-alias-border-l4);text-align:center}
@@ -203,7 +204,7 @@ a.lv-btn{text-decoration:none}
 .lvc-durv{display:inline-block;width:5.8em;text-align:left}
 .lvc-mono{font-family:var(--ds-font-family-code,ui-monospace,monospace);font-variant-numeric:tabular-nums}
 .lv-pop{animation:lv-in var(--lv-dur) var(--lv-ease-out)}
-.lvc-panel{background:var(--dsw-alias-bg-layer-1,var(--dsw-alias-bg-base));color:var(--dsw-alias-label-primary);border-radius:16px;box-shadow:0 0 0 .5px var(--dsw-alias-border-l3,rgba(0,0,0,.12)),0 18px 44px rgba(0,0,0,.16);padding:14px;font-size:13.5px}
+.lvc-panel{background:var(--dsw-alias-bg-layer-1,var(--dsw-alias-bg-base));color:var(--dsw-alias-label-primary);border-radius:16px;box-shadow:0 0 0 .5px var(--dsw-alias-border-l3),var(--dsw-shadow-lv3);padding:14px;font-size:13.5px}
 .lvc-h{font-size:12.5px;color:var(--dsw-alias-label-tertiary);margin-bottom:9px}
 .lvc-seg{display:flex;gap:3px;padding:3px;border-radius:10px;background:var(--dsw-alias-interactive-bg-hover)}
 .lvc-seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;height:32px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer}
