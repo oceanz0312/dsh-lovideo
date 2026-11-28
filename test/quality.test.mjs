@@ -68,6 +68,11 @@ test('段会话只能写自己的段目录，路径用网站沙箱的写法', ()
   applyDraw({ files: [{ path: 'scene.js', content: 'a = 1\nb = 2\n' }] }, place)
   applyDraw({ edits: [{ path: 'scene.js', old: 'b = 2', new: 'b = 3' }] }, place)
   assert.equal(readFileSync(join(proj, 'shot-1', 'scene.js'), 'utf8'), 'a = 1\nb = 3\n')
+  // 漏写 path：用给的后备路径；没有后备就报清楚缺什么
+  assert.equal(applyDraw({ edits: [{ old: 'b = 3', new: 'b = 4' }] }, place, '/work/proj/shot-1/scene.js'), '/work/proj/shot-1/scene.js')
+  assert.equal(readFileSync(join(proj, 'shot-1', 'scene.js'), 'utf8'), 'a = 1\nb = 4\n')
+  assert.throws(() => applyDraw({ edits: [{ old: 'b = 4', new: 'b = 5' }] }, place), /edits\[0\] has no "path"/)
+  applyDraw({ edits: [{ path: 'scene.js', old: 'b = 4', new: 'b = 3' }] }, place)
   // 一处不对就一个都不写
   assert.throws(() => applyDraw({ files: [{ path: 'ok.js', content: 'x' }], edits: [{ path: 'scene.js', old: 'nope', new: '' }] }, place), /Nothing was written/)
   assert.ok(!existsSync(join(proj, 'shot-1', 'ok.js')))
@@ -91,7 +96,7 @@ test('平台围栏：写死横版尺寸的页面在竖版里判失败，铺满�
   }
 })
 
-test('交段前看检查图：有毛病不渲染，毛病交回同一个会话，改完直接交段', { timeout: 300_000 }, async () => {
+test('交段前看检查图：有毛病不渲染，毛病交回同一个会话；改完渲染出来再看一次，没毛病才交段', { timeout: 300_000 }, async () => {
   const { importMineFromDir } = await import('../src/host/styles.js')
   const { createWork, getWork } = await import('../src/host/works.js')
   const { startProduction } = await import('../src/host/produce.js')
@@ -144,7 +149,7 @@ test('交段前看检查图：有毛病不渲染，毛病交回同一个会话�
   }
   await closeBrowser()
   assert.equal(w.status, 'done', `没做完：${w.job?.error} ${JSON.stringify(w.job.segments.map(s => s.history))}`)
-  assert.equal(seen.sheets, 1, '检查图只看一次')
+  assert.equal(seen.sheets, 2, '被退回、画面改过以后，渲染好的视频再看一次（最多两次）')
   assert.match(seen.toolResults[0], /reviewer looked at a contact sheet/)
   assert.match(seen.toolResults[0], /cut off by the right edge/)
   assert.equal(w.job.segments[0].attempts, 2)

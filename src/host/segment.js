@@ -58,7 +58,7 @@ Segments (the approved storyboard, in order, at ${fps} fps, ${size.width}x${size
 - The production context in your segment brief is freshly prepared for this attempt: complete confirmed.inputs/params (false, 0 and empty strings are real values), the film outline, only your segment's full copy and laid sentence/word times, current submission/remake state, project and Skill. No need to read ${WORK}/job.json or other segments' detailed data. The installed SKILL.md is in full in the <skill_md> block of these instructions: do not read it again; consult the files it references only as needed. Never alter confirmed content or the approved segment count and lengths.
 - The platform runs the Skill's render command from SKILL.md for your segment (with --unit set to it), encodes and submits it; you never run commands. The platform stitches the film (with the voice-over and the subtitles) once every segment is submitted; you do not stitch it.
 - Your tool for making the segment is \`draw\`: in ONE call it writes your files (\`files\`: whole files; \`edits\`: exact replacements) and has the segment rendered, then returns either every error or the submitted segment. \`read\` is only for the rare fact you cannot work without.
-- Before a segment is first drawn in full, the platform may draw only a contact sheet of it (frames spread across the segment) and a reviewer checks that once. If the reviewer finds defects, nothing is rendered or submitted and the defects come back as errors: fix only those with one \`draw\` call; the next draw renders the whole segment and submits it without another review.
+- Before a segment is first drawn in full, the platform may draw only a contact sheet of it (frames spread across the segment) and a reviewer checks that once. If the reviewer finds defects, nothing is rendered or submitted and the defects come back as errors: fix only those with one \`draw\` call. A fix must not break what was fine: the finished render may be checked once more.
 - A page must fill exactly the film's frame (film.width x film.height from ready(film)); a page that draws at a fixed size and overflows or leaves empty bands is refused.
 
 The installed style Skill ${style.slug}: its SKILL.md (${skillDir}/SKILL.md) follows in full. Do not read it again; resolve its relative paths against ${skillDir}. Where it tells you to run its setup, read the draft, write the scene and then render, the platform has already run the setup and put the draft in your message: go straight to one draw call.
@@ -151,6 +151,12 @@ function preparedText({ proj, segId, styleDir, resume }) {
   return parts.join('\n\n')
 }
 
+/** 这一段目录里唯一的源文件（会话里的写法）；没有或不止一个返回 null */
+function onlySource(proj, segId) {
+  const files = walk(join(proj, segId)).filter(f => /\.(js|mjs|ts|tsx|jsx|html|css|py|svg)$/i.test(f) && statSync(f).size <= DRAFT_MAX * 4)
+  return files.length === 1 ? `${PROJ}/${relative(proj, files[0]).split(sep).join('/')}` : null
+}
+
 /**
  * 把会话里的路径（网站沙箱的写法）换成本机路径。
  * 写：只能写本段目录；相对路径按本段目录算。读：工程、风格包、job.json、narration.json。
@@ -195,19 +201,32 @@ function parseArgs(raw) {
   }
 }
 
-/** 写文件：先全部核对，有一处不对就一个都不写 */
-export function applyDraw(args, place) {
+/**
+ * 写文件：先全部核对，有一处不对就一个都不写。
+ * fallbackPath：漏写 path 时用它（这一段唯一的源文件，或这个会话上次写的那个文件）。
+ * 小模型改文件时常常只给 old/new、漏掉 path，为这个退回一轮不值得（V4.1 Flash 实测 10 部片子里 4 次）。
+ * @returns {string|null} 这次写的最后一个文件的路径（会话里的写法），下次漏写 path 时用
+ */
+export function applyDraw(args, place, fallbackPath = null) {
   const problems = []
   const next = new Map()
-  for (const f of args.files || []) {
+  let lastPath = null
+  const pathOf = (x, what, i) => {
+    const p = typeof x?.path === 'string' && x.path.trim() ? x.path : fallbackPath
+    if (!p) throw new Error(`${what}[${i}] has no "path": give the file's path`)
+    lastPath = p
+    return p
+  }
+  for (const [i, f] of (args.files || []).entries()) {
     try {
-      next.set(place.write(f.path), String(f.content ?? ''))
+      next.set(place.write(pathOf(f, 'files', i)), String(f.content ?? ''))
     } catch (e) {
       problems.push(e.message)
     }
   }
-  for (const e of args.edits || []) {
+  for (const [i, e] of (args.edits || []).entries()) {
     try {
+      e.path = pathOf(e, 'edits', i)
       const full = place.write(e.path)
       const current = next.get(full) ?? (existsSync(full) ? readFileSync(full, 'utf8') : null)
       if (current === null) {
@@ -230,6 +249,7 @@ export function applyDraw(args, place) {
     mkdirSync(dirname(full), { recursive: true })
     writeFileSync(full, content)
   }
+  return lastPath
 }
 
 const tail = text => (text.length > OUTPUT_TAIL ? `…${text.slice(-OUTPUT_TAIL)}` : text)
@@ -255,13 +275,19 @@ export async function makeSegmentSession(o) {
   const lines = (narration?.sentences || []).filter(x => x.segment === seg.id)
   const scene = work.plan.scenes.find(s => s.id === seg.id) || seg
   const seeImages = await canSeeImages(signal)
-  // 每段只看一次检查图、只量一次画面变化
-  const done = { reviewed: !seeImages, motion: !lines.length }
+  // 检查图和画面变化各最多退回两次。网站各只查一次（Opus 改完很少改坏）；小模型被退回后常把别处改坏：
+  // V4.1 Flash 实测一段被「画面不动」退回后改成了前 10 秒空白纸面，第二次不查就直接出片了。
+  // 第二次看检查图只在上次看过之后又被这两道检查退回过（画面确实改了）时才看，看的是渲染好的视频。
+  const left = { review: seeImages ? 2 : 0, motion: lines.length ? 2 : 0 }
+  let reviewed = false
+  let changedSinceReview = false
   let attempts = seg.attempts || 0
   let last = null
 
   const review = async sheet => {
-    done.reviewed = true
+    left.review--
+    reviewed = true
+    changedSinceReview = false
     try {
       return await reviewSheet(scene, sheet, signal)
     } catch (e) {
@@ -276,11 +302,15 @@ export async function makeSegmentSession(o) {
   /** draw 之后：渲染、检查、交段 */
   const submit = async () => {
     const picked = sheetFrames(seg.frames, fps)
-    if (!done.reviewed && spec.page) {
+    const rejectReview = notes => {
+      changedSinceReview = true
+      return { ok: false, text: reviewReport(seg.id, picked.map(n => n + 1), notes) }
+    }
+    if (left.review > 0 && !reviewed && spec.page) {
       await update({ state: 'check', error: null })
       const shots = await renderPage({ origin: site.origin, entry: fill(spec.page, vars), film, pick: picked, signal })
       const notes = await review(await sheetFromImages(shots, signal))
-      if (notes) return { ok: false, text: reviewReport(seg.id, picked.map(n => n + 1), notes) }
+      if (notes) return rejectReview(notes)
     }
     await update({ state: 'render', rendered: 0 })
     let lastTick = 0
@@ -292,27 +322,29 @@ export async function makeSegmentSession(o) {
     }
     if (spec.page) await renderPage({ origin: site.origin, entry: fill(spec.page, vars), film, out, poster, signal, onFrame })
     else await renderCommand({ command: spec.command, checkExit: spec.checkExit, vars, film, out, poster, signal })
-    if (!done.reviewed) {
-      // 段命令渲染的风格：渲染完再看检查图，有毛病这次不交
-      await update({ state: 'check' })
-      const notes = await review(await sheetFromVideo(out, picked, signal))
-      if (notes) {
-        rmSync(out, { force: true })
-        return { ok: false, text: reviewReport(seg.id, picked.map(n => n + 1), notes) }
-      }
-    }
-    if (!done.motion) {
-      done.motion = true
+    // 先量画面变化（不花模型调用），再看检查图
+    if (left.motion > 0) {
       try {
         const { gray, frameBytes } = await motionGray(out, size.width, size.height, signal)
         const still = stillSentences(motionSteps(gray, frameBytes), lines, seg.start / fps)
         if (still.length) {
+          left.motion--
+          changedSinceReview = true
           rmSync(out, { force: true })
           return { ok: false, text: stillReport(seg.id, still) }
         }
       } catch (e) {
         if (signal.aborted) throw paused()
         await log({ note: `画面变化没量成，照常交段：${e.message}`.slice(0, 300) })
+      }
+    }
+    // 段命令渲染的风格渲染完才看得到画面；页面风格在被退回、画面改过之后再看一次渲染好的视频
+    if (left.review > 0 && (!reviewed || changedSinceReview)) {
+      await update({ state: 'check' })
+      const notes = await review(await sheetFromVideo(out, picked, signal))
+      if (notes) {
+        rmSync(out, { force: true })
+        return rejectReview(notes)
       }
     }
     await update({ state: 'done', rendered: seg.frames, file: `segs/${seg.id}.mp4`, poster: `segs/${seg.id}.jpg`, error: null })
@@ -331,6 +363,7 @@ export async function makeSegmentSession(o) {
     let calls = 0
     let renders = 0
     let nudged = 0
+    let lastWritten = null
     while (calls < TOOL_CALL_LIMIT && renders < SEGMENT_RENDERS) {
       if (signal.aborted) throw paused()
       attempts++
@@ -377,7 +410,7 @@ export async function makeSegmentSession(o) {
             continue
           }
           if (call.name !== 'draw') throw new Error(`no tool named ${call.name}; use draw or read`)
-          applyDraw(args, place)
+          lastWritten = applyDraw(args, place, lastWritten || onlySource(proj, seg.id)) || lastWritten
           renders++
           const r = await submit()
           if (r.ok) {

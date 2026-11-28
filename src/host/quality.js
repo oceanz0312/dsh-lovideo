@@ -1,8 +1,9 @@
 // 交段前的两道检查，和 lovideo 网站沙箱一样（workers/sandbox/job/segment_session.py、lovideo_job.py）：
 //   1. 看检查图：第一次完整渲染前只画均匀取的 6～9 帧，拼成一张图，用一次很小的模型调用看观众一眼能看出的毛病；
-//      有毛病就不渲染，把毛病交回同一个制作会话改一次，改完直接完整渲染，不再看第二次。模型看不了图就跳过。
+//      有毛病就不渲染，把毛病交回同一个制作会话改。模型看不了图就跳过。
 //   2. 画面跟不跟着旁白动：渲染出来量一遍「旁白在说话时画面有没有在动」，不花模型调用；
-//      整句话画面都不动的句子占到本段旁白三分之一以上，退回一次让它补动作。
+//      整句话画面都不动的句子占到本段旁白三分之一以上，退回让它补动作。
+//   两道检查各最多退回两次（网站各一次，见 segment.js 里的说明）。
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -89,7 +90,7 @@ export async function reviewSheet(seg, png, signal) {
 
 /** 交回制作会话的话：检查图里看到的毛病 */
 export function reviewReport(segId, picked, notes) {
-  return `${segId} is not submitted yet: a reviewer looked at a contact sheet of it (segment frames ${picked.join(', ')}, left to right, top to bottom; frame 1 is the first of them) and found these defects:\n${notes}\nFix only these, with one draw call (edits to the current files). The next draw renders the whole segment and submits it; it is not reviewed again.`
+  return `${segId} is not submitted yet: a reviewer looked at a contact sheet of it (segment frames ${picked.join(', ')}, left to right, top to bottom; frame 1 is the first of them) and found these defects:\n${notes}\nFix only these, with one draw call (edits to the current files), and leave everything that was fine as it is. The next draw renders the whole segment.`
 }
 
 /* ---------- 画面有没有跟着旁白动 ---------- */
