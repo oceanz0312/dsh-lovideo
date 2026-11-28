@@ -377,19 +377,29 @@ async function styleImages(list, exec) {
   }
 }
 
+// 分镜的硬性上限（超了整版退回，和网站一样）：画面描述 200 字、一句口播 60 字
+const DESCRIPTION_MAX = 200
+const SENTENCES_MAX = 6
+const SENTENCE_MIN_HAN = 8
+const SCREEN_TEXT_MAX = 14
+
 const SCENE = {
   type: 'object', additionalProperties: false, required: ['title', 'description', 'narration'],
   properties: {
     title: { type: 'string', description: '这一镜的标题，4 到 12 个字' },
-    description: { type: 'string', description: '按口播顺序写这一镜画面里先出现什么、再怎么变（给制作看的，具体、可画，200 字以内）。每镜由单独的制作模型画、它只看得到这一镜，所以同一个东西各镜用同一个名字；风格没有固定画面样子时点明一致的主色、版式和动效节奏' },
-    narration: { type: 'array', items: { type: 'string' }, description: `这一镜的口播，一句一项，按念的顺序。口语化，每句都带具体信息；一句最多 ${SENTENCE_MAX} 个字符（含标点和空格，英文约 10 个词），长句在自然停顿处拆成两项，超了整版分镜会被退回。不要旁白就给空数组。全片口播总字数约等于「片长秒数 × 4.5」（10 秒约 45 字、30 秒约 135 字、60 秒约 270 字；英文每秒约 2.5 个词），按镜头分下去；30 秒以上的片子每镜至少 15 秒，也就是每镜约 65 字以上` },
+    description: { type: 'string', description: `这一镜的画面，写给制作看（它只看得到这一镜）。最多 ${DESCRIPTION_MAX} 个字，超了整版退回。写法：按口播的句子顺序，一句口播对一个画面动作（什么东西出现、怎么动），用分号隔开；不写一长串镜头调度，不写画不完的东西。同一个东西各镜用同一个名字` },
+    narration: { type: 'array', items: { type: 'string' }, description: `这一镜的口播，一句一项，按念的顺序，最多 ${SENTENCES_MAX} 句。每句都是带具体信息的完整句子：最多 ${SENTENCE_MAX} 个字符（长句在自然停顿处拆成两项），最少 ${SENTENCE_MIN_HAN} 个汉字（「慢慢来。」这种凑数的短句并进相邻的句子），不合格整版退回。数字写阿拉伯数字。不要旁白就给空数组。全片口播总字数约等于「片长秒数 × 4.3」，数字每一位算一个多字（10 秒约 43 字、30 秒约 130 字、60 秒约 260 字；英文每秒约 2.5 个词），按镜头分下去；30 秒以上的片子每镜至少 15 秒` },
+    screen_text: { type: 'array', maxItems: 8, items: { type: 'string' }, description: `这一镜屏幕上要出现的字：标题、标签、关键数字，每条最多 ${SCREEN_TEXT_MAX} 个字，按出现的顺序。用词和口播里的说法一致（口播说「马龙峰 4122 米」，屏幕就写「马龙峰 4122 米」）。每条字要在画面上停够时间才读得完（约 1.5 秒加每个字 0.2 秒），所以宁少勿多：一句口播最多配一两条。不需要屏幕文字就不填` },
     seconds: { type: 'number', description: '只在没有口播时填：这一镜几秒（15 到 60）。有口播时不用填，长度由口播念完的时间决定' },
   },
 }
 
+/** 一条事实里的数字（「4122 米」「7.4 亿」「95%」里的 4122、7.4、95）；年份和一位数不查 */
+const numbersIn = text => (String(text).match(/\d+(?:\.\d+)?/g) || []).filter(n => n.length >= 2 && !/^(19|20)\d\d$/.test(n))
+
 const plan = tool({
   name: 'lovideo_plan',
-  description: '出分镜或改分镜（每次都给完整的分镜）。镜头少而长：大约每 15 到 25 秒一镜，一镜里按口播顺序装好几个画面变化，不要给单独一个节拍或标题卡开一镜。分镜以卡片展示给用户，卡片上有「确认开拍」按钮，卡片自己会请用户审阅，调用后这一轮就结束，不要再问要不要开拍。只在用户确认（点按钮或明确说开拍）后才调用 lovideo_produce；改分镜就带上 work_id 再调用一次本工具。成片已经做好后，用户只想改某几镜（字幕、口播、重画、裁短、调顺序）时不要用本工具，用 lovideo_revise；改分镜后重新开拍时，没改动的镜头会自动沿用。',
+  description: '出分镜或改分镜（每次都给完整的分镜）。先把用户给的事实列进 facts，再排镜头，每条事实都要落到某一镜的口播或屏幕文字里。镜头少而长：大约每 15 到 25 秒一镜，一镜里按口播顺序装好几个画面变化，不要给单独一个节拍或标题卡开一镜。分镜以卡片展示给用户，卡片上有「确认开拍」按钮，卡片自己会请用户审阅，调用后这一轮就结束，不要再问要不要开拍。只在用户确认（点按钮或明确说开拍）后才调用 lovideo_produce；改分镜就带上 work_id 再调用一次本工具。成片已经做好后，用户只想改某几镜（字幕、口播、重画、裁短、调顺序）时不要用本工具，用 lovideo_revise；改分镜后重新开拍时，没改动的镜头会自动沿用。',
   parameters: {
     type: 'object', additionalProperties: false, required: ['title', 'style', 'duration', 'scenes', 'voice', 'music', 'subtitles'],
     properties: {
@@ -416,6 +426,7 @@ const plan = tool({
           prompt: { type: 'string', description: '给配乐模型的英文描述：曲风、乐器、情绪、速度，只要纯器乐，例如「calm lo-fi piano, soft pads, warm and curious, 80 bpm, instrumental」' },
         },
       },
+      facts: { type: 'array', maxItems: 16, items: { type: 'string' }, description: '这部片子要讲的事实，从用户的话和资料里一条条摘出来，数字、名字照原样（例如「马龙峰海拔 4122 米」「2023 年 12 月 6 日开业」）。出分镜前先列它，再把每一条安排进某一镜的口播或屏幕文字；带数字的事实如果哪儿都没用上，分镜会被退回（确实不讲就从这里删掉）。用户没给具体事实就不填' },
       direction: { type: 'string', description: '整片的画面方向（给制作看，用户的语言写）：配色、字体、版式、动效和节奏。风格没有固定的画面样子（比如「我的风格」里的通用画布）时必填，从用户的话出发、没说的按题材选；每镜由单独的制作模型照它画，要具体到各镜看起来是同一部片子。风格有固定样子时可以不填' },
       scenes: { type: 'array', minItems: 1, maxItems: 20, items: SCENE },
       note: { type: 'string', description: '这一版改了什么（改分镜时填，会显示在卡片上）' },
@@ -443,8 +454,27 @@ const plan = tool({
       const sentences = (Array.isArray(s.narration) ? s.narration.map(x => String(x || '').trim()).filter(Boolean) : sentencesOf({ narration: s.narration }))
       const narration = joinSentences(sentences)
       const talk = sentences.length ? estimateSeconds(sentences) + 0.15 + 0.25 * (sentences.length - 1) + 0.4 : 0
-      return { id: `shot-${i + 1}`, title: s.title, description: s.description, narration, sentences, seconds: Math.round(talk || Math.max(3, Math.min(90, Number(s.seconds) || MIN_SHOT_SEC))) }
+      const texts = (Array.isArray(s.screen_text) ? s.screen_text : []).map(x => String(x || '').trim()).filter(Boolean)
+      // 屏幕文字按网站的格式存成 copy（风格的准备脚本和制作都读它）
+      const copy = Object.fromEntries(texts.map((x, k) => [`text${k + 1}`, x]))
+      return { id: `shot-${i + 1}`, title: s.title, description: String(s.description || '').trim(), narration, sentences, copy, seconds: Math.round(talk || Math.max(3, Math.min(90, Number(s.seconds) || MIN_SHOT_SEC))) }
     })
+    // 下面几条都是给导演的硬性约束：小模型不卡就会写出画不完的描述、凑数的短句、丢掉用户给的数字
+    const problems = []
+    scenes.forEach((s, i) => {
+      const n = [...s.description].length
+      if (n > DESCRIPTION_MAX) problems.push(`第 ${i + 1} 镜的画面描述 ${n} 个字，最多 ${DESCRIPTION_MAX} 个：只留和口播一句对一句的画面动作，删掉镜头调度和画不完的细节`)
+      if (s.sentences.length > SENTENCES_MAX) problems.push(`第 ${i + 1} 镜口播有 ${s.sentences.length} 句，一镜最多 ${SENTENCES_MAX} 句：合并短句`)
+      const thin = s.sentences.filter(x => /[一-鿿]/.test(x) ? (x.match(/[一-鿿]/g) || []).length + (x.match(/\d/g) || []).length < SENTENCE_MIN_HAN : x.split(/\s+/).filter(Boolean).length < 3)
+      if (thin.length && s.sentences.length > 1) problems.push(`第 ${i + 1} 镜这几句太短：${thin.map(x => `「${x}」`).join('')}。一句至少 ${SENTENCE_MIN_HAN} 个字，把它并进相邻的句子，或者补上具体内容`)
+      const longText = Object.values(s.copy).filter(x => [...x].length > SCREEN_TEXT_MAX)
+      if (longText.length) problems.push(`第 ${i + 1} 镜的屏幕文字太长：${longText.map(x => `「${x}」`).join('')}。每条最多 ${SCREEN_TEXT_MAX} 个字，观众来不及读长句`)
+    })
+    const facts = (Array.isArray(args.facts) ? args.facts : []).map(x => String(x || '').trim()).filter(Boolean)
+    const said = scenes.map(s => `${s.sentences.join(' ')} ${Object.values(s.copy).join(' ')}`).join(' ')
+    const unused = facts.filter(f => numbersIn(f).length && !numbersIn(f).some(n => said.includes(n)))
+    if (unused.length) problems.push(`facts 里这几条的数字没有出现在任何一镜的口播或屏幕文字里：${unused.map(x => `「${x}」`).join('')}。把它讲出来或写到屏幕上（数字写阿拉伯数字）；确实不讲就从 facts 里删掉`)
+    if (problems.length) throw fixable(`${problems.join('；')}。改好后再出分镜`)
     // 一句太长：网站整版退回，这里也一样（字幕一屏放不下，句子的时间也不准）
     const long = scenes.flatMap((s, i) => s.sentences.filter(x => [...x].length > SENTENCE_MAX).map(x => `第 ${i + 1} 镜「${x.slice(0, 20)}…」${[...x].length} 字`))
     if (long.length) throw fixable(`这几句口播超过 ${SENTENCE_MAX} 个字符：${long.join('、')}。在自然停顿处拆成两句（narration 里两项）再出分镜`)
@@ -455,10 +485,12 @@ const plan = tool({
     }
     const est = scenes.reduce((n, s) => n + s.seconds, 0)
     // 直接告诉导演字数预算：中文每秒约 4.5 个字，所以「片长 × 4.5」就是全片口播的字数上限（短片最容易超）
-    if (est > duration * 1.3) throw fixable(`这版分镜估计约 ${Math.round(est)} 秒，比目标片长 ${duration} 秒长太多。全片口播一共写约 ${Math.round(duration * 4.5)} 个字以内（中文每秒约 4.5 个字），删掉信息量最少的句子或合并镜头后再出`)
+    if (est > Math.max(duration * 1.15, duration + 3)) throw fixable(`这版分镜估计约 ${Math.round(est)} 秒，比目标片长 ${duration} 秒长。全片口播一共写约 ${Math.round(duration * 4.3)} 个字以内（中文每秒约 4.3 个字，数字每一位算一个多字），删掉信息量最少的句子后再出；用户给的事实尽量留着，删修饰和重复`)
     // 比目标短很多：提醒导演还能不能补有用的内容；补不了就保持短（不在这里报错，内容优先）
     const short = est < duration * 0.7 ? `这版约 ${Math.round(est)} 秒，比目标 ${duration} 秒短。如果用户给的资料里、或用 web_search 搜到的可靠资料里还有值得讲的具体内容，可以补进来再出一版；没有就保持现在的长度，不要凑。` : ''
     const pickOn = (key, suggested) => (typeof userSet[key] === 'boolean' ? userSet[key] : suggested)
+    // 事实清单按网站的格式存成 inputs，每一镜的制作都看得到（屏幕上的数字照它写）
+    const inputs = facts.map((value, k) => ({ key: `fact${k + 1}`, label: '', value }))
     const fields = {
       title: args.title, aspect, style: { slug: st.slug, name: st.name, source: st.source, cover: st.cover || null },
       duration,
@@ -475,12 +507,12 @@ const plan = tool({
         const keepMusic = w.music?.file && w.music.mood === fields.music.mood ? { file: w.music.file, seconds: w.music.seconds, model: w.music.model, source: w.music.source } : {}
         Object.assign(w, fields)
         Object.assign(w.music, keepMusic)
-        w.plan = { revision: (w.plan?.revision || 0) + 1, scenes, direction: String(args.direction || '').trim().slice(0, 1200) || null, note: args.note || '', at: new Date().toISOString() }
+        w.plan = { revision: (w.plan?.revision || 0) + 1, scenes, inputs, direction: String(args.direction || '').trim().slice(0, 1200) || null, note: args.note || '', at: new Date().toISOString() }
         w.status = 'draft'
         return w
       })
     } else {
-      work = createWork({ ...fields, plan: { revision: 1, scenes, direction: String(args.direction || '').trim().slice(0, 1200) || null, note: '', at: new Date().toISOString() } })
+      work = createWork({ ...fields, plan: { revision: 1, scenes, inputs, direction: String(args.direction || '').trim().slice(0, 1200) || null, note: '', at: new Date().toISOString() } })
     }
     // 用户在卡片上点「确认开拍」时没有工具调用，做完也要能叫醒这位导演
     watch(work.id, exec)

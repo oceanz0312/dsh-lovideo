@@ -68,11 +68,21 @@ ${style.skillMd}
 }
 
 /** 本段说明：分工、做法、画面跟着旁白动、写得紧凑 */
-function segmentNote(segId, agents, resume) {
+function segmentNote(segId, agents, resume, size) {
+  const W = size.width
+  const H = size.height
   return `You make segment ${segId} and nothing else. Every other segment is made at the same time by another agent (${agents} agents at once). Do not make, overwrite or delete another segment or what was written for it: write only inside ${PROJ}/${segId}/.
 How to work: everything you need is in this message (the task, the whole SKILL.md, your segment's data and its prepared draft). Do not explore, do not re-read them, do not keep notes. In your FIRST reply call \`draw\` once with the complete, final scene for the whole segment (every beat of the narration timed on its words). If the render reports errors, fix all of them in one \`draw\` call with \`edits\`. The session ends by itself once the segment is submitted; say nothing more.
 The picture moves with the voice: give every voice-over sentence its own visible action timed on its words (something enters, moves, transforms, is highlighted, or the camera moves) and keep what is on screen alive between actions; no sentence plays over a still picture, even where the Skill lets a layout hold. The platform measures the rendered segment and sends it back if the picture barely changes while the voice speaks. Text needs time to be read before its shot or the segment ends, so text that belongs to words spoken in the last three seconds comes in before those words, and the words themselves get a motion or a highlight. When the page says a text has too little time, bring it in earlier or shorten it, and check every other text for the same problem before you draw again: the page stops at the first problem it finds. Never fix a problem by deleting an element.
-Write compactly: no comments, no text before or after the call, nothing restated from the brief; reuse the prepared draft through \`edits\` where it already has what you need instead of writing the file again; draw repeated elements with a loop or a small helper. Compact code must still draw every beat in full.${resume ? `\n\nResume: an earlier attempt at this segment did not finish. ${PROJ}/${segId}/ holds what it left; reuse what is there.` : ''}`
+What gets a segment sent back most often, so get it right the first time (where SKILL.md says otherwise, SKILL.md wins):
+- Components first. Build the segment from the ready-made components and layouts SKILL.md lists (whole layouts, rows, panels, labels); draw with the raw canvas or helpers of your own only for what SKILL.md has no component for. A short scene made of the Skill's components beats a long hand-drawn one.
+- No fixed positions. Every position and size comes from the frame the page gives you (its width and height, the Skill's layout helpers, its safe area), never from numbers that only fit one aspect. This film is ${W}x${H}; text and key graphics stay inside the frame and above the subtitle band at every moment, also while the camera moves or zooms.
+- Time on the words. Start each action on the word it belongs to: use the Skill's word-time helper where it has one, otherwise the sentence and word times in your production context. Do not guess seconds.
+- Reading time. A text must stay fully on screen at least 1.5 s plus 0.22 s for each Chinese character (0.07 s for each other character) before it leaves or its shot ends: a 6-character label needs about 2.8 s, a 12-character line about 4.2 s. So few and short texts, brought in early; never a text that appears in the last two seconds of its shot.
+- The approved on-screen texts. \`copy\` in your production context lists the texts the user approved for this segment: show each of them, spelled exactly, and take numbers from \`confirmed.inputs\` exactly; add no long text of your own.
+- One action per sentence. Each voice-over sentence gets one clear visible action; few, large elements, not many small ones. Whatever the description names must be recognisable at a glance: simple, deliberate shapes.
+- Start from the prepared draft and keep its structure: replace its sample content with this segment's through \`edits\`; do not rewrite the file from scratch unless the draft cannot hold the scene.
+Write compactly: no comments, no text before or after the call, nothing restated from the brief; draw repeated elements with a loop or a small helper. Compact code must still draw every beat in full.${resume ? `\n\nResume: an earlier attempt at this segment did not finish. ${PROJ}/${segId}/ holds what it left; reuse what is there.` : ''}`
 }
 
 /** 本段的制作上下文（网站 production_context.py 的 build_context，只给这一段的细节） */
@@ -354,7 +364,7 @@ export async function makeSegmentSession(o) {
   for (let session = 1; session <= SESSIONS; session++) {
     const resume = session > 1 || attempts > 0
     const brief = [
-      segmentNote(seg.id, agents, resume),
+      segmentNote(seg.id, agents, resume, size),
       `Production context (task data, prepared for this attempt):\n${JSON.stringify(productionContext({ work, segments, seg, fps, size, narration, styleSlug: style.slug, redraw }), null, 1)}`,
       preparedText({ proj, segId: seg.id, styleDir: style.dir, resume }),
       seg.brief ? `The user asked to redraw this segment: ${seg.brief}` : '',

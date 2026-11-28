@@ -370,7 +370,8 @@ async function makeMusic(id, settings, signal) {
 
 /** 一镜的内容指纹：标题、画面、口播都没变才算同一镜 */
 export function sceneSig(scene) {
-  return JSON.stringify([scene.title || '', scene.description || '', narrationText(scene)])
+  const copy = Object.values(scene.copy || {}).join('\n')
+  return JSON.stringify([scene.title || '', scene.description || '', narrationText(scene), copy])
 }
 
 /** 画面的「样子」：风格和画幅。换了其中一个，做好的镜头都要重画 */
@@ -379,7 +380,8 @@ const lookOf = work => `${work.style?.slug || ''}|${work.aspect || ''}`
 /** 只看画面（标题和画面描述），口播不算 */
 function pictureSig(scene) {
   const sig = scene.sig ? JSON.parse(scene.sig) : sceneSig(scene) && JSON.parse(sceneSig(scene))
-  return JSON.stringify(sig.slice(0, 2))
+  // 标题、画面描述、屏幕文字；老作品的指纹里没有屏幕文字，当作空
+  return JSON.stringify([sig[0], sig[1], sig[3] || ''])
 }
 
 /** 上一版做好的镜头（带内容指纹）；老作品没存指纹时从 job.json 里补出来 */

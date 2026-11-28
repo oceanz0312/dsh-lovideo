@@ -32,7 +32,9 @@ test('跑不了时给出原因', () => {
 })
 
 test('估计口播时长：中文按字、英文按词', () => {
-  assert.ok(Math.abs(estimateSeconds(['一'.repeat(45)]) - 10) < 0.01)
+  assert.ok(Math.abs(estimateSeconds(['一'.repeat(87)]) - 20) < 0.01)
+  // 数字按位算：「2022 年」不是一个词
+  assert.ok(Math.abs(estimateSeconds(['2022 年']) - (4 * 0.28 + 1 / 4.35)) < 0.01)
   assert.ok(Math.abs(estimateSeconds([Array(26).fill('word').join(' ')]) - 10) < 0.01)
 })
 

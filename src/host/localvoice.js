@@ -257,14 +257,19 @@ export async function musicLocal({ prompt, seconds, out }) {
 
 /* ---------- 按口播长度挑模型 ---------- */
 
-/** 估计口播时长：中文每秒约 4.5 个字，英文每秒约 2.6 个词 */
+/**
+ * 估计口播时长：中文每秒约 4.35 个字，数字每一位约 0.28 秒，英文每秒约 2.6 个词。
+ * 按 40 镜实际配音拟合（2026-11-28）：以前把「2022」「4122」这样一串数字当一个词算，
+ * 数字多的镜头估得比实际短三成，成片比目标长。
+ */
 export function estimateSeconds(texts) {
   let s = 0
   for (const t of texts) {
     const text = String(t || '')
     const han = (text.match(/[一-鿿]/g) || []).length
-    const words = text.replace(/[一-鿿]/g, ' ').split(/\s+/).filter(w => /[a-z0-9]/i.test(w)).length
-    s += han / 4.5 + words / 2.6
+    const digits = (text.match(/\d/g) || []).length
+    const words = text.replace(/[一-鿿\d]/g, ' ').split(/\s+/).filter(w => /[a-z]/i.test(w)).length
+    s += han / 4.35 + digits * 0.28 + words / 2.6
   }
   return s
 }

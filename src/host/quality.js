@@ -62,7 +62,8 @@ Report only defects a viewer would notice at once:
 - a shape, colour block or element that hides the subject or fills a large part of the frame and is clearly not meant to be there (for example a highlight, glow or particle drawn many times too large);
 - a frame that is empty or visibly broken (a deliberate build-up at the very start is fine);
 - garbled or missing characters;
-- on-screen text that contradicts the approved copy.
+- on-screen text that contradicts the approved copy;
+- the main subject the description names is nowhere to be seen in any frame (a stylised or simplified drawing of it is fine).
 Taste, pacing, colour and small alignment are not defects.
 
 Reply with exactly OK if there is none. Otherwise reply with at most 3 lines, one defect per line: the frame number (1 is the first), what is wrong, and the fix.`

@@ -34,8 +34,8 @@ test('片长决定最多几镜：30 秒最多 2 镜', async () => {
 })
 
 test('口播比目标片长长太多时打回', async () => {
-  const long = Array(20).fill('这是一段很长很长的口播。')
-  await assert.rejects(plan.execute(args({ scenes: [scene(1, long), scene(2, long)] })), /长太多/)
+  const long = Array(6).fill('这是一段很长很长的口播，一句话里塞了很多很多的字，念起来要好几秒钟。')
+  await assert.rejects(plan.execute(args({ scenes: [scene(1, long), scene(2, long)] })), /比目标片长 30 秒长/)
 })
 
 test('口播太短的镜头被退回，退回带记号、不算给用户看的失败', async () => {
@@ -74,4 +74,23 @@ test('用户在卡片上定的时长和开关，导演改分镜时照用户的�
   assert.equal(w.subtitles.enabled, false)
   assert.equal(w.voice.enabled, true)
   assert.match(r2.text, /用户在卡片上定的/)
+})
+
+test('给导演的硬性约束：描述 200 字、一镜 6 句、凑数短句、屏幕文字 14 字，不合格整版退回', async () => {
+  const bad = e => e.message.startsWith('【请改好后再调用】')
+  await assert.rejects(plan.execute(args({ scenes: [{ ...scene(1), description: '画'.repeat(201) }, scene(2)] })), e => /画面描述 201 个字/.test(e.message) && bad(e))
+  await assert.rejects(plan.execute(args({ duration: 60, scenes: [scene(1, Array(7).fill('天宫空间站由三个舱段组成。')), scene(2)] })), e => /一镜最多 6 句/.test(e.message) && bad(e))
+  await assert.rejects(plan.execute(args({ scenes: [scene(1, [...LINE, '慢慢来。']), scene(2)] })), e => /这几句太短：「慢慢来。」/.test(e.message) && bad(e))
+  await assert.rejects(plan.execute(args({ scenes: [{ ...scene(1), screen_text: ['天和核心舱、问天实验舱和梦天实验舱'] }, scene(2)] })), e => /屏幕文字太长/.test(e.message) && bad(e))
+})
+
+test('事实清单和屏幕文字：带数字的事实没用上就退回，用上了按网站的格式存（inputs、copy）', async () => {
+  const only68 = [scene(1, ['天宫空间站由天和核心舱、问天实验舱和梦天实验舱组成，三个舱拼成一个 T 字。', '总重约 68 吨，航天员可以在三个舱之间来回走动。']), scene(2)]
+  await assert.rejects(plan.execute(args({ facts: ['天宫空间站总重约 68 吨', '轨道高度约 400 公里'], scenes: only68 })), e => /「轨道高度约 400 公里」/.test(e.message) && !/68 吨/.test(e.message))
+  const withTexts = [{ ...scene(1, ['天宫空间站由天和核心舱、问天实验舱和梦天实验舱组成，三个舱拼成一个 T 字。', '总重约 68 吨，飞在约 400 公里高的轨道上，航天员可以来回走动。']), screen_text: ['总重约 68 吨', '轨道 400 公里'] }, scene(2)]
+  const r = await plan.execute(args({ facts: ['天宫空间站总重约 68 吨', '轨道高度约 400 公里'], scenes: withTexts }))
+  const w = requireWork(r.work_id)
+  assert.deepEqual(w.plan.inputs.map(x => x.value), ['天宫空间站总重约 68 吨', '轨道高度约 400 公里'])
+  assert.deepEqual(w.plan.scenes[0].copy, { text1: '总重约 68 吨', text2: '轨道 400 公里' })
+  assert.deepEqual(w.plan.scenes[1].copy, {})
 })
