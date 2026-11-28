@@ -184,7 +184,8 @@ export async function assembleFilm(id, timeline, { signal } = {}) {
     const a = timeline.assets[c.asset]
     if (!a) return
     const idx = n + mix.length
-    if (c.role === 'bgm') args.push('-stream_loop', '-1')
+    // 配乐比片子短时循环，但只读到用得着的长度：输入不能是无限长的（见下面的说明）
+    if (c.role === 'bgm') args.push('-stream_loop', '-1', '-t', String(r3((c.offset || 0) + c.dur + 1)))
     args.push('-i', join(dir, a.uri || a.r2))
     const vol = Math.pow(10, (c.gain || 0) / 20).toFixed(3)
     const delay = Math.round(c.start * 1000)
@@ -192,15 +193,17 @@ export async function assembleFilm(id, timeline, { signal } = {}) {
     filters.push(`[${idx}:a]atrim=start=${c.offset || 0}:duration=${c.dur},asetpts=PTS-STARTPTS,aresample=48000,volume=${vol}${fade},adelay=${delay}|${delay}[a${k}]`)
     mix.push(`[a${k}]`)
   })
-  if (mix.length) filters.push(`${mix.join('')}amix=inputs=${mix.length}:normalize=0:dropout_transition=0,apad[a]`)
-  else {
-    args.push('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo')
-    filters.push(`[${n}:a]anull[a]`)
-  }
+  // 整片长度的静音底轨垫在最下面，声音轨正好和片子一样长。
+  // 以前用 apad 把声音补成无限长、配乐无限循环，靠输出的 -t 截断：电脑忙的时候（同时在渲染别的片子）
+  // ffmpeg 偶尔一直攒声音不出片，卡十几分钟后报内存不够（2026-11-28 实测，并行 4 路里卡了 1 路）。
+  // 现在每一路输入都是有限长的，不会再攒。
+  args.push('-f', 'lavfi', '-t', String(timeline.duration), '-i', 'anullsrc=r=48000:cl=stereo')
+  filters.push(`[${n + mix.length}:a]anull[bed]`)
+  filters.push(`[bed]${mix.join('')}amix=inputs=${mix.length + 1}:normalize=0:dropout_transition=0:duration=first[a]`)
   const out = join(ensureDir(join(dir, 'film')), 'final.mp4')
   await ffmpeg([...args, '-filter_complex', filters.join(';'), '-map', '[v]', '-map', '[a]', '-t', String(timeline.duration),
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ac', '2',
-    '-movflags', '+faststart', `${out}.tmp.mp4`], { signal })
+    '-movflags', '+faststart', `${out}.tmp.mp4`], { signal, timeoutMs: 600_000 })
   const { renameSync } = await import('node:fs')
   renameSync(`${out}.tmp.mp4`, out)
   const poster = join(dir, 'film', 'poster.jpg')
