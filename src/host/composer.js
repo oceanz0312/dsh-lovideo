@@ -11,7 +11,8 @@ import { readJson, updateJson } from './json-file.js'
 /** 输入框里能选的片长：10 秒到 5 分钟，可以拖动也可以直接输入秒数 */
 export const COMPOSER_MIN_SEC = 10
 export const COMPOSER_MAX_SEC = 300
-export const ASPECTS = ['16:9', '9:16']
+/** 能出的画幅，第一个是没选时的默认（和 lovideo.ai 网站的 FILM_ASPECTS 一致） */
+export const ASPECTS = ['16:9', '9:16', '3:4']
 
 const file = () => join(ensureDir(dataDir()), 'composer.json')
 
@@ -38,11 +39,15 @@ function change(fn) {
 
 const bad = msg => Object.assign(new Error(msg), { status: 400 })
 
-/** 检查页面传来的开局条件；风格要在可用列表里（不选就是交给导演推荐），画幅要是这个风格支持的 */
+/** 检查页面传来的开局条件；风格要在可用列表里（不选就是交给导演推荐），画幅要是这个风格支持的；
+ *  不选风格时画幅至少要有一个风格能做（一个都做不了的话导演推荐不出风格），否则用默认画幅 */
 export function normalizeBrief(b, styles) {
   const duration = Math.round(Number(b?.duration))
   if (!Number.isInteger(duration) || duration < COMPOSER_MIN_SEC || duration > COMPOSER_MAX_SEC) throw bad(`片长要在 ${COMPOSER_MIN_SEC} 到 ${COMPOSER_MAX_SEC} 秒之间`)
-  if (b?.slug == null) return { slug: null, name: null, aspect: ASPECTS.includes(b?.aspect) ? b.aspect : ASPECTS[0], duration }
+  if (b?.slug == null) {
+    const usable = a => ASPECTS.includes(a) && (!styles.length || styles.some(s => (s.aspects?.length ? s.aspects : ['16:9']).includes(a)))
+    return { slug: null, name: null, aspect: usable(b?.aspect) ? b.aspect : ASPECTS[0], duration }
+  }
   const s = styles.find(x => x.slug === b?.slug)
   if (!s) throw bad('没有这个风格')
   const aspects = s.aspects?.length ? s.aspects : ['16:9']

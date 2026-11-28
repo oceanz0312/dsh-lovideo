@@ -24,6 +24,8 @@ const options = {
   jsxFragment: 'React.Fragment',
   // React 和宿主的界面组件（Toast 等）都用 DeepSeek Harness 自带的
   external: ['react', 'react-dom'],
+  // 平台标志（src/client/icons）按文本内联，界面里转成 data URL 当形状蒙版用
+  loader: { '.svg': 'text' },
   legalComments: 'none',
   minify: !process.argv.includes('--dev'),
   banner: { js: `window.__ModuleLoader__.load({id:${JSON.stringify(pkg.name)},factory:(require)=>{const module={exports:{}};const exports=module.exports;` },

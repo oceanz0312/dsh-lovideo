@@ -1,6 +1,6 @@
 {
   "name": "dsh-lovideo",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "lovideo 视频插件：在 DeepSeek Harness 里一句话做出任意风格的视频。导演用你选的模型，画面在你自己的电脑上渲染。",
   "homepage": "https://lovideo.ai",
   "repository": {
@@ -79,8 +79,8 @@
   "license": "UNLICENSED",
   "lovideo": {
     "whatsNew": {
-      "zh": "制作流程和 lovideo 网站对齐：逐句配音、交段前检查画面，换竖版不再溢出；分镜卡上配音、配乐都有开关和同样的「更换」；Qwen3 离线配音中英文各有 9 个声音可选。",
-      "en": "Production now works like lovideo.ai: sentence-by-sentence voiceover and frame checks before each shot, so portrait videos no longer overflow; voiceover and music on the storyboard share the same switch and Change menu; Qwen3 offline voiceover now offers 9 voices each for Chinese and English."
+      "zh": "画幅新增 3:4（小红书），风格支持后即可选用；选画幅时会标出它适合发布的平台：抖音、快手、视频号、YouTube、B 站等。",
+      "en": "New 3:4 aspect ratio, available on styles that support it; the aspect picker now shows which platforms each ratio suits, such as TikTok, Shorts, Reels and YouTube."
     }
   }
 }

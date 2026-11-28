@@ -2,7 +2,7 @@
 // 卡片只从工具结果里拿作品 id，内容实时读本机数据，所以和管理页、和后续的修改永远一致。
 import * as React from 'react'
 import { api, argsOf, fileUrl, loginUrl, openExternal, pick, resultText, useLive, whileProducing } from './api.js'
-import { Badge, Bar, Button, Dialog, LinkButton, Mark, Media, Player, SpeedButton, Spin, StatusBadge, Styles, Switch, durLabel, fmtSec, segLabel, stepLabel, usePlaybackRate } from './ui.jsx'
+import { Badge, Bar, Button, Dialog, LinkButton, Mark, Media, Player, SpeedButton, Spin, StatusBadge, Styles, Switch, durLabel, fmtSec, segLabel, stepLabel, portraitOf, usePlaybackRate } from './ui.jsx'
 import { openManager } from './host.js'
 import { toast } from './toast.jsx'
 import { KeyCard, ListenButton, jobText, musicName, voiceName } from './sound-settings.jsx'
@@ -686,7 +686,7 @@ export function WorkBody({ w }) {
   if (w.status === 'done' && w.film) {
     return (
       <div className="lv" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <Player src={fileUrl(w.film.url)} poster={fileUrl(w.film.posterUrl)} subtitles={w.subtitles} hidden={w.switches ? w.switches.subtitles === false : w.subtitlesHidden} portrait={w.aspect === '9:16'} />
+        <Player src={fileUrl(w.film.url)} poster={fileUrl(w.film.posterUrl)} subtitles={w.subtitles} hidden={w.switches ? w.switches.subtitles === false : w.subtitlesHidden} portrait={portraitOf(w.aspect)} />
         <FilmSwitches w={w} />
       </div>
     )
@@ -703,13 +703,13 @@ export function WorkBody({ w }) {
         {job.modelCalls ? <span className="lv-subtle">{t('work.modelCalls', { n: job.modelCalls })}</span> : null}
       </div>
       <Bar value={job.progress} />
-      {shown ? <SegmentPreview key={shown.id} seg={shown} portrait={w.aspect === '9:16'} onClose={() => setPreview(null)} /> : null}
+      {shown ? <SegmentPreview key={shown.id} seg={shown} portrait={portraitOf(w.aspect)} onClose={() => setPreview(null)} /> : null}
       {segs.length ? (
         <div className="lv-segs" style={{ gridTemplateColumns: `repeat(${Math.min(6, Math.max(3, segs.length))}, minmax(0,1fr))` }}>
           {segs.map(s => {
             const ready = s.state === 'done' && s.video
             const media = (
-              <Media src={fileUrl(s.poster)} portrait={w.aspect === '9:16'} chip={String(s.idx).padStart(2, '0')}
+              <Media src={fileUrl(s.poster)} portrait={portraitOf(w.aspect)} chip={String(s.idx).padStart(2, '0')}
                 style={s.state === 'done' ? null : { opacity: 0.55 }}>
                 {ready ? <span className="lv-play"><i /></span> : null}
               </Media>

@@ -26,7 +26,7 @@ import { filmLang, voicePickOf, withMusicSource } from './filmsound.js'
 import { musicReady } from './localvoice.js'
 import { busyElsewhereError, ownedElsewhere, producerRecord } from './lock.js'
 
-export const ASPECTS = { '16:9': { width: 1920, height: 1080 }, '9:16': { width: 1080, height: 1920 } }
+export const ASPECTS = { '16:9': { width: 1920, height: 1080 }, '9:16': { width: 1080, height: 1920 }, '3:4': { width: 1080, height: 1440 } }
 const controllers = new Map()
 
 export const isRunning = id => controllers.has(id)

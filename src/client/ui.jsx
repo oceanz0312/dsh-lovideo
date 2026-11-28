@@ -104,6 +104,7 @@ a.lv-btn{text-decoration:none}
 .lv-bar>i{display:block;height:100%;background:var(--dsw-alias-state-business-primary);border-radius:99px;transition:width var(--lv-slow) var(--lv-ease-out)}
 .lv-media{position:relative;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:var(--dsw-alias-interactive-bg-hover)}
 .lv-media.p{aspect-ratio:9/16}
+.lv-media.p34{aspect-ratio:3/4}
 .lv-media img,.lv-media video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;transition:transform var(--lv-slow) var(--lv-ease-out)}
 .lv-media .lv-chip{position:absolute;left:6px;top:6px;z-index:2;font-size:11px;color:#fff;background:rgba(0,0,0,.55);border-radius:5px;padding:0 6px;line-height:18px}
 .lv-media .lv-chip.r{left:auto;right:6px}
@@ -216,7 +217,11 @@ a.lv-btn{text-decoration:none}
 .lvc-seg{display:flex;gap:3px;padding:3px;border-radius:10px;background:var(--dsw-alias-interactive-bg-hover)}
 .lvc-seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;height:32px;white-space:nowrap;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer}
 .lvc-seg button.on{background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-shadow:0 1px 3px rgba(0,0,0,.12)}
-.lvc-seg button:disabled{opacity:.4;cursor:default}
+.lvc-seg button:disabled,.lvc-seg button.off{opacity:.4;cursor:default}
+.lvc-fit{display:flex;align-items:center;gap:10px;min-height:20px;margin-top:10px;font-size:12px;line-height:20px;color:var(--dsw-alias-label-tertiary);white-space:nowrap}
+.lvc-plat{display:inline-flex;align-items:center;gap:4px}
+.lvc-pi{display:inline-flex;flex:none;width:14px;height:14px;align-items:center;justify-content:center;border-radius:4px}
+.lvc-pi i{width:9px;height:9px;background:#fff;-webkit-mask:center/contain no-repeat;mask:center/contain no-repeat}
 .lvc-shape{display:inline-block;border:1.6px solid currentColor;border-radius:3px}
 .lvc-link{display:flex;align-items:center;gap:6px;width:100%;margin-top:10px;padding:10px 2px 0;border:0;border-top:1px solid var(--dsw-alias-border-l2);background:none;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;cursor:pointer;text-align:left}
 .lvc-durpanel{width:380px;padding:14px 16px 12px}
@@ -461,9 +466,12 @@ function useSeekableSrc(src) {
   }
 }
 
+/** 作品画幅对应的画框：横版不加，9:16 是 true，3:4 是 '3:4'（Media、Player 的 portrait 参数） */
+export const portraitOf = aspect => (aspect === '3:4' ? '3:4' : aspect === '9:16')
+
 export function Media({ src, portrait, chip, chipRight, children, style }) {
   return (
-    <div className={`lv-media ${portrait ? 'p' : ''}`} style={style}>
+    <div className={`lv-media ${portrait === '3:4' ? 'p34' : portrait ? 'p' : ''}`} style={style}>
       {src ? <img src={src} alt="" loading="lazy" /> : null}
       {chip ? <span className="lv-chip">{chip}</span> : null}
       {chipRight ? <span className="lv-chip r">{chipRight}</span> : null}

@@ -9,7 +9,8 @@ import { Styles, durLabel, fmtSec } from './ui.jsx'
 import { coverOf } from './cards.jsx'
 import { StyleTile, seedFavorites, useFavorites } from './tiles.jsx'
 import { openManager, takeStylePick } from './host.js'
-import { t, useT } from './i18n.js'
+import { lang, t, useT } from './i18n.js'
+import { ASPECT_ORDER, ASPECT_SHAPE, aspectPlatforms } from './platforms.js'
 
 // 宿主页面里的 react-dom（和宿主共用同一个 React）；拿不到时风格墙就不画，输入框里的两个选项照常可用
 let portal = null
@@ -45,8 +46,8 @@ const allStyles = r => [...(r?.mine || []).filter(s => !s.draft), ...(r?.platfor
 
 /* ---------- 每个会话一份开局条件：先改界面，停 300ms 再存，免得拖动时一直发请求 ---------- */
 
-const ASPECT_LIST = ['16:9', '9:16']
-// 「导演推荐」：没指定风格，横竖都能选（名字显示时按界面语言取，见 StyleChip）
+const ASPECT_LIST = ['16:9', '9:16', '3:4']
+// 「导演推荐」：没指定风格，先按全部画幅算；浮层里再按现有风格收窄（见 AspectPanel），名字显示时按界面语言取（见 StyleChip）
 const AUTO = { slug: null, name: null, cover: null, aspects: ASPECT_LIST }
 
 const stores = new Map()
@@ -287,17 +288,49 @@ export function StyleChip(props) {
 function AspectPanel({ sessionId }) {
   const t = useT()
   const [c, st] = useComposer(sessionId)
+  // 鼠标或键盘移到哪个画幅上：下面那一行跟着写它适合的平台
+  const [pointed, setPointed] = React.useState(null)
+  // 「导演推荐」时，一个风格都做不了的画幅不能选（选了导演也推荐不出风格）；风格列表读不到就都放开
+  const [all, setAll] = React.useState(null)
+  React.useEffect(() => {
+    let alive = true
+    loadStyles().then(r => alive && setAll(allStyles(r)), () => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+  const can = a => (c.slug ? c.aspects.includes(a) : !all || all.some(s => (s.aspects?.length ? s.aspects : ['16:9']).includes(a)))
+  const shown = pointed || c.aspect
   return (
-    <div className="lvc-panel" style={{ width: 340 }}>
+    <div className="lvc-panel" style={{ width: 440 }}>
       <div className="lvc-h">{t('composer.aspect')}</div>
       <div className="lvc-seg">
-        {[['16:9', t('composer.landscape'), 20, 12], ['9:16', t('composer.portrait'), 11, 18]].map(([a, label, w, h]) => (
-          <button key={a} type="button" className={c.aspect === a ? 'on' : ''} disabled={!c.aspects.includes(a)} onClick={() => st.set({ aspect: a })}>
-            <span className="lvc-shape" style={{ width: w, height: h }} />{a} {label}
-          </button>
-        ))}
+        {ASPECT_ORDER.map(a => {
+          const ok = can(a)
+          const [w, h] = ASPECT_SHAPE[a]
+          return (
+            // 做不了的画幅不用 disabled：那样收不到鼠标事件，没法在下面写原因
+            <button key={a} type="button" className={`${c.aspect === a ? 'on' : ''} ${ok ? '' : 'off'}`} aria-disabled={!ok}
+              onClick={() => ok && st.set({ aspect: a })}
+              onMouseEnter={() => setPointed(a)} onMouseLeave={() => setPointed(null)} onFocus={() => setPointed(a)} onBlur={() => setPointed(null)}>
+              <span className="lvc-shape" style={{ width: w, height: h }} />{a} {a === '16:9' ? t('composer.landscape') : t('composer.portrait')}
+            </button>
+          )
+        })}
       </div>
-      <div className="lv-subtle" style={{ marginTop: 8, fontSize: 12 }}>{!c.slug ? t('composer.autoHint') : c.aspects.length > 1 ? t('composer.bothAspects', { name: c.name }) : t('composer.landscapeOnly', { name: c.name })}</div>
+      <div className="lvc-fit">
+        {can(shown) ? (
+          <>
+            <span>{t('composer.fits')}</span>
+            {aspectPlatforms(shown, lang()).map(p => (
+              <span key={p.id} className="lvc-plat">
+                <span className="lvc-pi" style={{ background: p.color }} aria-hidden="true"><i style={{ WebkitMaskImage: p.mask, maskImage: p.mask }} /></span>
+                {t(p.name)}
+              </span>
+            ))}
+          </>
+        ) : c.slug ? t('composer.cantStyle', { name: c.name, aspect: shown }) : t('composer.cantAny', { aspect: shown })}
+      </div>
       <button type="button" className="lvc-link" onClick={() => {
         setPop(null)
         showTab(sessionId, 'all')

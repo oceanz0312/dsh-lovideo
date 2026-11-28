@@ -9,7 +9,7 @@ import { estimateSeconds } from './localvoice.js'
 import { listMine, listStyles, resolveStyle } from './styles.js'
 import { SENTENCE_MAX, joinSentences, sentencesOf } from './narration.js'
 import { styleSheets } from './stylesheets.js'
-import { pauseProduction, startProduction, narrationText } from './produce.js'
+import { ASPECTS, pauseProduction, startProduction, narrationText } from './produce.js'
 import { reviseFilm, setSwitches } from './edit.js'
 import { openInJianying, startExport, waitExport } from './export.js'
 import { saveDistilled, startDistill } from './distill.js'
@@ -336,7 +336,7 @@ const styles = tool({
     ].filter(Boolean).join('\n'))
     const seen = await styleImages(all, exec)
     if (sessionKey) seenStyles.add(sessionKey)
-    const how = '挑法：先想清楚这部片子讲什么、给谁看、要什么语气，再对照总览图里的画面和下面的介绍找最贴的；用途只是参考，画面气质和内容对得上最重要。用户要竖屏就只挑支持 9:16 的。挑好后带 recommend 和 why 再调用一次。'
+    const how = '挑法：先想清楚这部片子讲什么、给谁看、要什么语气，再对照总览图里的画面和下面的介绍找最贴的；用途只是参考，画面气质和内容对得上最重要。用户选了画幅（16:9 横版、9:16 竖版、3:4 竖版）就只挑支持那个画幅的，每个风格后面列着它能做的画幅。挑好后带 recommend 和 why 再调用一次。'
     return {
       text: `${session}${note}${login}共 ${all.length} 个风格。${seen.note}\n${how}\n\n${lines.join('\n')}`,
       images: seen.images,
@@ -406,7 +406,7 @@ const plan = tool({
       work_id: { type: 'string', description: '改已有作品的分镜时填；新片子不填' },
       title: { type: 'string', description: '片名' },
       style: { type: 'string', description: '风格 slug（来自 lovideo_styles）' },
-      aspect: { type: 'string', enum: ['16:9', '9:16'], description: '画幅。新片默认用风格的第一个画幅；改分镜时不填就沿用原来的' },
+      aspect: { type: 'string', enum: Object.keys(ASPECTS), description: '画幅。新片默认用风格的第一个画幅；改分镜时不填就沿用原来的' },
       duration: { type: 'integer', minimum: FILM_DURATIONS[0], maximum: FILM_DURATIONS.at(-1), description: `目标片长（秒），${FILM_DURATIONS[0]} 到 ${FILM_DURATIONS.at(-1)}。用户在输入框选了片长就填那个秒数；用户在对话里说了就取 ${FILM_DURATIONS.join('、')} 里最近的一档；都没说就 ${DEFAULT_DURATION}。这是目标不是指标：素材撑不满就做短一点，不要凑；镜头数不超过「片长 ÷ ${MIN_SHOT_SEC}」` },
       subtitles: { type: 'boolean', description: '要不要字幕（字幕就是口播原文）。有配音时一般要；用户说不要就 false' },
       voice: {

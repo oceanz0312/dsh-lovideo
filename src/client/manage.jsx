@@ -2,6 +2,7 @@
 import * as React from 'react'
 import { api, fileUrl, loginUrl, openExternal, useLive } from './api.js'
 import { Badge, Button, ConfirmDialog, LinkButton, Mark, Media, Player, StatusBadge, Styles, fmtSec } from './ui.jsx'
+import { ASPECT_ORDER } from './platforms.js'
 import { Doctor, WorkActions, WorkBody, coverOf } from './cards.jsx'
 import { StyleTile, seedFavorites } from './tiles.jsx'
 import { host, openSession, startDirector, watchPanel } from './host.js'
@@ -166,7 +167,7 @@ function WorkPanel({ id, onClose }) {
 
 /** 「AI 帮你推荐」的草稿：带上页面上已选的画幅和搜索词，用户在冒号后面补一句想做什么再发出 */
 function recommendPrompt(q, aspect) {
-  const want = [aspect === '9:16' ? t('prompt.portrait') : aspect === '16:9' ? t('prompt.landscape') : '', q.trim() ? t('prompt.about', { q: q.trim() }) : ''].filter(Boolean).join(t('prompt.sep'))
+  const want = [aspect === '9:16' ? t('prompt.portrait') : aspect === '3:4' ? t('prompt.portrait34') : aspect === '16:9' ? t('prompt.landscape') : '', q.trim() ? t('prompt.about', { q: q.trim() }) : ''].filter(Boolean).join(t('prompt.sep'))
   return t('prompt.recommend', { want: want ? t('prompt.recommendWant', { list: want }) : '' })
 }
 
@@ -215,7 +216,7 @@ function Platform() {
             {t('platform.recommend')}
           </Button>
           <input className="lv-input" style={{ width: 200 }} placeholder={t('lib.searchStyles')} value={q} onChange={e => filter(setQ)(e.target.value)} />
-          <div className="lv-seg">{[['all', t('platform.all')], ['16:9', '16:9'], ['9:16', '9:16']].map(([k, l]) => <button key={k} type="button" className={aspect === k ? 'on' : ''} onClick={() => filter(setAspect)(k)}>{l}</button>)}</div>
+          <div className="lv-seg">{[['all', t('platform.all')], ...ASPECT_ORDER.map(a => [a, a])].map(([k, l]) => <button key={k} type="button" className={aspect === k ? 'on' : ''} onClick={() => filter(setAspect)(k)}>{l}</button>)}</div>
         </div>
         {st && !st.login.account ? <LoginBanner onDone={reload} /> : null}
         {data?.offline ? <div className="lv-banner"><span className="lv-grow">{t('platform.offline')}</span><Button size="sm" onClick={reload}>{t('common.retry')}</Button></div> : null}

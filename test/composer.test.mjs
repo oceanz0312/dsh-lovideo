@@ -22,6 +22,18 @@ test('开局条件：风格要存在，画幅不支持就换成这个风格的�
   assert.throws(() => normalizeBrief({ slug: 'watercolor', aspect: '16:9', duration: 301 }, STYLES), /10 到 300/)
 })
 
+test('3:4 画幅：风格声明了才能选；不指定风格时至少要有一个风格能做', () => {
+  const WITH_34 = [...STYLES, { slug: 'freehand', name: '自由画', aspects: ['16:9', '9:16', '3:4'] }]
+  assert.equal(normalizeBrief({ slug: 'freehand', aspect: '3:4', duration: 30 }, WITH_34).aspect, '3:4')
+  assert.equal(normalizeBrief({ slug: 'watercolor', aspect: '3:4', duration: 30 }, WITH_34).aspect, '16:9')
+  assert.equal(normalizeBrief({ slug: null, aspect: '3:4', duration: 30 }, WITH_34).aspect, '3:4')
+  // 没有一个风格能做 3:4：导演推荐不出来，退回默认画幅
+  assert.equal(normalizeBrief({ slug: null, aspect: '3:4', duration: 30 }, STYLES).aspect, '16:9')
+  // 风格列表读不到（离线）时不拦
+  assert.equal(normalizeBrief({ slug: null, aspect: '3:4', duration: 30 }, []).aspect, '3:4')
+  assert.equal(normalizeBrief({ slug: null, aspect: '1:1', duration: 30 }, WITH_34).aspect, '16:9')
+})
+
 test('不指定风格：交给导演推荐，导演收到的说明里要它先看全部风格', async () => {
   assert.deepEqual(normalizeBrief({ slug: null, aspect: '9:16', duration: 60 }, STYLES), { slug: null, name: null, aspect: '9:16', duration: 60 })
   const { ctx, handlers } = fakeCtx()
