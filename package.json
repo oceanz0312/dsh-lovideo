@@ -1,6 +1,6 @@
 {
   "name": "dsh-lovideo",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "lovideo 视频插件：在 DeepSeek Harness 里一句话做出任意风格的视频。导演用你选的模型，画面在你自己的电脑上渲染。",
   "homepage": "https://lovideo.ai",
   "repository": {
@@ -79,8 +79,8 @@
   "license": "UNLICENSED",
   "lovideo": {
     "whatsNew": {
-      "zh": "每次启动提醒新版本；界面支持英文；国内网络自动走镜像下载；配音配乐的 Key 改在卡片里填。",
-      "en": "Update reminders at startup; English UI; downloads use mirrors in China automatically; voice and music keys are entered on a card."
+      "zh": "切到「lovideo 导演」时风格、片长选项和风格墙马上出现，不再等网络；网慢或连不上时也能用。",
+      "en": "Style and length options and the style wall now appear right away when you switch to lovideo director, even on slow or no network."
     }
   }
 }

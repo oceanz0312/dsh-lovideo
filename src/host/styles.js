@@ -22,9 +22,12 @@ export function readFrontmatter(md) {
 /* ---------- 平台风格 ---------- */
 
 /** 平台风格目录（公开接口，不用登录）；离线时用上次的缓存 */
+// 风格目录多久算新：过了这个时间，下次读时去网站更新
+const CATALOG_FRESH_MS = 10 * 60_000
+
 export async function platformCatalog(lang = 'zh', { refresh = false } = {}) {
   const cached = readJson(catalogFile(), null)
-  if (cached && !refresh && Date.now() - Date.parse(cached.at) < 10 * 60_000 && cached.lang === lang) return cached.styles
+  if (cached && !refresh && Date.now() - Date.parse(cached.at) < CATALOG_FRESH_MS && cached.lang === lang) return cached.styles
   try {
     const body = await siteJson(`/api/v1/styles?lang=${encodeURIComponent(lang)}`)
     const styles = (body.styles || []).map(s => ({ ...s, source: 'platform' }))
@@ -159,13 +162,38 @@ export async function resolveStyle(slug, { lang = 'zh' } = {}) {
 }
 
 /** 管理页用：平台风格（标出哪些已在本机）和我的风格 */
+// 后台更新风格目录：同一种语言同时只发一次
+const refreshing = new Map()
+function refreshCatalog(lang) {
+  if (!refreshing.has(lang)) {
+    refreshing.set(lang, platformCatalog(lang, { refresh: true }).catch(() => null).finally(() => refreshing.delete(lang)))
+  }
+  return refreshing.get(lang)
+}
+
+/** 插件启动时先读一遍风格目录，用户第一次打开输入框、风格墙时不用等网络 */
+export function warmCatalog(lang = 'zh') {
+  const cached = readJson(catalogFile(), null)
+  if (!cached || cached.lang !== lang || Date.now() - Date.parse(cached.at) >= CATALOG_FRESH_MS) refreshCatalog(lang)
+}
+
+/**
+ * 页面和导演用的风格列表。本机读过目录就直接用（过期了在后台更新，下次读到新的），
+ * 只有从没读过时才等网络：网慢时输入框、风格墙、管理页不会一直空着。
+ */
 export async function listStyles(lang = 'zh') {
   let platform = []
   let offline = false
-  try {
-    platform = await platformCatalog(lang)
-  } catch {
-    offline = true
+  const cached = readJson(catalogFile(), null)
+  if (cached?.lang === lang && Array.isArray(cached.styles)) {
+    platform = cached.styles
+    if (Date.now() - Date.parse(cached.at) >= CATALOG_FRESH_MS) refreshCatalog(lang)
+  } else {
+    try {
+      platform = await platformCatalog(lang)
+    } catch {
+      offline = true
+    }
   }
   platform = platform.map(s => ({ ...s, installed: Boolean(installedRevision(s.slug)) && installedRevision(s.slug) === s.revision }))
   return { platform, mine: listMine(), offline }

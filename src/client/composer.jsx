@@ -87,14 +87,19 @@ function storeFor(sessionId) {
     start() {
       if (started) return
       started = true
-      Promise.all([api(`composer?session=${encodeURIComponent(sessionId)}`), loadStyles()]).then(([c, r]) => {
-        const list = allStyles(r)
+      // 风格列表读不到（没网、网站连不上）也照常显示：按「导演推荐」来
+      const styles = loadStyles().catch(() => null)
+      api(`composer?session=${encodeURIComponent(sessionId)}`).then(async c => {
         const want = c.brief || c.defaults || {}
-        const forced = preferred && list.find(x => x.slug === preferred)
+        const duration = Number.isInteger(want.duration) ? Math.min(MAX, Math.max(MIN, want.duration)) : 30
+        const aspect = ASPECT_LIST.includes(want.aspect) ? want.aspect : '16:9'
+        // 指定了风格（这个会话选过、或从管理页带来）才要等风格列表；默认的「导演推荐」马上显示
+        const slug = preferred || c.brief?.slug || null
+        const list = slug ? allStyles(await styles) : []
+        const forced = preferred ? list.find(x => x.slug === preferred) : null
         preferred = null
         const s = forced || (c.brief?.slug ? list.find(x => x.slug === c.brief.slug) : null)
-        const duration = Number.isInteger(want.duration) ? Math.min(MAX, Math.max(MIN, want.duration)) : 30
-        state = { ...state, ...(s ? pick(s, { aspect: want.aspect }) : { ...AUTO, aspect: ASPECT_LIST.includes(want.aspect) ? want.aspect : '16:9' }), duration, ready: true }
+        state = { ...state, ...(s ? pick(s, { aspect: want.aspect }) : { ...AUTO, aspect }), duration, ready: true }
         emit()
         if (!c.brief || forced) save()
       }, () => {
