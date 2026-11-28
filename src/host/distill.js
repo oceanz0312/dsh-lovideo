@@ -1,7 +1,7 @@
 // 蒸馏我的风格：给一段喜欢的视频（或一张图），在这台电脑上把它的画法写成一个可以反复用的风格 Skill。
 //   1. 看参考：抽 6 帧，算出主色、明暗、运动快慢，拼一张缩略图
 //   2. 写画法：模型（用户在 DSH 选的）按这些特征和用户的描述写出风格规则（SKILL.md 的「The style」）
-//   3. 出样片：用新风格各做一条 16:9 和 9:16 的短样片
+//   3. 出样片：用新风格在每种画幅（16:9、9:16、3:4）各做一条短样片
 //   4. 用户满意就保存进「我的风格」，以后和平台风格一样用
 // 新风格用插件自带的通用画布引擎（vendor/base-style），包格式和网站风格完全一样。
 import { spawn } from 'node:child_process'
@@ -12,6 +12,7 @@ import { listMine, mineDir, saveMine } from './styles.js'
 import { callModel, extractJson } from './llm.js'
 import { ffmpeg, findFfmpeg, mediaSeconds, runtimeStatus } from './runtime.js'
 import { createWork, deleteWork, getWork, workDir } from './works.js'
+import { ASPECTS } from './composer.js'
 import { startProduction } from './produce.js'
 
 const BASE = join(PLUGIN_ROOT, 'vendor', 'base-style')
@@ -93,7 +94,7 @@ const SYSTEM = `你是 lovideo 的风格炼化程序：根据一段参考视频�
 以后这个风格会被用来给任意内容做讲解视频。画法由一个 Canvas 2D 引擎实现（下面附了它的接口），规则必须是这个引擎画得出来的。
 只输出一个 JSON 对象，不要解释：
 {"name": "风格名（中文，2 到 8 个字）", "description": "一句话描述画面（英文，最多 300 字符，用于检索）",
- "style": "SKILL.md 的「## The style」一节（Markdown，英文为主可夹中文；写清：整体气质、配色（给出具体 #hex）、版式和构图（16:9 和 9:16 各怎么放）、字体与文字用法、运动语法（入场、节奏、转场、每段最后怎么收）、质感（颗粒、暗角等）、要避免的东西）"}`
+ "style": "SKILL.md 的「## The style」一节（Markdown，英文为主可夹中文；写清：整体气质、配色（给出具体 #hex）、版式和构图（16:9、9:16、3:4 三种画幅各怎么放；3:4 比 9:16 矮四分之一，要单独写）、字体与文字用法、运动语法（入场、节奏、转场、每段最后怎么收）、质感（颗粒、暗角等）、要避免的东西）"}`
 
 /**
  * 开始蒸馏。立刻返回风格 slug，过程在后台进行。
@@ -103,7 +104,7 @@ export async function startDistill(o) {
   if (!o.reference || !existsSync(o.reference)) throw Object.assign(new Error('参考视频或图片不存在，请把文件拖进对话里再试'), { status: 400 })
   if (!runtimeStatus().ready) throw Object.assign(new Error('本机渲染环境还没准备好，先在 lovideo 里点「准备渲染环境」'), { status: 409 })
   const slug = slugify(o.name)
-  saveMine({ slug, name: o.name || '我的新风格', description: '', aspects: ['16:9', '9:16'], fps: 30, draft: true,
+  saveMine({ slug, name: o.name || '我的新风格', description: '', aspects: [...ASPECTS], fps: 30, draft: true,
     distill: { state: 'running', step: 'look', reference: o.reference, brief: o.brief || '', startedAt: new Date().toISOString(), samples: [], error: null } })
   run_(slug, o).catch(() => {})
   return listMine().find(s => s.slug === slug)
@@ -143,9 +144,9 @@ async function run_(slug, o) {
     saveMine({ ...listMine().find(s => s.slug === slug), name, description: String(out.description || '').slice(0, 300) })
     await setDistill(slug, { step: 'sample' })
 
-    // 3. 出样片：横竖各一条，不配音
+    // 3. 出样片：每种画幅各一条，不配音
     const samples = []
-    for (const aspect of ['16:9', '9:16']) {
+    for (const aspect of ASPECTS) {
       const w = createWork({
         title: `${name} 样片 ${aspect}`, hidden: true, style: { slug, name, source: 'mine' }, aspect, voice: { enabled: false },
         plan: { revision: 1, scenes: [
@@ -159,7 +160,14 @@ async function run_(slug, o) {
         cur = getWork(w.id)
         if (cur.status !== 'producing') break
       }
-      if (cur?.status !== 'done') throw new Error(`${aspect} 样片没做出来：${cur?.job?.error || '原因不明'}`)
+      if (cur?.status !== 'done') {
+        // 3:4 是后加的画幅：这个风格画不出来就不声明它，横竖两版照常可用，不让整次蒸馏白做
+        if (aspect === '3:4') {
+          deleteWork(w.id)
+          continue
+        }
+        throw new Error(`${aspect} 样片没做出来：${cur?.job?.error || '原因不明'}`)
+      }
       const file = `samples/${aspect.replace(':', 'x')}.mp4`
       const poster = `samples/${aspect.replace(':', 'x')}.jpg`
       mkdirSync(join(dir, 'samples'), { recursive: true })
@@ -170,7 +178,8 @@ async function run_(slug, o) {
       await setDistill(slug, { samples })
     }
     await setDistill(slug, { state: 'done', step: 'done', endedAt: new Date().toISOString() })
-    saveMine({ ...listMine().find(s => s.slug === slug), cover: samples[0]?.poster })
+    // 风格能做的画幅 = 样片做出来了的画幅
+    saveMine({ ...listMine().find(s => s.slug === slug), cover: samples[0]?.poster, aspects: samples.map(x => x.aspect) })
   } catch (err) {
     await setDistill(slug, { state: 'failed', error: err.message })
   } finally {

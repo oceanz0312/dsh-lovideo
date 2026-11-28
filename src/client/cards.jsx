@@ -991,7 +991,10 @@ export function DistillCard(props) {
         {d.features ? <div className="lv-row" style={{ gap: 4 }}>{d.features.palette.map(p => <span key={p.hex} title={p.hex} style={{ width: 22, height: 22, borderRadius: 6, background: p.hex, border: '1px solid var(--dsw-alias-border-l2)' }} />)}<span className="lv-subtle" style={{ marginLeft: 6 }}>{t('distill.palette')}</span></div> : null}
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 96px', gap: 10, alignItems: 'start' }}>
           {d.samples?.[0] ? <video className="lv-media" src={file(d.samples[0].file)} poster={file(d.samples[0].poster)} controls muted loop style={{ width: '100%', borderRadius: 8 }} /> : d.sheet ? <Media src={file(d.sheet)} chip={t('distill.reference')} /> : <Media />}
-          {d.samples?.[1] ? <video src={file(d.samples[1].file)} poster={file(d.samples[1].poster)} controls muted loop style={{ width: '100%', borderRadius: 8, aspectRatio: '9/16', background: '#000' }} /> : <Media portrait />}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {d.samples?.[1] ? <video src={file(d.samples[1].file)} poster={file(d.samples[1].poster)} controls muted loop style={{ width: '100%', borderRadius: 8, aspectRatio: '9/16', background: '#000' }} /> : <Media portrait />}
+            {d.samples?.[2] ? <video src={file(d.samples[2].file)} poster={file(d.samples[2].poster)} controls muted loop style={{ width: '100%', borderRadius: 8, aspectRatio: '3/4', background: '#000' }} /> : null}
+          </div>
         </div>
       </div>
     </Shell>

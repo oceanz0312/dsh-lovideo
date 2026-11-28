@@ -1,8 +1,10 @@
 ## Production
 
 Each segment is drawn on its own from `scene.js` in the segment's folder. The page passes the segment
-length and the canvas size; the same `scene.js` must draw at 1920 x 1080 (16:9) and 1080 x 1920 (9:16):
-read `k.portrait` and place things for the canvas. Times are segment seconds (0 = first frame, `k.dur`
+length and the canvas size; the same `scene.js` must draw at 1920 x 1080 (16:9), 1080 x 1920 (9:16) and 1080 x 1440 (3:4):
+read `k.aspect` (`'16:9'`, `'9:16'`, `'3:4'`; `k.portrait` is true for both tall ones) and place things for
+the canvas. 3:4 is a quarter shorter than 9:16: give it its own positions, or write them as fractions of
+`H`, so nothing falls off the frame or into the bottom 14%. Times are segment seconds (0 = first frame, `k.dur`
 the end). Keep no state between frames and never use `Math.random` (use `K.rng(seed)`).
 
 The voice-over and its subtitles are added by the platform; keep the bottom 14% of the frame free of

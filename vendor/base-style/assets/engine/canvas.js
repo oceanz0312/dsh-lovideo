@@ -3,7 +3,7 @@
 //   import * as K from '/engine/canvas.js'
 //   K.start(k => ({ draw(t) { ... } }))
 //
-// k：W、H（画布尺寸）、portrait、dur（段长秒）、g（CanvasRenderingContext2D）、seg、params，以及下面的画图方法。
+// k：W、H（画布尺寸）、portrait、aspect（画幅名 '16:9'、'9:16'、'3:4'，别的尺寸是 null）、dur（段长秒）、g（CanvasRenderingContext2D）、seg、params，以及下面的画图方法。
 const q = new URLSearchParams(location.search);
 const W = Number(q.get("w")) || 1920;
 const H = Number(q.get("h")) || 1080;
@@ -36,6 +36,7 @@ export function start(make) {
   const g = canvas.getContext("2d");
   const k = {
     W, H, portrait: H > W, dur: DUR, g, seg: q.get("seg"),
+    aspect: W === 1920 && H === 1080 ? "16:9" : W === 1080 && H === 1920 ? "9:16" : W === 1080 && H === 1440 ? "3:4" : null,
     /** 整张铺底色（可以是渐变：传 [色1, 色2]） */
     bg(color) {
       if (Array.isArray(color)) {

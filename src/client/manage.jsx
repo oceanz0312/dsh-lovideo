@@ -338,7 +338,7 @@ function MinePanel({ s, onClose, reload }) {
           <div className="lv-row"><span className="lv-card-title lv-grow">{s.name}</span><Button size="sm" kind="ghost" onClick={onClose} aria-label={t('common.close')}>✕</Button></div>
           {s.description ? <div className="lv-muted">{s.description}</div> : null}
           {s.distill?.error ? <div className="lv-err">{s.distill.error}</div> : null}
-          {samples[1] ? <video src={file(samples[1].file)} poster={file(samples[1].poster)} controls muted loop style={{ width: 120, borderRadius: 8, background: '#000' }} /> : null}
+          {samples.length > 1 ? <div className="lv-row" style={{ gap: 8, alignItems: 'flex-start' }}>{samples.slice(1).map(x => <video key={x.aspect} src={file(x.file)} poster={file(x.poster)} controls muted loop style={{ width: 120, borderRadius: 8, background: '#000' }} />)}</div> : null}
           {s.draft && s.distill?.state === 'done' ? <Button kind="pri" onClick={() => api(`styles/mine/${s.slug}/save`, {}).then(() => { toast({ text: t('mine.saved', { name: s.name }) }); reload() }, e => toast({ text: e.message, tone: 'warning' }))}>{t('mine.save')}</Button> : null}
           {!s.draft ? <Button kind="pri" size="lg" onClick={() => startDirector(t('prompt.newFilm'), { style: s.slug })}>{t('mine.use')}</Button> : null}
           <div className="lv-row">

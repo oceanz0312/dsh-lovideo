@@ -1,6 +1,6 @@
 {
   "name": "dsh-lovideo",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "lovideo 视频插件：在 DeepSeek Harness 里一句话做出任意风格的视频。导演用你选的模型，画面在你自己的电脑上渲染。",
   "homepage": "https://lovideo.ai",
   "repository": {
@@ -79,8 +79,8 @@
   "license": "UNLICENSED",
   "lovideo": {
     "whatsNew": {
-      "zh": "画幅新增 3:4（小红书），风格支持后即可选用；选画幅时会标出它适合发布的平台：抖音、快手、视频号、YouTube、B 站等。",
-      "en": "New 3:4 aspect ratio, available on styles that support it; the aspect picker now shows which platforms each ratio suits, such as TikTok, Shorts, Reels and YouTube."
+      "zh": "画幅新增 3:4（小红书），选画幅时会标出它适合发布的平台；蒸馏自己的风格时，横版、竖版、3:4 三种画幅各出一条样片。",
+      "en": "New 3:4 aspect ratio, with the platforms each ratio suits shown in the picker; distilling your own style now makes a sample in landscape, portrait and 3:4."
     }
   }
 }
