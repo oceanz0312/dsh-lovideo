@@ -731,6 +731,7 @@ export function WorkBody({ w }) {
         </div>
       ) : null}
       {job.music ? <div className="lv-subtle">{job.music.state === 'making' ? <><Spin /> {t('work.musicMaking')}</> : job.music.state === 'done' ? t('work.musicDone') : job.music.note}{job.music.code === 'not-installed' ? <> · <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>{t('work.downloadMusic')}</a></> : null}</div> : null}
+      {job.reviewNote ? <div className="lv-subtle">{job.reviewNote}</div> : null}
       {job.voiceNote ? <div className="lv-subtle">{job.voiceNote}{job.voiceNoteCode === 'not-installed' ? <> · <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>{t('work.downloadVoice')}</a></> : null}</div> : null}
       {job.error ? <div className="lv-err">{job.error}</div> : null}
       {w.status === 'producing' ? <div className="lv-subtle">{t('work.producingHint')}</div> : null}

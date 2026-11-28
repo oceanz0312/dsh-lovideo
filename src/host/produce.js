@@ -15,6 +15,7 @@ import { getWork, requireWork, updateWork, workDir } from './works.js'
 import { resolveStyle } from './styles.js'
 import { speak } from './tts.js'
 import { makeSegmentSession, sharedPrompt } from './segment.js'
+import { canSeeImages } from './llm.js'
 import { TAIL, sentencesOf, voiceSegment, writeNarrationJson } from './narration.js'
 import { fill, parseRenderCommand, renderCommand, renderPage, startSite } from './render.js'
 import { ensureFonts, findPython, fontsDir, mediaSeconds, run, runtimeStatus } from './runtime.js'
@@ -237,7 +238,12 @@ async function run_(id, ctl) {
     }
 
     // 3. 逐段制作
-    await setJob(id, { state: 'drawing' })
+    // 模型在 DSH 里没声明能看图时，交段前看检查图这一步做不了：明说，不要悄悄少一道检查
+    // （自己配的模型服务默认只收文字，要在它的配置里声明能收图片）
+    const reviewNote = pending.length && !(await canSeeImages(signal))
+      ? '现在用的模型在 DeepSeek Harness 里没有声明能看图，这部片子交段前的画面检查跳过了。在这个模型服务的配置里声明它能收图片（defaultInput: [text, image]）后就会检查'
+      : null
+    await setJob(id, { state: 'drawing', reviewNote })
     const site = await startSite(mountsOf(spec, { skill: style.dir, project: proj }))
     try {
       const agents = Math.max(1, Math.min(MAX_PARALLEL, settings.parallel || 4, pending.length))
