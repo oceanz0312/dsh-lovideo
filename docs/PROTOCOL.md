@@ -8,7 +8,9 @@
 | 登录和站点接口 | `docs/PLUGIN-API.md`（设备码登录、Better Auth 的 `/api/auth/get-session`、`/api/v1/styles`、风格包下载） | `src/host/site.js`、`src/host/styles.js` |
 | 风格包格式 | `docs/STYLE-SKILL-CONTRACT.md` | `src/host/render.js`、`src/host/produce.js` |
 | 平台字体 | `scripts/job-bundle.ts` 的 `FONTS` 和两个提交号 | `src/host/runtime.js` 的 `FONTS` |
-| 制作输入 `job.json` | 沙箱 `workers/sandbox/job`（风格的 `scripts/setup.py` 读它） | `src/host/produce.js` 的 `writeJobJson` |
+| 制作输入 `job.json`、`narration.json` | 沙箱 `workers/sandbox/job`（风格的 `scripts/setup.py` 读它们） | `src/host/produce.js` 的 `writeJobJson`、`src/host/narration.js` |
+| 口播时序 | `src/lovideo/narration/layout.ts`（段首 150 ms、句间 250 ms、段尾 400 ms，一句最多 60 字） | `src/host/narration.js` |
+| 每段的制作会话和交段前检查 | 沙箱 `run-job.sh` 的段说明、`pi-segment.ts`（draw 工具）、`segment_session.py`（检查图、画面跟不跟旁白动）、`lovideo_job.py`（铺满画面的围栏、advance） | `src/host/segment.js`、`src/host/quality.js`、`src/host/render.js` |
 | 时间线（schema 2） | 编辑器的时间线文档 | `src/host/assemble.js` |
 | 剪映导出 | `workers/sandbox/job/timeline_export.py` 等 | `vendor/jianying/`（原样拷贝） |
 
@@ -42,10 +44,20 @@
 插件写的是网站 `job.json` 的一个子集，字段含义相同：
 
 - `jobId`、`kind: "generate"`、`fps`、`width`、`height`
-- `confirmed.inputs`、`confirmed.params`（`aspect`、`durationSec`、`fps`、`width`、`height`、`subtitles`）
-- `segments[]`：`idx`、`id`、`title`、`description`、`copy`、`media`、`narration.sentences[]`（`unitSeconds` 是这一段里口播的起止秒）、`label`、`frames`、`start`
+- `confirmed.inputs`、`confirmed.params`（`aspect`、`durationSec`、`fps`、`width`、`height`、`subtitles`，分镜写了整片画面方向时还有 `style`）
+- `segments[]`：`idx`、`id`、`title`、`description`、`copy`、`media`、`narration.sentences[]`（`unitSeconds` 是这一段里这句的起止秒）、`label`、`frames`、`start`
+- `narration`：有口播时是 `{ path: "narration.json" }`，风格的 `setup.py` 据此读旁边的 `narration.json`；没有口播是 `null`
+
+`narration.json` 和网站沙箱的 `/work/narration.json` 同格式：`sentences[]` 每句有 `id`、`n`、`segment`、`text`、`start`、`end`（整片秒）、`words[]`（`{w, start, end}`，整片秒）。网站的词时间来自配音服务；插件的配音服务大多不给词时间，按字数在句内均分。
 
 风格的 `setup.py` 只能依赖这些字段。网站往 `job.json` 里加了风格要用的新字段，插件要补上。
+
+## 4.1 每段怎么做（和网站的段 agent 一样）
+
+- 口播逐句配音，按网站的时序铺成段的口播轨：段长 = 段首留白 + 各句 + 句间停顿 + 段尾留白。
+- 每段一个制作会话：第一条消息是各段共用的说明 + 风格 `SKILL.md` 全文 + 本段说明（制作上下文、`setup.py` 写好的草稿）。路径用网站沙箱的写法（`/work/proj/<段>/`、`/work/.agents/skills/<风格>/`），插件换成本机目录，所以风格的 `SKILL.md` 原样可用。
+- 模型只用 `draw`（写文件、整文件或精确替换）和 `read`；平台按 `SKILL.md` 的渲染命令渲染、检查、交段，失败把报错交回同一个会话。一个会话最多 12 次工具调用、5 次渲染，一段最多开 2 个会话。
+- 交段前的检查：页面风格第一次完整渲染前只画 6～9 帧拼成检查图，模型能看图时看一次；渲染时核对页面正好铺满成片画面（写死尺寸、换画幅溢出的直接退回）；渲染后量一次旁白在说时画面有没有在动。检查图和画面变化各只退回一次。
 
 ## 5. 时间线和剪映
 

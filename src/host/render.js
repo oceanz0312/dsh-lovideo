@@ -173,9 +173,47 @@ export function startEncoder(out, fps, signal) {
   return { write, end, done }
 }
 
+// 页面舞台的范围：body 的直接子元素（画布或舞台容器）合起来的外框，零尺寸的不算（网站 lovideo_job.py 的 FILL_JS）。
+// 只看直接子元素：舞台里飞入飞出的元素被舞台裁掉是正常画法。
+const FILL_JS = () => {
+  let x0 = Infinity
+  let y0 = Infinity
+  let x1 = -Infinity
+  let y1 = -Infinity
+  for (const el of document.body ? document.body.children : []) {
+    if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue
+    const r = el.getBoundingClientRect()
+    if (r.width < 1 || r.height < 1) continue
+    x0 = Math.min(x0, r.left)
+    y0 = Math.min(y0, r.top)
+    x1 = Math.max(x1, r.right)
+    y1 = Math.max(y1, r.bottom)
+  }
+  return x0 === Infinity ? null : [x0, y0, x1, y1]
+}
+
+/**
+ * 平台通用围栏（和网站一样）：页面画的东西必须正好铺满成片画面。写死尺寸的页面换了画幅会溢出（被裁掉）
+ * 或铺不满（空底），这里直接判失败，不出被裁坏的片。
+ */
+async function checkFill(page, film, when) {
+  const box = await page.evaluate(FILL_JS)
+  const near = (a, b) => Math.abs(a - b) <= 1
+  if (box && !(near(box[0], 0) && near(box[1], 0) && near(box[2], film.width) && near(box[3], film.height))) {
+    const spans = `(${box.map(Math.round).slice(0, 2).join(',')})-(${box.map(Math.round).slice(2).join(',')})`
+    throw new Error(`the page does not fill the ${film.width}x${film.height} frame ${when}: its stage spans ${spans}; draw at the size ready(film) gives (film.width x film.height), not a fixed one`)
+  }
+}
+
+// 有 advance 的页面一次走过多少帧
+const ADVANCE_BATCH = 120
+
 /**
  * 按页面合同渲染一段。
- * @param {{origin:string, entry:string, film:object, out:string, poster?:string, signal?:AbortSignal, onFrame?:(i:number)=>void}} o
+ * 页面有 advance（后面的帧依赖前面的）时，先把它在自己时钟上之前的每一帧都走一遍，再从第一帧画起。
+ * pick：只画这几帧（段内帧号），不编码，返回 JPEG（交段前的检查图用）。
+ * @param {{origin:string, entry:string, film:object, out?:string, poster?:string, pick?:number[], signal?:AbortSignal, onFrame?:(i:number)=>void}} o
+ * @returns {Promise<Buffer[]|void>}
  */
 export async function renderPage(o) {
   const { film, signal } = o
@@ -183,6 +221,9 @@ export async function renderPage(o) {
   const page = await browser.newPage()
   const errors = []
   page.on('pageerror', e => errors.push(String(e.message || e).slice(0, 400)))
+  const noErrors = when => {
+    if (errors.length) throw new Error(`页面报错（${when}）：${errors[0]}`)
+  }
   try {
     await page.setViewport({ width: film.width, height: film.height, deviceScaleFactor: 1 })
     const url = new URL(o.entry, o.origin).href
@@ -194,29 +235,49 @@ export async function renderPage(o) {
       new Promise((_, no) => setTimeout(() => no(new Error('ready() 120 秒没有完成')), 120_000)),
     ]), film).catch(e => { throw new Error(`页面启动失败：${errors[0] || e.message}`) })
     await assertPage(page, errors)
-    const enc = startEncoder(o.out, film.fps, signal)
-    const first = film.clock === 'unit' ? 0 : film.start
-    let mid = null
-    try {
-      for (let i = 0; i < film.frames; i++) {
+    await checkFill(page, film, 'after ready')
+    const hasAdvance = await page.evaluate(() => typeof window.lovideo.advance === 'function')
+    const advance = async (a, b) => {
+      if (!hasAdvance) return
+      for (let n = a; n <= b; n += ADVANCE_BATCH) {
         if (signal?.aborted) throw Object.assign(new Error('已取消'), { name: 'AbortError' })
+        await page.evaluate(async ([x, y]) => { for (let k = x; k <= y; k++) await window.lovideo.advance(k) }, [n, Math.min(b, n + ADVANCE_BATCH - 1)])
+        noErrors(`advancing through frame ${Math.min(b, n + ADVANCE_BATCH - 1)}`)
+      }
+    }
+    const first = film.clock === 'unit' ? 0 : film.start
+    await advance(0, first - 1)
+    const drawn = o.pick ? [...new Set(o.pick)].filter(n => n >= 0 && n < film.frames).sort((a, b) => a - b) : null
+    const enc = drawn ? null : startEncoder(o.out, film.fps, signal)
+    const shots = []
+    let mid = null
+    let prev = -1
+    try {
+      for (const i of drawn || Array.from({ length: film.frames }, (_, k) => k)) {
+        if (signal?.aborted) throw Object.assign(new Error('已取消'), { name: 'AbortError' })
+        await advance(first + prev + 1, first + i - 1)
+        prev = i
         await page.evaluate(n => Promise.resolve(window.lovideo.seek(n)), first + i)
-        if (errors.length) throw new Error(`第 ${i} 帧出错：${errors[0]}`)
+        noErrors(`at frame ${i}`)
         const shot = await page.screenshot({ type: 'jpeg', quality: 90, optimizeForSpeed: true })
-        await enc.write(shot)
+        if (enc) await enc.write(shot)
+        else shots.push(shot)
         if (i === Math.floor(film.frames / 2)) mid = shot
         o.onFrame?.(i + 1)
       }
     } catch (err) {
-      enc.end().catch(() => {})
+      enc?.end().catch(() => {})
       throw err
     }
-    await enc.end()
+    if (enc) await enc.end()
     await assertPage(page, errors)
+    await checkFill(page, film, 'after the last frame')
+    if (drawn) return shots
     if (o.poster && mid) {
       const { writeFileSync } = await import('node:fs')
       writeFileSync(o.poster, mid)
     }
+    return undefined
   } finally {
     await page.close().catch(() => {})
   }

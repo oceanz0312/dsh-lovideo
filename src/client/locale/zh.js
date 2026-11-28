@@ -93,6 +93,7 @@ export default {
   'seg.wait': '排队',
   'seg.draw': '写画法',
   'seg.render': '渲染中',
+  'seg.check': '检查画面',
   'seg.failed': '失败',
 
   // 片长

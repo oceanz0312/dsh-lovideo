@@ -721,7 +721,7 @@ export function WorkBody({ w }) {
                   onClick={() => setPreview(p => (p === s.id ? null : s.id))}>{media}</button>
               ) : media}
               <div className="lv-subtle lv-row" style={{ marginTop: 3, fontSize: 11.5 }}>
-                {s.state === 'render' || s.state === 'draw' ? <Spin /> : null}
+                {s.state === 'render' || s.state === 'draw' || s.state === 'check' ? <Spin /> : null}
                 {s.state === 'done' ? `${(s.frames / (job.fps || 30)).toFixed(1)}s${s.carried ? t('work.carried') : ''}` : s.state === 'render' ? t('work.rendering', { pct: Math.round(((s.rendered || 0) / s.frames) * 100) }) : segLabel(s.state)}
                 {s.attempts > 1 && s.state !== 'done' ? t('work.attempt', { n: s.attempts }) : ''}
               </div>
@@ -739,11 +739,11 @@ export function WorkBody({ w }) {
 }
 
 /**
- * 单段预览：画面和这一段的配音一起播。成片里配音从这一段开头 0.3 秒处开始，这里照同样的偏移对齐。
- * 字幕和配乐要等拼成片时才加。
+ * 单段预览：画面和这一段的配音一起播。逐句配音的口播轨从段首开始（自带留白）；
+ * 之前做的片子口播轨放在段首 0.3 秒处，这里照同样的偏移对齐。字幕和配乐要等拼成片时才加。
  */
-const VOICE_DELAY = 0.3
 function SegmentPreview({ seg, portrait, onClose }) {
+  const VOICE_DELAY = seg.voice?.sentences ? 0 : 0.3
   const t = useT()
   const video = React.useRef(null)
   const audio = React.useRef(null)

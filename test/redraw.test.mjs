@@ -21,25 +21,14 @@ function baseStyle(name) {
 }
 
 const { bindLlm } = await import('../src/host/llm.js')
+const { fakeSegmentLlm } = await import('./fake-llm.mjs')
 const { importMineFromDir } = await import('../src/host/styles.js')
 const { createWork, getWork, updateWork, workDir } = await import('../src/host/works.js')
 const { startProduction } = await import('../src/host/produce.js')
 const { closeBrowser } = await import('../src/host/render.js')
 
-// 假模型：在段目录里现有的 scene.js 末尾加一行注释交回（和草稿不一字不差，算模型自己写的）
-const fakeLlm = {
-  async prepareCall() {
-    return {
-      config: {},
-      async *stream({ messages }) {
-        const user = messages[0].content[0].text
-        const m = /--- scene\.js ---\n([\s\S]*?)(?=\n\n--- |\n\n# |$)/.exec(user)
-        yield { type: 'text-delta', text: `=== FILE: scene.js ===\n${m ? m[1] : ''}\n// 模型写的\n=== END ===` }
-        yield { type: 'finish', reason: { kind: 'stop' } }
-      },
-    }
-  },
-}
+// 假模型：用 draw 把准备好的草稿交回（见 fake-llm.mjs）
+const fakeLlm = fakeSegmentLlm('\n// 模型写的')
 bindLlm({ get: k => (k === 'llm' ? fakeLlm : k === 'agentDefaultModel' ? { currentSelection: () => ({ provider: 'fake', model: 'fake' }) } : null) })
 
 async function produce(id) {
@@ -72,7 +61,6 @@ test('重出分镜（换了风格）后：从这一版的草稿开始画，不�
   // 上一版留下的代码是别的风格的、在这个风格里跑不起来
   const dir = join(workDir(work.id), 'proj', 'shot-1')
   writeFileSync(join(dir, 'scene.js'), "throw new Error('上一个风格的代码')")
-  writeFileSync(join(dir, '.draft', 'scene.js'), "throw new Error('上一个风格的草稿')")
   await revise(work.id, { work: { style: { slug: 'style-b', name: '风格 B', source: 'mine' } }, scenes: [{ ...scene, description: '纸片换成一枚硬币' }] })
   w = await produce(work.id)
   const seg = w.job.segments[0]

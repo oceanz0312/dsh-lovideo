@@ -26,6 +26,7 @@ function baseStyle() {
 }
 
 const { bindLlm } = await import('../src/host/llm.js')
+const { fakeSegmentLlm } = await import('./fake-llm.mjs')
 const { importMineFromDir } = await import('../src/host/styles.js')
 const { createWork, getWork } = await import('../src/host/works.js')
 const { startProduction } = await import('../src/host/produce.js')
@@ -34,20 +35,8 @@ const { startExport, waitExport } = await import('../src/host/export.js')
 const { updateSettings } = await import('../src/host/settings.js')
 const { setSwitches } = await import('../src/host/edit.js')
 
-// 假模型：把用户消息里「段目录现有文件」的 scene.js 原样交回
-const fakeLlm = {
-  async prepareCall() {
-    return {
-      config: {},
-      async *stream({ messages }) {
-        const user = messages[0].content[0].text
-        const m = /--- scene\.js ---\n([\s\S]*?)(?=\n\n--- |\n\n# |$)/.exec(user)
-        yield { type: 'text-delta', text: `=== FILE: scene.js ===\n${m ? m[1] : ''}\n=== END ===` }
-        yield { type: 'finish', reason: { kind: 'stop' } }
-      },
-    }
-  },
-}
+// 假模型：用 draw 把准备好的草稿交回（见 fake-llm.mjs）
+const fakeLlm = fakeSegmentLlm('')
 bindLlm({ get: k => (k === 'llm' ? fakeLlm : k === 'agentDefaultModel' ? { currentSelection: () => ({ provider: 'fake', model: 'fake' }) } : null) })
 
 test('确认分镜后在本机做出成片', { timeout: 300_000 }, async () => {

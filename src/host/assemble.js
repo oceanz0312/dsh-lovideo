@@ -67,11 +67,19 @@ export function buildTimeline(work) {
     assets[`v-${s.id}`] = { kind: 'video', r2: s.file, uri: s.file, w: job.width, h: job.height, dur: r3(dur), thumb: s.poster }
     sceneClips.push({ id: `c-${s.id}`, sceneId: s.id, start: r3(start), dur: r3(dur), media: { asset: `v-${s.id}` } })
     const text = narration(scenes.get(s.id))
+    // 逐句配音的口播轨从段首开始（自带段首留白）；之前做的片子口播轨不带留白，放在段首 0.3 秒处
+    const lead = s.voice?.sentences ? 0 : 0.3
     if (s.voice) {
       assets[`n-${s.id}`] = { kind: 'audio', r2: s.voice.file, uri: s.voice.file, dur: r3(s.voice.seconds) }
-      voice.push({ id: `vo-${s.id}`, of: s.id, asset: `n-${s.id}`, start: r3(start + 0.3), dur: r3(s.voice.seconds), offset: 0, gain: 0, fadeOut: 0 })
+      voice.push({ id: `vo-${s.id}`, of: s.id, asset: `n-${s.id}`, start: r3(start + lead), dur: r3(s.voice.seconds), offset: 0, gain: 0, fadeOut: 0 })
     }
-    if (text) subs.push(...captionCues(text, start + 0.3, Math.max(1, s.voice ? s.voice.seconds : dur - 0.6), s.id))
+    if (s.voice?.sentences?.length) {
+      // 字幕跟着每句实际念的时间走：一句太长再切成几条，在这句的时间里按字数分
+      let k = 0
+      for (const l of s.voice.sentences) {
+        for (const cue of captionCues(l.text, start + l.start, Math.max(0.4, l.end - l.start), s.id)) subs.push({ ...cue, id: `sub-${s.id}-${++k}` })
+      }
+    } else if (text) subs.push(...captionCues(text, start + lead, Math.max(1, s.voice ? s.voice.seconds : dur - 0.6), s.id))
   }
   const duration = r3(job.segments.reduce((n, s) => n + s.frames, 0) / fps)
   const tracks = [{ id: 't-scene', type: 'scene', clips: sceneClips }]

@@ -6,7 +6,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { DEFAULT_DURATION, FILM_DURATIONS, MIN_SHOT_SEC, createWork, listWorks, requireWork, updateWork } from './works.js'
 import { estimateSeconds } from './localvoice.js'
-import { listMine, listStyles } from './styles.js'
+import { listMine, listStyles, resolveStyle } from './styles.js'
+import { SENTENCE_MAX, joinSentences, sentencesOf } from './narration.js'
 import { styleSheets } from './stylesheets.js'
 import { pauseProduction, startProduction, narrationText } from './produce.js'
 import { reviseFilm, setSwitches } from './edit.js'
@@ -289,11 +290,12 @@ const configure = tool({
 
 const styles = tool({
   name: 'lovideo_styles',
-  description: '挑风格。分两步：① 不带 recommend 调用一次，拿到全部风格（编号、名字、用途、画幅、完整介绍）和所有风格封面拼成的总览图（编号和列表一致），看图、读介绍；② 按用户要讲的内容、受众和语气挑 1 到 3 个最合适的，带上 recommend 和每个的理由 why 再调用一次，卡片会显示封面，用户可以点选。推荐完用一句话请用户在卡片上点一个（或直接说），然后停下等；用户点了你会收到「[lovideo 通知] 用户在推荐卡片上选了风格」。',
+  description: '挑风格。分两步：① 不带 recommend 调用一次，拿到全部风格（编号、名字、用途、画幅、完整介绍）和所有风格封面拼成的总览图（编号和列表一致），看图、读介绍；② 按用户要讲的内容、受众和语气挑 1 到 3 个最合适的，带上 recommend 和每个的理由 why 再调用一次，卡片会显示封面，用户可以点选。推荐完用一句话请用户在卡片上点一个（或直接说），然后停下等；用户点了你会收到「[lovideo 通知] 用户在推荐卡片上选了风格」。③ 风格定了、出分镜前，只带 read（那个风格的 slug）再调用一次，读它的制作说明。',
   parameters: {
     type: 'object', additionalProperties: false,
     properties: {
       recommend: { type: 'array', maxItems: 3, items: { type: 'string' }, description: '第二步才填：要推荐的风格 slug，按推荐程度排序。必须先不带它调用一次、看过全部风格' },
+      read: { type: 'string', description: '出分镜前读用户选定的那个风格的制作说明（SKILL.md）：填它的 slug。看它画什么、怎么排版、支持哪些画幅、有没有固定的画面样子、配乐节奏怎么配，再按它规划镜头、写画面描述和配乐建议。只填这一项' },
       why: { type: 'array', maxItems: 3, items: { type: 'string' }, description: '和 recommend 一一对应：为什么这个风格适合这部片子（一句话，20 字以内，写给用户看，说画面和内容怎么对上）' },
     },
   },
@@ -302,6 +304,13 @@ const styles = tool({
     ...(value.images || []).flatMap(im => [{ type: 'text', text: im.label }, { type: 'image', attachment: im.ref }]),
   ],
   async run(args, exec) {
+    if (args.read) {
+      const st = await resolveStyle(String(args.read)).catch(e => {
+        throw fixable(`读不到风格「${args.read}」的制作说明：${e.message}`)
+      })
+      const md = String(st.skillMd || '')
+      return { text: `风格「${st.name || st.slug}」的制作说明（SKILL.md${md.length > 24000 ? '，太长只给前 24000 字' : ''}）。制作的细节由每段的制作模型照它做；你只用它来规划：镜头怎么分、画面描述写什么、整片画面方向要不要写、配乐节奏。\n\n${md.slice(0, 24000)}` }
+    }
     const { platform, mine, offline } = await listStyles('zh')
     const all = [...mine.filter(s => !s.draft), ...platform]
     const sessionKey = exec?.agent?.id || null
@@ -372,15 +381,15 @@ const SCENE = {
   type: 'object', additionalProperties: false, required: ['title', 'description', 'narration'],
   properties: {
     title: { type: 'string', description: '这一镜的标题，4 到 12 个字' },
-    description: { type: 'string', description: '画面里有什么、怎么动（给制作看的，具体、可画）' },
-    narration: { type: 'string', description: '这一镜的口播，口语化，每句都带具体信息；不要旁白就给空字符串。全片口播总字数约等于「片长秒数 × 4.5」（10 秒约 45 字、30 秒约 135 字、60 秒约 270 字），按镜头分下去；30 秒以上的片子每镜至少 15 秒，也就是每镜约 65 字以上' },
+    description: { type: 'string', description: '按口播顺序写这一镜画面里先出现什么、再怎么变（给制作看的，具体、可画，200 字以内）。每镜由单独的制作模型画、它只看得到这一镜，所以同一个东西各镜用同一个名字；风格没有固定画面样子时点明一致的主色、版式和动效节奏' },
+    narration: { type: 'array', items: { type: 'string' }, description: `这一镜的口播，一句一项，按念的顺序。口语化，每句都带具体信息；一句最多 ${SENTENCE_MAX} 个字符（含标点和空格，英文约 10 个词），长句在自然停顿处拆成两项，超了整版分镜会被退回。不要旁白就给空数组。全片口播总字数约等于「片长秒数 × 4.5」（10 秒约 45 字、30 秒约 135 字、60 秒约 270 字；英文每秒约 2.5 个词），按镜头分下去；30 秒以上的片子每镜至少 15 秒，也就是每镜约 65 字以上` },
     seconds: { type: 'number', description: '只在没有口播时填：这一镜几秒（15 到 60）。有口播时不用填，长度由口播念完的时间决定' },
   },
 }
 
 const plan = tool({
   name: 'lovideo_plan',
-  description: '出分镜或改分镜（每次都给完整的分镜）。分镜以卡片展示给用户，卡片上有「确认开拍」按钮。只在用户确认（点按钮或明确说开拍）后才调用 lovideo_produce；改分镜就带上 work_id 再调用一次本工具。成片已经做好后，用户只想改某几镜（字幕、口播、重画、裁短、调顺序）时不要用本工具，用 lovideo_revise；改分镜后重新开拍时，没改动的镜头会自动沿用。',
+  description: '出分镜或改分镜（每次都给完整的分镜）。镜头少而长：大约每 15 到 25 秒一镜，一镜里按口播顺序装好几个画面变化，不要给单独一个节拍或标题卡开一镜。分镜以卡片展示给用户，卡片上有「确认开拍」按钮，卡片自己会请用户审阅，调用后这一轮就结束，不要再问要不要开拍。只在用户确认（点按钮或明确说开拍）后才调用 lovideo_produce；改分镜就带上 work_id 再调用一次本工具。成片已经做好后，用户只想改某几镜（字幕、口播、重画、裁短、调顺序）时不要用本工具，用 lovideo_revise；改分镜后重新开拍时，没改动的镜头会自动沿用。',
   parameters: {
     type: 'object', additionalProperties: false, required: ['title', 'style', 'duration', 'scenes', 'voice', 'music', 'subtitles'],
     properties: {
@@ -407,6 +416,7 @@ const plan = tool({
           prompt: { type: 'string', description: '给配乐模型的英文描述：曲风、乐器、情绪、速度，只要纯器乐，例如「calm lo-fi piano, soft pads, warm and curious, 80 bpm, instrumental」' },
         },
       },
+      direction: { type: 'string', description: '整片的画面方向（给制作看，用户的语言写）：配色、字体、版式、动效和节奏。风格没有固定的画面样子（比如「我的风格」里的通用画布）时必填，从用户的话出发、没说的按题材选；每镜由单独的制作模型照它画，要具体到各镜看起来是同一部片子。风格有固定样子时可以不填' },
       scenes: { type: 'array', minItems: 1, maxItems: 20, items: SCENE },
       note: { type: 'string', description: '这一版改了什么（改分镜时填，会显示在卡片上）' },
     },
@@ -429,10 +439,15 @@ const plan = tool({
     if (args.scenes.length > maxShots) throw fixable(`片长 ${duration} 秒最多 ${maxShots} 镜（每镜至少 ${MIN_SHOT_SEC} 秒，一镜里可以有好几个画面变化），把相邻的镜头合并后再出分镜`)
     // 以内容为准：有口播的镜头，长度就是口播念完的时间（不再按导演给的秒数把画面拉长空转）
     const scenes = args.scenes.map((s, i) => {
-      const narration = String(s.narration || '').trim()
-      const talk = narration ? estimateSeconds([narration]) + 0.9 : 0
-      return { id: `shot-${i + 1}`, title: s.title, description: s.description, narration, seconds: Math.round(talk || Math.max(3, Math.min(90, Number(s.seconds) || MIN_SHOT_SEC))) }
+      // 口播一句一项（和网站一样）；给了一整段字符串也按句末标点切开
+      const sentences = (Array.isArray(s.narration) ? s.narration.map(x => String(x || '').trim()).filter(Boolean) : sentencesOf({ narration: s.narration }))
+      const narration = joinSentences(sentences)
+      const talk = sentences.length ? estimateSeconds(sentences) + 0.15 + 0.25 * (sentences.length - 1) + 0.4 : 0
+      return { id: `shot-${i + 1}`, title: s.title, description: s.description, narration, sentences, seconds: Math.round(talk || Math.max(3, Math.min(90, Number(s.seconds) || MIN_SHOT_SEC))) }
     })
+    // 一句太长：网站整版退回，这里也一样（字幕一屏放不下，句子的时间也不准）
+    const long = scenes.flatMap((s, i) => s.sentences.filter(x => [...x].length > SENTENCE_MAX).map(x => `第 ${i + 1} 镜「${x.slice(0, 20)}…」${[...x].length} 字`))
+    if (long.length) throw fixable(`这几句口播超过 ${SENTENCE_MAX} 个字符：${long.join('、')}。在自然停顿处拆成两句（narration 里两项）再出分镜`)
     // 口播太短的镜头会让画面空转：要么补上有信息量的内容，要么和相邻镜合并（只有一镜的短片不卡）
     if (scenes.length > 1) {
       const thin = scenes.map((s, i) => ({ i, s })).filter(({ s }) => s.narration && s.seconds < MIN_SHOT_SEC - 3)
@@ -460,12 +475,12 @@ const plan = tool({
         const keepMusic = w.music?.file && w.music.mood === fields.music.mood ? { file: w.music.file, seconds: w.music.seconds, model: w.music.model, source: w.music.source } : {}
         Object.assign(w, fields)
         Object.assign(w.music, keepMusic)
-        w.plan = { revision: (w.plan?.revision || 0) + 1, scenes, note: args.note || '', at: new Date().toISOString() }
+        w.plan = { revision: (w.plan?.revision || 0) + 1, scenes, direction: String(args.direction || '').trim().slice(0, 1200) || null, note: args.note || '', at: new Date().toISOString() }
         w.status = 'draft'
         return w
       })
     } else {
-      work = createWork({ ...fields, plan: { revision: 1, scenes, note: '', at: new Date().toISOString() } })
+      work = createWork({ ...fields, plan: { revision: 1, scenes, direction: String(args.direction || '').trim().slice(0, 1200) || null, note: '', at: new Date().toISOString() } })
     }
     // 用户在卡片上点「确认开拍」时没有工具调用，做完也要能叫醒这位导演
     watch(work.id, exec)

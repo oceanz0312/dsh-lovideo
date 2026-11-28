@@ -18,7 +18,8 @@ importMineFromDir('style-test', dir, { name: '测试风格' })
 const plan = TOOLS.find(t => t.name === 'lovideo_plan')
 
 // 默认口播约 15 秒（一镜至少 15 秒，口播太短会被退回）
-const LINE = '天宫空间站由天和核心舱、问天实验舱和梦天实验舱组成，三个舱拼成一个 T 字，总重约六十八吨，航天员可以在三个舱之间来回走动。'
+// 口播一句一项（每句最多 60 个字符）
+const LINE = ['天宫空间站由天和核心舱、问天实验舱和梦天实验舱组成，三个舱拼成一个 T 字。', '总重约六十八吨，航天员可以在三个舱之间来回走动。']
 const scene = (n, narration = LINE) => ({ title: `第${n}镜`, description: '画面', narration, seconds: 15 })
 const args = extra => ({
   title: '测试', style: 'style-test', duration: 30, subtitles: true,
@@ -33,12 +34,22 @@ test('片长决定最多几镜：30 秒最多 2 镜', async () => {
 })
 
 test('口播比目标片长长太多时打回', async () => {
-  const long = '这是一段很长很长的口播'.repeat(20)
+  const long = Array(20).fill('这是一段很长很长的口播。')
   await assert.rejects(plan.execute(args({ scenes: [scene(1, long), scene(2, long)] })), /长太多/)
 })
 
 test('口播太短的镜头被退回，退回带记号、不算给用户看的失败', async () => {
-  await assert.rejects(plan.execute(args({ scenes: [scene(1, '一句话。'), scene(2)] })), e => /口播太短/.test(e.message) && e.message.startsWith('【请改好后再调用】'))
+  await assert.rejects(plan.execute(args({ scenes: [scene(1, ['一句话。']), scene(2)] })), e => /口播太短/.test(e.message) && e.message.startsWith('【请改好后再调用】'))
+})
+
+test('一句口播超过 60 个字符整版退回（和网站一样），分镜里按句存', async () => {
+  const tooLong = '天宫空间站由天和核心舱、问天实验舱和梦天实验舱组成，三个舱拼成一个 T 字，总重约六十八吨，航天员可以在三个舱之间来回走动。'
+  await assert.rejects(plan.execute(args({ scenes: [scene(1, [tooLong]), scene(2)] })), e => /超过 60 个字符/.test(e.message) && e.message.startsWith('【请改好后再调用】'))
+  const r = await plan.execute(args({ direction: '深色底、黄色强调色、粗黑体大标题' }))
+  const w = requireWork(r.work_id)
+  assert.deepEqual(w.plan.scenes[0].sentences, LINE)
+  assert.equal(w.plan.scenes[0].narration, LINE.join(''))
+  assert.equal(w.plan.direction, '深色底、黄色强调色、粗黑体大标题')
 })
 
 test('有口播的镜头长度按口播算，不按导演给的秒数拉长', async () => {

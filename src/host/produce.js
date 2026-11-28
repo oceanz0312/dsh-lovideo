@@ -1,20 +1,21 @@
 // 制作：确认分镜以后，在这台电脑上把片子做出来。
-//   1. 配音：每段口播念一遍，段长跟着口播走（和网站一样）
+//   1. 配音：每段口播逐句念、量时长，按网站的留白和停顿铺成段的口播轨，段长跟着口播走（和网站一样）
 //      段长定了就在后台生成配乐（要配乐时），和画面同时进行，拼成片前等它做完
-//   2. 准备工程：写一份和网站沙箱同格式的 job.json，跑风格包自带的 scripts/setup.py
-//   3. 逐段制作：模型（用户在 DSH 选的）按风格 SKILL.md 写这一段的画面代码，本机渲染；
-//      渲染失败就把报错交回模型改，最多 3 次；还不行就用准备脚本的草稿兜底
+//   2. 准备工程：写和网站沙箱同格式的 job.json、narration.json，跑风格包自带的 scripts/setup.py
+//   3. 逐段制作：每段一个制作会话（segment.js，和网站的段 agent 一样）：模型（用户在 DSH 选的）用 draw 写画面，
+//      平台渲染、看检查图、量画面跟不跟旁白动、核对铺满画面，有问题交回同一个会话改，交上去就结束
 //   4. 拼成片：按时间线拼接、混口播和配乐，出封面和时间线
 // 关掉 DSH 或点暂停会停在当前段，已经做好的段保留，继续时接着做。
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, join, normalize, relative } from 'node:path'
-import { PLUGIN_ROOT, ensureDir, isInside } from './paths.js'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { PLUGIN_ROOT, ensureDir } from './paths.js'
 import { MAX_PARALLEL, readSettings, voiceConfig } from './settings.js'
 import { notify } from './notices.js'
 import { getWork, requireWork, updateWork, workDir } from './works.js'
 import { resolveStyle } from './styles.js'
 import { speak } from './tts.js'
-import { callModel, extractFiles } from './llm.js'
+import { makeSegmentSession, sharedPrompt } from './segment.js'
+import { TAIL, sentencesOf, voiceSegment, writeNarrationJson } from './narration.js'
 import { fill, parseRenderCommand, renderCommand, renderPage, startSite } from './render.js'
 import { ensureFonts, findPython, fontsDir, mediaSeconds, run, runtimeStatus } from './runtime.js'
 import { MODELS, activeModel, chooseModel, estimateSeconds, hardware, meetsMinimum } from './localvoice.js'
@@ -25,9 +26,6 @@ import { musicReady } from './localvoice.js'
 import { busyElsewhereError, ownedElsewhere, producerRecord } from './lock.js'
 
 export const ASPECTS = { '16:9': { width: 1920, height: 1080 }, '9:16': { width: 1080, height: 1920 } }
-// 一镜最多让模型写几次。推理用中间档：DeepSeek 的档位是 关闭/低/高/最高，最低一档等于不思考，
-// 写几百行 3D 代码时接口用错、坐标算错特别多（天宫空间站实测 4 镜第一次全挂）；默认的高档又会把输出上限全花在思考上
-const MAX_ATTEMPTS = 5
 const controllers = new Map()
 
 export const isRunning = id => controllers.has(id)
@@ -171,24 +169,23 @@ async function run_(id, ctl) {
       for (const [i, scene] of work.plan.scenes.entries()) {
         if (signal.aborted) throw abortError()
         const text = narrationText(scene)
+        const texts = sentencesOf(scene)
         const sig = sceneSig(scene)
         const old = carry.get(scene.id)
         const hasVideo = Boolean(old?.file && existsSync(join(workDir(id), old.file)))
         const sameText = Boolean(old) && old.narration === text
-        let voiceSec = 0
-        let voiceFile = join('voice', `${scene.id}.wav`)
-        const wantVoice = text && work.voice?.enabled !== false && settings.voice.provider !== 'none'
-        if (wantVoice && sameText && old.voice && existsSync(join(workDir(id), old.voice.file))) {
+        let voice = null
+        const wantVoice = texts.length && work.voice?.enabled !== false && settings.voice.provider !== 'none'
+        if (wantVoice && sameText && old.voice?.sentences?.length && existsSync(join(workDir(id), old.voice.file))) {
           // 口播没变：沿用原来的配音
-          voiceSec = old.voice.seconds
-          voiceFile = old.voice.file
+          voice = old.voice
         } else if (wantVoice) {
-          voiceSec = await speak(text, join(workDir(id), voiceFile), voiceSettings, signal)
+          voice = await voiceSegment({ segId: scene.id, texts, workDir: workDir(id), speak: (t, out, sig) => speak(t, out, voiceSettings, sig), signal })
         }
-        const voice = voiceSec ? { file: voiceFile, seconds: voiceSec } : null
-        // 以内容为准：有口播就按口播念完的时间（念完留 0.9 秒收尾），不再按分镜秒数拉长画面；没口播才用分镜秒数
+        // 以内容为准：有口播就按口播念完的时间（网站的 narrationFrames：段首留白 + 各句 + 句间停顿 + 段尾留白），
+        // 不再按分镜秒数拉长画面；没口播才用分镜秒数
         const planned = Math.max(3, Number(scene.seconds) || 6)
-        const minFrames = Math.round((voiceSec ? voiceSec + 0.9 : planned) * fps)
+        const minFrames = Math.ceil((voice ? voice.seconds + TAIL : planned) * fps)
         // 画面没变：时长没改就保持原长，改短了就裁；放不下新配音或要更长才重画
         if (hasVideo && pictureSig(old) === pictureSig(scene)) {
           const plannedChanged = (old.planned ?? Math.round(old.frames / fps)) !== planned
@@ -216,7 +213,8 @@ async function run_(id, ctl) {
     await setJob(id, { state: 'preparing' })
     await ensureFonts()
     const proj = ensureDir(join(workDir(id), 'proj'))
-    writeJobJson(work, fps, size)
+    const narration = writeNarrationJson(workDir(id), segmentsOf(work), fps)
+    writeJobJson(work, fps, size, Boolean(narration))
     const pending = segmentsOf(work).filter(s => s.state !== 'done')
     const setup = join(style.dir, 'scripts', 'setup.py')
     if (existsSync(setup) && pending.length) {
@@ -237,15 +235,21 @@ async function run_(id, ctl) {
         if (!existsSync(file)) writeFileSync(file, readFileSync(baseDraft, 'utf8').replace("q.get('title') || ''", JSON.stringify(sg.title || '')))
       }
     }
-    // 准备脚本写的草稿留一份，模型改坏了可以退回
-    for (const s of pending) snapshotDraft(proj, s.id)
 
     // 3. 逐段制作
     await setJob(id, { state: 'drawing' })
     const site = await startSite(mountsOf(spec, { skill: style.dir, project: proj }))
     try {
-      await pool(pending, Math.max(1, Math.min(MAX_PARALLEL, settings.parallel || 4)), seg =>
-        makeSegment({ id, seg, style, spec, size, fps, proj, site, signal }))
+      const agents = Math.max(1, Math.min(MAX_PARALLEL, settings.parallel || 4, pending.length))
+      const segments = segmentsOf(work)
+      const shared = sharedPrompt({ style, segments, fps, size })
+      const redraw = new Set(pending.filter(s => s.redraws).map(s => s.id))
+      await pool(pending, agents, seg => makeSegmentSession({
+        work, seg, segments, style, spec, size, fps, proj, site, signal, workDir: workDir(id), narration, shared, agents, redraw,
+        update: patch => setSegment(id, seg.id, patch),
+        log: entry => updateWork(id, w => (((w.job.segments.find(x => x.id === seg.id) || {}).history ||= []).push(entry), w)),
+        countCall: () => updateWork(id, w => ((w.job.modelCalls = (w.job.modelCalls || 0) + 1), w)),
+      }))
     } finally {
       site.server.closeAllConnections?.()
       site.server.close()
@@ -253,7 +257,7 @@ async function run_(id, ctl) {
     work = requireWork(id)
     const failed = segmentsOf(work).filter(s => s.state !== 'done')
     // 宁可停下让用户重试，也不拿不相干的画面凑数
-    if (failed.length) throw new Error(`第 ${failed.map(s => s.idx).join('、')} 镜画了 ${MAX_ATTEMPTS} 次都没通过风格的检查，点「重试」会只重画这几镜（最后一次的问题：${failed[0].error || '原因不明'}）`)
+    if (failed.length) throw new Error(`第 ${failed.map(s => s.idx).join('、')} 镜改了几轮都没通过检查，点「重试」会只重画这几镜（最后一次的问题：${String(failed[0].error || '原因不明').slice(0, 300)}）`)
 
     // 4. 拼成片
     await musicTask
@@ -399,8 +403,8 @@ export function narrationText(scene) {
   return (Array.isArray(n) ? n.join('') : String(n || '')).trim()
 }
 
-/** 和网站沙箱同格式的 job.json（风格包的 setup.py 读它） */
-function writeJobJson(work, fps, size) {
+/** 和网站沙箱同格式的 job.json（风格包的 setup.py 读它；有口播时它再读旁边的 narration.json） */
+function writeJobJson(work, fps, size, hasNarration) {
   const segs = segmentsOf(work)
   const scenes = new Map(work.plan.scenes.map(s => [s.id, s]))
   const job = {
@@ -412,13 +416,14 @@ function writeJobJson(work, fps, size) {
     confirmed: {
       inputs: (work.plan.inputs || []).map((x, i) => ({ key: x.key || `k${i + 1}`, label: x.label || '', value: x.value })),
       audio: null,
-      params: { aspect: work.aspect, durationSec: segs.reduce((n, s) => n + s.frames, 0) / fps, fps, width: size.width, height: size.height, subtitles: true },
+      params: { aspect: work.aspect, durationSec: segs.reduce((n, s) => n + s.frames, 0) / fps, fps, width: size.width, height: size.height, subtitles: true, ...(work.plan.direction ? { style: work.plan.direction } : {}) },
     },
+    narration: hasNarration ? { path: 'narration.json' } : null,
     segments: segs.map(s => {
       const sc = scenes.get(s.id) || {}
       return {
         idx: s.idx, id: s.id, title: sc.title || '', description: sc.description || '', copy: sc.copy || {}, media: [],
-        narration: narrationText(sc) ? { sentences: [{ id: `${s.id}-n1`, text: narrationText(sc), unitSeconds: [0.3, 0.3 + (s.voice?.seconds || 0)] }] } : null,
+        narration: s.voice?.sentences?.length ? { sentences: s.voice.sentences.map(l => ({ id: l.id, text: l.text, unitSeconds: [l.start, l.end] })) } : null,
         label: sc.title || '', frames: s.frames, start: s.start,
       }
     }),
@@ -441,164 +446,6 @@ function mountsOf(spec, vars) {
 }
 
 /* ---------- 一段 ---------- */
-
-const TEXT_EXT = /\.(js|mjs|json|html|css|txt|md|svg|py|glsl|frag|vert)$/i
-
-function listFiles(dir, base = dir, out = []) {
-  if (!existsSync(dir)) return out
-  for (const e of readdirSync(dir, { withFileTypes: true })) {
-    const p = join(dir, e.name)
-    if (e.isDirectory()) {
-      if (e.name !== '.draft') listFiles(p, base, out)
-    } else out.push({ rel: relative(base, p).split('\\').join('/'), size: statSync(p).size, path: p })
-  }
-  return out
-}
-
-function snapshotDraft(proj, segId) {
-  const dir = join(proj, segId)
-  const draft = join(dir, '.draft')
-  if (!existsSync(dir) || existsSync(draft)) return
-  mkdirSync(draft, { recursive: true })
-  for (const f of listFiles(dir)) if (TEXT_EXT.test(f.rel) && f.size < 200_000) {
-    mkdirSync(dirname(join(draft, f.rel)), { recursive: true })
-    copyFileSync(f.path, join(draft, f.rel))
-  }
-}
-
-/** 段目录里的这个文件是不是还和风格准备脚本写的草稿一模一样（模型还没改过） */
-function isUntouchedDraft(proj, segId, rel) {
-  const draft = join(proj, segId, '.draft', rel)
-  if (!existsSync(draft)) return false
-  try {
-    return readFileSync(draft, 'utf8') === readFileSync(join(proj, segId, rel), 'utf8')
-  } catch {
-    return false
-  }
-}
-
-/** 风格包里给模型参考的代码（引擎、页面），按大小截断 */
-function styleReference(styleDir) {
-  const files = listFiles(join(styleDir, 'assets')).filter(f => /\.(js|mjs|html)$/.test(f.rel) && f.size < 60_000)
-  let budget = 60_000
-  const parts = []
-  for (const f of files.sort((a, b) => a.size - b.size)) {
-    if (f.size > budget) continue
-    budget -= f.size
-    parts.push(`--- assets/${f.rel} ---\n${readFileSync(f.path, 'utf8')}`)
-  }
-  return parts.join('\n\n')
-}
-
-const SYSTEM = `你是 lovideo 的单段制作程序：按一个视频风格 Skill 的规则，为成片里的一段写出画面代码。
-- 严格遵守 SKILL.md 的风格规则和制作说明。SKILL.md 里的 setup、render、check、submit 等命令由平台替你执行，你只负责写文件。
-- 只写这一段自己的工程目录（路径相对段目录，例如 scene.js），不写别的目录，不改风格包。
-- 按段内时间作画：段长、帧率、画布尺寸见下面的「这一段」。旁白和字幕由平台另加，不要把旁白全文画进画面。
-- 画面要跟着旁白的意思走，有明显的动作和变化，不要整段只有底色。
-- 不要提问，不要解释，不要用 Markdown 代码块。只输出要写入的文件，每个文件写完整内容，格式严格如下（示例）：
-=== FILE: scene.js ===
-import * as K from '/engine/collage.js'
-……完整代码……
-=== END ===`
-
-async function makeSegment({ id, seg, style, spec, size, fps, proj, site, signal }) {
-  const work = requireWork(id)
-  const scenes = work.plan.scenes
-  const scene = scenes.find(s => s.id === seg.id) || {}
-  const segDir = ensureDir(join(proj, seg.id))
-  const vars = {
-    unit: seg.id, unitIndex: seg.idx, seconds: (seg.frames / fps).toFixed(3), fps, width: size.width, height: size.height,
-    skill: style.dir, project: proj, start: seg.start, count: seg.frames, film_seconds: (segmentsOf(work).reduce((n, s) => n + s.frames, 0) / fps).toFixed(3),
-    unit_dir: join(proj, '.render', seg.id), frames_dir: join(proj, '.render', seg.id, 'frames'), video: '',
-  }
-  const context = {
-    film: { title: work.title, aspect: work.aspect, width: size.width, height: size.height, fps, segments: scenes.length, language: lang(work) },
-    segment: {
-      id: seg.id, idx: seg.idx, title: scene.title, description: scene.description, narration: narrationText(scene),
-      seconds: Number(vars.seconds), frames: seg.frames, isLast: seg.idx === scenes.length,
-      previous: scenes[seg.idx - 2]?.title || null, next: scenes[seg.idx]?.title || null,
-    },
-    redraw: seg.brief ? `用户要求重画这一段：${seg.brief}` : undefined,
-  }
-  let lastError = null
-  // 写不出来就让这一镜失败（整片可以「重试」），不再退回风格自带的草稿出片：
-  // 官方风格的草稿是别的主题的示例（比如立体线稿图解的电热水壶），退回去会把不相干的画面混进成片
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    if (signal.aborted) throw abortError()
-    await setSegment(id, seg.id, { state: 'draw', attempts: attempt, error: null, rendered: 0 })
-    {
-      const files0 = listFiles(segDir).filter(f => TEXT_EXT.test(f.rel) && f.size < 60_000)
-      const current = files0.map(f => `${isUntouchedDraft(proj, seg.id, f.rel) ? `（下面的 ${f.rel} 还是风格自带的示例草稿，画的是别的东西：只能参考它的写法和引擎用法，物体、标题、标注、数字必须全部换成这一段的内容）\n` : ''}--- ${f.rel} ---\n${readFileSync(f.path, 'utf8')}`).join('\n\n')
-      const user = [
-        `# 风格 Skill（SKILL.md，风格包目录 ${style.dir}）\n\n${style.skillMd}`,
-        `# 风格包里的页面和引擎（只读参考）\n\n${styleReference(style.dir) || '（无）'}`,
-        `# 这一段\n\n${JSON.stringify(context, null, 1)}`,
-        `# 段目录 ${seg.id}/ 现有文件\n\n${current || '（空）'}`,
-        lastError ? `# 上次写的文件渲染失败\n\n${lastError}\n\n请改好后重新输出完整文件。` : '',
-      ].filter(Boolean).join('\n\n')
-      let text
-      try {
-        ;({ text } = await callModel({ system: SYSTEM, user, maxTokens: 64000, signal, light: 'mid' }))
-      } catch (err) {
-        if (signal.aborted) throw abortError()
-        lastError = `模型调用失败：${err.message}`
-        // 模型调用失败也记进尝试记录，排查时能看到每一次是怎么失败的
-        await updateWork(id, w => {
-          w.job.modelCalls = (w.job.modelCalls || 0) + 1
-          ;((w.job.segments.find(x => x.id === seg.id) || {}).history ||= []).push({ attempt, error: lastError.slice(0, 400) })
-          return w
-        })
-        continue
-      }
-      await updateWork(id, w => ((w.job.modelCalls = (w.job.modelCalls || 0) + 1), w))
-      try {
-        writeFileSync(join(ensureDir(join(proj, '.log')), `${seg.id}-${attempt}.txt`), text)
-      } catch {
-        // 存档失败不影响制作
-      }
-      let files = extractFiles(text)
-      if (!files.length) {
-        // 模型没按格式写、但只给了一个代码块时，当作这一段的 scene.js
-        const blocks = [...text.matchAll(/```(?:js|javascript|mjs)?\s*\n([\s\S]*?)```/g)].map(m => m[1])
-        if (blocks.length === 1 && existsSync(join(segDir, 'scene.js'))) files = [{ path: 'scene.js', content: blocks[0] }]
-      }
-      if (!files.length) {
-        lastError = '没有按格式输出任何文件。每个文件必须用一行 === FILE: <路径> === 开头、一行 === END === 结尾，中间是完整内容'
-        await updateWork(id, w => (((w.job.segments.find(x => x.id === seg.id) || {}).history ||= []).push({ attempt, error: lastError }), w))
-        continue
-      }
-      for (const f of files) {
-        const target = normalize(join(segDir, f.path.replace(/^\.?\/*/, '').replace(new RegExp(`^${seg.id}/`), '')))
-        if (!isInside(segDir, target)) continue
-        mkdirSync(dirname(target), { recursive: true })
-        writeFileSync(target, f.content)
-      }
-    }
-    await setSegment(id, seg.id, { state: 'render' })
-    const out = join(ensureDir(join(workDir(id), 'segs')), `${seg.id}.mp4`)
-    const poster = join(workDir(id), 'segs', `${seg.id}.jpg`)
-    const film = { unit: seg.id, fps, width: size.width, height: size.height, start: seg.start, frames: seg.frames, clock: spec.clock === 'unit' ? 'unit' : 'film' }
-    try {
-      let last = 0
-      const onFrame = n => {
-        if (n - last >= 15 || n === seg.frames) {
-          last = n
-          setSegment(id, seg.id, { rendered: n }).catch(() => {})
-        }
-      }
-      if (spec.page) await renderPage({ origin: site.origin, entry: fill(spec.page, vars), film, out, poster, signal, onFrame })
-      else await renderCommand({ command: spec.command, checkExit: spec.checkExit, vars, film, out, poster, signal })
-      await setSegment(id, seg.id, { state: 'done', rendered: seg.frames, file: `segs/${seg.id}.mp4`, poster: `segs/${seg.id}.jpg`, error: null })
-      return
-    } catch (err) {
-      if (signal.aborted || err.name === 'AbortError') throw abortError()
-      lastError = err.message.slice(0, 1500)
-      rmSync(out, { force: true })
-      await updateWork(id, w => (((w.job.segments.find(x => x.id === seg.id) || {}).history ||= []).push({ attempt, error: lastError.slice(0, 400) }), w))
-    }
-  }
-  await setSegment(id, seg.id, { state: 'failed', error: lastError })
-}
 
 async function pool(items, size, fn) {
   const queue = [...items]

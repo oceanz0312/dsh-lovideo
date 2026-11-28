@@ -120,3 +120,73 @@ export function extractFiles(text) {
   while ((m = re.exec(text))) files.push({ path: m[1].trim(), content: m[2].replace(/^```[a-z]*\n/, '').replace(/\n```\s*$/, '') })
   return files
 }
+
+/* ---------- 多轮带工具的会话（每段的制作会话、交段前看检查图） ---------- */
+
+const newId = () => randomUUID()
+
+/** 现在用的模型能不能看图（看检查图要用） */
+export async function canSeeImages(signal) {
+  const llm = hostCtx?.get('llm')
+  const info = modelInfo()
+  if (!llm || !info || !hostCtx?.get('attachments')) return false
+  try {
+    const m = await llm.resolveModelInfo(info.provider, info.model, signal)
+    return Boolean(m?.inputModalities?.includes('image'))
+  } catch {
+    return false
+  }
+}
+
+/** 一张图存进宿主的附件库，返回能放进消息里的图片块 */
+export async function imageBlock(data, mediaType = 'image/png') {
+  const store = hostCtx?.get('attachments')
+  if (!store) throw new Error('宿主没有附件库，不能给模型看图')
+  const [ref] = await store.saveImages([{ data: new Uint8Array(data), mediaType }])
+  return { type: 'image', attachment: ref }
+}
+
+export const userMessage = content => ({ role: 'user', content: typeof content === 'string' ? [{ type: 'text', text: content }] : content })
+
+export const toolResult = (callId, text, isError = false) => ({
+  role: 'tool', id: newId(), toolCallId: callId, content: [{ type: 'text', text }], source: { kind: 'tool', callId }, ...(isError ? { isError: true } : {}),
+})
+
+/**
+ * 调一次模型（可带工具、可多轮）。返回这次回复的文字、工具调用，以及要接进历史的 assistant 消息。
+ * @param {{system:string, messages:object[], tools?:{name:string,description:string,parameters:object}[], maxTokens?:number, signal?:AbortSignal, light?:boolean|'mid'}} req
+ */
+export async function chat({ system, messages, tools, maxTokens = 32000, signal, light = false }) {
+  const llm = hostCtx?.get('llm')
+  const info = modelInfo()
+  if (!llm || !info) throw new Error('DeepSeek Harness 里还没有可用的模型')
+  const call = await llm.prepareCall({ provider: info.provider, model: info.model, maxTokens }, signal, (controls, model) => {
+    const efforts = model?.reasoning?.efforts || []
+    const effort = light === true ? efforts[0]?.id : light === 'mid' ? efforts[Math.floor((efforts.length - 1) / 2)]?.id : undefined
+    return effort === undefined ? controls : { ...controls, reasoningEffort: effort }
+  })
+  const blocks = []
+  let text = ''
+  let finish = null
+  let replayState
+  usage.calls++
+  for await (const chunk of call.stream({ ...call.config, system, messages, ...(tools?.length ? { tools } : {}), sessionId: SESSION_ID, signal })) {
+    if (chunk.type === 'text-delta') text += chunk.text
+    else if (chunk.type === 'block-end') blocks[chunk.index] = chunk.block
+    else if (chunk.type === 'usage') {
+      usage.inputTokens += chunk.usage?.inputTokens ?? 0
+      usage.outputTokens += chunk.usage?.outputTokens ?? 0
+    } else if (chunk.type === 'finish') {
+      finish = chunk.reason?.kind ?? null
+      replayState = chunk.replayState
+      if (['error', 'aborted'].includes(finish)) throw new Error(chunk.reason.failure?.message || '模型调用失败')
+    }
+  }
+  const content = blocks.filter(Boolean)
+  const toolCalls = content.filter(b => b.type === 'tool-call').map(b => ({ id: b.id, name: b.name, arguments: b.arguments }))
+  const message = {
+    role: 'assistant', id: newId(), content,
+    source: { kind: 'model', provider: info.provider, model: info.model, ...(replayState === undefined ? {} : { replayState }) },
+  }
+  return { text, toolCalls, finish, message, model: info.label }
+}

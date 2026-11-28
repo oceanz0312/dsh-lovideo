@@ -95,6 +95,7 @@ export default {
   'seg.wait': 'Queued',
   'seg.draw': 'Writing',
   'seg.render': 'Rendering',
+  'seg.check': 'Checking frames',
   'seg.failed': 'Failed',
 
   // 片长
