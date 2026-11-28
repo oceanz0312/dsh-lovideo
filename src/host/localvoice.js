@@ -23,9 +23,13 @@ export const BUDGET_SECONDS = 180
  * 可选的模型，quality 越大越好。mlx / torch 两种后端各自的下载、配置要求。
  * 实测（M4 Pro）：Qwen3 1.7B 约 0.55×实时、峰值 10GB；Ming 0.5B 约 0.32×、4.3GB；Kokoro 约 0.05×、3GB。
  */
+// 模型自带 9 个声音，每个都能说中文和英文，两边全部列出；母语不是这门语言的排在后面。
+// 实测（2026-11-29，转写核对）：Ryan、Aiden 说中文和薇薇安一样清楚；杏奈、素熙个别字略带口音。
 const QWEN_VOICES = {
-  zh: [['Vivian', '女声 · 薇薇安'], ['Serena', '女声 · 塞丽娜'], ['Uncle_Fu', '男声 · 福叔'], ['Dylan', '男声 · 北京口音'], ['Eric', '男声 · 四川口音']],
-  en: [['Ryan', '男声 · Ryan'], ['Aiden', '男声 · Aiden'], ['Vivian', '女声 · Vivian'], ['Serena', '女声 · Serena']],
+  zh: [['Vivian', '女声 · 薇薇安'], ['Serena', '女声 · 塞丽娜'], ['Uncle_Fu', '男声 · 福叔'], ['Dylan', '男声 · 北京口音'], ['Eric', '男声 · 四川口音'],
+    ['Ryan', '男声 · 瑞恩'], ['Aiden', '男声 · 艾登'], ['Ono_Anna', '女声 · 杏奈'], ['Sohee', '女声 · 素熙']],
+  en: [['Ryan', '男声 · Ryan'], ['Aiden', '男声 · Aiden'], ['Vivian', '女声 · Vivian'], ['Serena', '女声 · Serena'],
+    ['Uncle_Fu', '男声 · Uncle Fu'], ['Dylan', '男声 · Dylan'], ['Eric', '男声 · Eric'], ['Ono_Anna', '女声 · Anna'], ['Sohee', '女声 · Sohee']],
 }
 
 /**
