@@ -1,5 +1,6 @@
 // 插件设置：配音、配乐用什么（离线模型或用户自己的 key），导出位置，同时渲染几段，lovideo 账号。
 // 整个文件只存在本机（权限 0600），key 不进作品数据、不上传 lovideo。导演帮用户配置时 key 会经过对话，界面和工具结果里只显示末 4 位。
+import { EventEmitter } from 'node:events'
 import { join } from 'node:path'
 import { dataDir, defaultExportDir, ensureDir } from './paths.js'
 import { readJson, updateJson, writeJson } from './json-file.js'
@@ -62,12 +63,17 @@ export function writeSettings(next) {
  * 改设置：在锁里读最新的设置交给 fn 改（同步），再写回，返回改后的设置。
  * DSH 桌面版和网页版可能同时改，各改各的项不会互相冲掉。
  */
+/** 设置改了就发 'change'：分镜卡上的配音、配乐跟着刷新（比如去设置换了服务、填了 Key 再回来） */
+export const settingsEvents = new EventEmitter()
+
 export function changeSettings(fn) {
-  return updateJson(file(), saved => {
+  const r = updateJson(file(), saved => {
     const s = withDefaults(saved)
     fn(s)
     return s
   }, { secret: true })
+  settingsEvents.emit('change')
+  return r
 }
 
 const mask = key => (key ? `••••${String(key).slice(-4)}` : '')

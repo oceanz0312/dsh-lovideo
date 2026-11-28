@@ -33,7 +33,7 @@ const PAGE_CSS = `
 .lv-srow>.l{flex:1;min-width:0}
 .lv-srow>.l b{font-weight:500;display:block}
 .lv-chips{display:flex;flex-wrap:wrap;gap:6px}
-.lv-chips button{transition:border-color var(--lv-dur) var(--lv-ease),color var(--lv-dur) var(--lv-ease),background-color var(--lv-dur) var(--lv-ease);height:28px;padding:0 12px;border-radius:999px;border:1px solid var(--dsw-alias-border-l4);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;cursor:pointer}
+.lv-chips button{transition:border-color var(--lv-dur) var(--lv-ease),color var(--lv-dur) var(--lv-ease),background-color var(--lv-dur) var(--lv-ease);height:28px;padding:0 12px;border-radius:999px;corner-shape:round;border:1px solid var(--dsw-alias-border-l4);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;cursor:pointer}
 .lv-chips button.on{border-color:var(--dsw-alias-label-primary);color:var(--dsw-alias-label-primary);font-weight:500;background:var(--dsw-alias-interactive-bg-hover)}
 .lv-end{height:1px}
 .lv-banner{animation:lv-in var(--lv-slow) var(--lv-ease-out);display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--dsw-alias-card-fill);margin-bottom:16px}

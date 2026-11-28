@@ -15,10 +15,10 @@ import { reviseFilm, setSwitches } from './edit.js'
 import { openInJianying, startExport } from './export.js'
 import { jianyingStatus } from './jianying.js'
 import { localVoiceStatus, musicReady, speakLocal, startDefaultSetup, startSetup as startLocalVoiceSetup, useModel as useLocalVoice, worker as localWorker } from './localvoice.js'
-import { voiceCatalog } from './voicecatalog.js'
+import { voiceCatalog, voiceSample } from './voicecatalog.js'
 import { saveDistilled, startDistill } from './distill.js'
 import { mediaSeconds, runtimeStatus, setupCanStart, setupProgress, setupRuntime } from './runtime.js'
-import { MUSIC_PROVIDERS, VOICE_PROVIDERS, publicSettings, readSettings, updateSettings, voiceConfig } from './settings.js'
+import { MUSIC_PROVIDERS, VOICE_PROVIDERS, publicSettings, readSettings, settingsEvents, updateSettings, voiceConfig } from './settings.js'
 import { listModels, modelInfo } from './llm.js'
 import { loginState, logout, startLogin, siteUrl } from './site.js'
 import { speak } from './tts.js'
@@ -313,6 +313,11 @@ export async function route(req, res) {
     updateSettings(body)
     return json(res, 200, state())
   }
+  // 试听某个声音的官方样音（豆包、ElevenLabs）：不调配音接口、不花额度；没有样音时 url 是 null
+  if (path === 'voice/sample') {
+    const provider = String(body.provider || '')
+    return json(res, 200, { url: await voiceSample(provider, String(body.voice || '').slice(0, 200)) })
+  }
   if (path === 'settings/test-voice') {
     const file = join(ensureDir(tmpDir()), `voice-test-${Date.now()}.wav`)
     // 设置页可以试听还没切过去的服务、还没选定的声音：provider、voice 只用于这一次
@@ -354,12 +359,15 @@ function sse(req, res) {
   res.write(': ok\n\n')
   const onChange = ({ id, work }) => res.write(`data: ${JSON.stringify({ id, status: work?.status ?? null, progress: work?.job?.progress ?? null })}\n\n`)
   const onNotice = notice => res.write(`data: ${JSON.stringify({ type: 'notice', ...notice })}\n\n`)
+  const onSettings = () => res.write(`data: ${JSON.stringify({ type: 'settings' })}\n\n`)
   events.on('change', onChange)
   notices.on('notice', onNotice)
+  settingsEvents.on('change', onSettings)
   const ping = setInterval(() => res.write(': ping\n\n'), 20_000)
   req.on('close', () => {
     clearInterval(ping)
     events.off('change', onChange)
     notices.off('notice', onNotice)
+    settingsEvents.off('change', onSettings)
   })
 }

@@ -80,12 +80,21 @@ export async function filmSound(work) {
   const current = p === 'system' ? { id: null, name: '系统自带语音', gender: '', note: '电脑自带的声音' }
     : known || (currentId ? { id: currentId, name: p === 'local' ? currentId : '自定义声音', gender: '', note: '' } : null)
   const source = musicSourceOf(work, s)
+  // 离线配乐装好了就带上模型，卡片上能试听（本机现做 15 秒，不花钱）；云服务没有现成样音，不给试听
+  const lm = localVoiceStatus('music')
+  const musicModel = lm.models.find(x => x.id === lm.active && x.installed)
   return {
     voice: { provider: p, service, lang, current, options, picked: Boolean(pick), note },
     music: {
       source,
       picked: MUSIC_SOURCES.includes(work?.choices?.musicSource),
-      sources: MUSIC_SOURCES.map(id => ({ id, name: MUSIC_LABEL[id], ...musicSourceReady(id, s) })),
+      sources: MUSIC_SOURCES.map(id => ({
+        id,
+        name: MUSIC_LABEL[id],
+        note: id === 'local' ? musicModel?.name || '' : '',
+        model: id === 'local' ? musicModel?.id || null : null,
+        ...musicSourceReady(id, s),
+      })),
     },
   }
 }

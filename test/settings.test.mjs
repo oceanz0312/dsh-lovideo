@@ -86,3 +86,13 @@ test('分镜卡上只给这部片子换声音、换配乐来源；设置里换�
   assert.equal(musicSourceOf({ choices: {} }), 'local')
   assert.throws(() => updateSettings({ music: { provider: 'none' } }), /不支持/)
 })
+
+test('豆包的每个声音都带火山官方样音，试听不调配音接口', async () => {
+  const { DOUBAO_VOICES, sampleUrl } = await import('../src/host/voicecatalog.js')
+  for (const v of DOUBAO_VOICES) {
+    assert.match(v.sample, /^https:\/\/lf3-static\.bytednsdoc\.com\/obj\/eden-cn\/.+\/portal\/bigtts\/.+\.(mp3|wav)$/, v.name)
+    assert.equal(await sampleUrl('doubao', v.id), v.sample)
+  }
+  assert.equal(await sampleUrl('doubao', 'seed-tts-2.0/not-a-voice'), null)
+  assert.equal(await sampleUrl('local', 'x'), null)
+})

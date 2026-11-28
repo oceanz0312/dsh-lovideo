@@ -480,12 +480,13 @@ const EN_LINE = 'Hi, this is a lovideo narration preview.'
 
 /**
  * 分镜卡上的时长、字幕、配音、配乐（和 lovideo 网站的分镜卡一样每项一行）：
- * 配音能只给这部片子换声音（列出现在的配音服务里这部片子语言的声音，每个都能试听），也能选「不配音」；
- * 配乐能换来源、开关。都是开拍前改，记进这部片子的 choices。
+ * 配音能只给这部片子换声音（列出现在的配音服务里这部片子语言的声音，每个都能试听），配乐能换来源；
+ * 两行右边都有总开关。都是开拍前改，记进这部片子的 choices。
  */
 function PlanOptions({ w }) {
   const t = useT()
-  const [sound, soundErr, reloadSound] = useLive(`works/${w.id}/sound`, msg => msg?.id === w.id)
+  // 这部片子变了、或者设置改了（换服务、填 Key、下完离线模型）都重新读
+  const [sound, soundErr, reloadSound] = useLive(`works/${w.id}/sound`, msg => msg?.id === w.id || msg?.type === 'settings')
   const [busy, setBusy] = React.useState(null)
   const [err, setErr] = React.useState(null)
   const [replan, setReplan] = React.useState(null)
@@ -511,6 +512,11 @@ function PlanOptions({ w }) {
   const preview = o => async () => {
     setErr(null)
     try {
+      // 豆包、ElevenLabs 先放官方样音（不调接口、不花额度），没有样音才真念一句
+      if (v.provider === 'doubao' || v.provider === 'elevenlabs') {
+        const r = await api('voice/sample', { provider: v.provider, voice: o.id })
+        if (r.url) return fileUrl(r.url)
+      }
       const r = v.provider === 'local'
         ? await api('local-voice/preview', { model: o.model, lang: v.lang, voice: o.id })
         : await api('settings/test-voice', { provider: v.provider, voice: o.id || undefined, text: v.lang === 'en' ? EN_LINE : ZH_LINE })
@@ -520,8 +526,19 @@ function PlanOptions({ w }) {
       return null
     }
   }
+  // 离线配乐试听：本机现做 15 秒（不花钱）；云服务没有现成样音，不给试听
+  const musicPreview = x => async () => {
+    setErr(null)
+    try {
+      return fileUrl((await api('local-voice/preview', { kind: 'music', model: x.model })).url)
+    } catch (e) {
+      setErr(e.message)
+      return null
+    }
+  }
   const toSettings = <a href="#" onClick={e => { e.preventDefault(); openManager('settings') }}>{t('plan.toSettings')}</a>
   const langName = v?.lang === 'en' ? t('common.english') : t('common.chinese')
+  const srcTag = x => (x.code === 'no-key' ? t('plan.srcNoKey') : x.code === 'not-installed' ? t('plan.srcNotInstalled') : t('plan.srcUnavailable'))
   return (
     <div className="lv-card-body lv-prows" style={{ paddingBottom: 0 }}>
       <div className="lv-prow">
@@ -533,6 +550,7 @@ function PlanOptions({ w }) {
         <span className="lv-mini">{t('common.subtitles')}<Switch checked={subsOn} busy={busy === 'subtitles'} label={t('common.subtitles')} onChange={x => set('subtitles', { subtitles: x })} /></span>
       </div>
 
+      {/* 配音、配乐两行一个样子：名字 · 说明 · 导演建议，右边「更换」和总开关；换服务、下载、填 Key 都去设置 */}
       <div className={`lv-prow ${voiceOn ? '' : 'off'}`}>
         <span className="k">{t('common.voice')}</span>
         <div className="m">
@@ -547,22 +565,39 @@ function PlanOptions({ w }) {
           )}
           {w.voice?.why ? <span className="lv-subtle lv-truncate lv-why">{t(w.voice.suggested === false ? 'plan.whyNoVoice' : 'plan.whyVoice', { why: w.voice.why })}</span> : null}
         </div>
-        {v ? <VoiceMenu v={v} on={voiceOn} busy={busy === 'voice'} preview={preview} langName={langName}
-          onPick={o => set('voice', { voice: true, voicePick: { provider: v.provider, id: o.id, model: o.model, lang: v.lang } })}
-          onDefault={() => set('voice', { voice: true, voicePick: null })}
-          onOff={() => set('voice', { voice: false })} /> : null}
+        {v ? (
+          <SoundMenu busy={busy === 'voice'} head={t('plan.menuHead', { service: v.service, lang: langName })} foot={t('plan.switchService')}
+            empty={v.provider === 'system' ? t('plan.systemNoChoice') : v.provider === 'openai' ? t('plan.openaiInSettings') : t('plan.noVoices')}
+            items={v.options.map(o => ({
+              key: o.id, name: o.name, desc: [o.gender, o.note].filter(Boolean).join(' · '), on: voiceOn && v.current?.id === o.id,
+              listen: preview(o), pick: () => set('voice', { voice: true, voicePick: { provider: v.provider, id: o.id, model: o.model, lang: v.lang } }),
+            }))}
+            onDefault={v.picked ? () => set('voice', { voice: true, voicePick: null }) : null} defaultLabel={t('plan.useDefault')} />
+        ) : null}
+        <Switch checked={voiceOn} busy={busy === 'voice'} label={t('common.voice')} onChange={x => set('voice', { voice: x })} />
       </div>
 
       <div className={`lv-prow ${musicOn ? '' : 'off'}`}>
         <span className="k">{t('common.music')}</span>
         <div className="m">
-          <b>{w.music?.brief || t('common.music')}</b>
-          <span className="lv-subtle lv-why">{w.music?.suggested ? t('plan.musicSuggested') : t('plan.noMusicSuggested')}</span>
+          {musicOn ? (
+            <>
+              {src?.ok && src.model ? <ListenButton size="round" kind="plain" label="" load={musicPreview(src)} /> : null}
+              <b>{w.music?.brief || t('common.music')}</b>
+              {src ? <span className="lv-subtle lv-truncate">{[src.name, src.note].filter(Boolean).join(' · ')}</span> : null}
+            </>
+          ) : (
+            <><b>{t('music.none')}</b><span className="lv-subtle">{t('plan.noMusicDesc')}</span></>
+          )}
+          <span className="lv-subtle lv-truncate lv-why">{w.music?.suggested ? t('plan.musicSuggested') : t('plan.noMusicSuggested')}</span>
         </div>
         {m ? (
-          <select className="lv-select lv-src" aria-label={t('plan.musicSource')} value={m.source} disabled={busy === 'music'} onChange={e => set('music', { musicSource: e.target.value })}>
-            {m.sources.map(x => <option key={x.id} value={x.id}>{x.name}{x.ok ? '' : x.code === 'no-key' ? t('plan.srcNoKey') : x.code === 'not-installed' ? t('plan.srcNotInstalled') : t('plan.srcUnavailable')}</option>)}
-          </select>
+          <SoundMenu busy={busy === 'music'} head={t('plan.musicMenuHead')} foot={t('plan.musicFoot')}
+            items={m.sources.map(x => ({
+              key: x.id, name: x.name, desc: x.note, on: musicOn && m.source === x.id, disabled: !x.ok, tag: x.ok ? null : srcTag(x),
+              listen: x.ok && x.model ? musicPreview(x) : null, pick: () => set('music', { music: true, musicSource: x.id }),
+            }))}
+            onDefault={m.picked ? () => set('music', { music: true, musicSource: null }) : null} defaultLabel={t('plan.useDefaultMusic')} />
         ) : null}
         <Switch checked={musicOn} busy={busy === 'music'} label={t('common.music')} onChange={x => set('music', { music: x })} />
       </div>
@@ -574,8 +609,11 @@ function PlanOptions({ w }) {
   )
 }
 
-/** 「更换」：现在的配音服务里这部片子语言的声音（只改这部片子），最后是「不配音」 */
-function VoiceMenu({ v, on, busy, preview, langName, onPick, onDefault, onOff }) {
+/**
+ * 「更换」弹出层（配音、配乐共用）：只列这部片子能选的项，每项能试听；
+ * 用不了的项（没下载、没填 Key）灰着、点不了；换服务、下载、填 Key 都在底部「去设置」。
+ */
+function SoundMenu({ busy, head, foot, empty, items, onDefault, defaultLabel }) {
   const t = useT()
   const [open, setOpen] = React.useState(false)
   const box = React.useRef(null)
@@ -599,24 +637,19 @@ function VoiceMenu({ v, on, busy, preview, langName, onPick, onDefault, onOff })
       <Button size="sm" busy={busy} aria-expanded={open} onClick={() => setOpen(o => !o)}>{t('plan.change')} ▾</Button>
       {open ? (
         <div className="lv-vmenu" role="menu">
-          <h5>{t('plan.menuHead', { service: v.service, lang: langName })}</h5>
-          {v.options.length ? v.options.map(o => {
-            const cur = on && v.current?.id === o.id
-            return (
-              <div key={o.id} role="menuitemradio" aria-checked={cur} tabIndex={0} className={`lv-vopt ${cur ? 'on' : ''}`}
-                onClick={() => choose(() => onPick(o))} onKeyDown={e => e.key === 'Enter' && choose(() => onPick(o))}>
-                <span onClick={e => e.stopPropagation()}><ListenButton size="round" kind="plain" label="" load={preview(o)} /></span>
-                <b>{o.name}</b>
-                <span className="lv-subtle lv-truncate">{[o.gender, o.note].filter(Boolean).join(' · ')}</span>
-                {cur ? <span className="chk">✓</span> : null}
-              </div>
-            )
-          }) : <div className="lv-subtle" style={{ padding: '6px 8px' }}>{v.provider === 'system' ? t('plan.systemNoChoice') : v.provider === 'openai' ? t('plan.openaiInSettings') : t('plan.noVoices')}</div>}
-          {v.picked ? <div role="menuitem" tabIndex={0} className="lv-vopt" onClick={() => choose(onDefault)} onKeyDown={e => e.key === 'Enter' && choose(onDefault)}><b>{t('plan.useDefault')}</b></div> : null}
-          <div role="menuitemradio" aria-checked={!on} tabIndex={0} className={`lv-vopt ${on ? '' : 'on'}`} onClick={() => choose(onOff)} onKeyDown={e => e.key === 'Enter' && choose(onOff)}>
-            <b>{t('voice.none')}</b><span className="lv-subtle">{t('plan.noVoiceDesc')}</span>{on ? null : <span className="chk">✓</span>}
-          </div>
-          <div className="lv-vfoot"><span className="lv-subtle">{t('plan.switchService')}</span><a href="#" onClick={e => { e.preventDefault(); setOpen(false); openManager('settings') }}>{t('plan.toSettings')}</a></div>
+          <h5>{head}</h5>
+          {items.length ? items.map(o => (
+            <div key={o.key} role="menuitemradio" aria-checked={o.on} aria-disabled={o.disabled || undefined} tabIndex={o.disabled ? -1 : 0}
+              className={`lv-vopt ${o.on ? 'on' : ''} ${o.disabled ? 'na' : ''}`}
+              onClick={() => !o.disabled && choose(o.pick)} onKeyDown={e => e.key === 'Enter' && !o.disabled && choose(o.pick)}>
+              {o.listen ? <span onClick={e => e.stopPropagation()}><ListenButton size="round" kind="plain" label="" load={o.listen} /></span> : <span className="lv-vgap" />}
+              <b>{o.name}</b>
+              {o.desc ? <span className="lv-subtle lv-truncate">{o.desc}</span> : null}
+              {o.tag ? <span className="lv-vtag">{o.tag}</span> : o.on ? <span className="chk">✓</span> : null}
+            </div>
+          )) : <div className="lv-subtle" style={{ padding: '6px 8px' }}>{empty}</div>}
+          {onDefault ? <div role="menuitem" tabIndex={0} className="lv-vopt" onClick={() => choose(onDefault)} onKeyDown={e => e.key === 'Enter' && choose(onDefault)}><span className="lv-vgap" /><b>{defaultLabel}</b></div> : null}
+          <div className="lv-vfoot"><span className="lv-subtle">{foot}</span><a href="#" onClick={e => { e.preventDefault(); setOpen(false); openManager('settings') }}>{t('plan.toSettings')}</a></div>
         </div>
       ) : null}
     </span>
